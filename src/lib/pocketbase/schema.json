@@ -1,0 +1,837 @@
+{
+  "generatedAt": "2026-10-03T13:16:47.917Z",
+  "collections": [
+    {
+      "name": "users",
+      "type": "auth",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || @request.auth.id = id)",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || @request.auth.id = id)",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || @request.auth.id = id)",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "avatar",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "role",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["pro", "empresa", "admin"]
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["ativo", "teste", "suspenso", "bloqueado"]
+        },
+        {
+          "name": "documentos",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "periodo_teste_dias",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ajuda_custo",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_negociado",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bloqueado_ate",
+          "type": "date",
+          "required": false,
+          "system": false
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_tokenKey__pb_users_auth_` ON `users` (`tokenKey`)",
+        "CREATE UNIQUE INDEX `idx_email__pb_users_auth_` ON `users` (`email`) WHERE `email` != ''",
+        "CREATE INDEX `idx_users_role_status` ON `users` (role, status)"
+      ]
+    },
+    {
+      "name": "postos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "funcao",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["porteiro", "limpeza", "zeladoria", "outro"]
+        },
+        {
+          "name": "endereco",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "carga_horaria",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "vigencia_inicio",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vigencia_fim",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "requisitos",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["ativo", "inativo"]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_postos_status ON postos (status)",
+        "CREATE INDEX idx_postos_funcao ON postos (funcao)"
+      ]
+    },
+    {
+      "name": "escalas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || @request.auth.role = 'pro')",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')"
+      },
+      "fields": [
+        {
+          "name": "posto",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "postos"
+        },
+        {
+          "name": "data",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "turno_inicio",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "turno_fim",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "aberta",
+            "convocada",
+            "aceita",
+            "coberta",
+            "falta",
+            "cancelada",
+            "concluida"
+          ]
+        },
+        {
+          "name": "multa_aplicada",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_diaria",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_escalas_posto ON escalas (posto)",
+        "CREATE INDEX idx_escalas_data ON escalas (data)",
+        "CREATE INDEX idx_escalas_status ON escalas (status)"
+      ]
+    },
+    {
+      "name": "convocacoes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "escala",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "escalas"
+        },
+        {
+          "name": "pro",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["pendente", "aceita", "recusada", "cancelada", "coberta", "falta"]
+        },
+        {
+          "name": "valor_diaria",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "regra_aplicada",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_convocacao",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_convocacoes_escala ON convocacoes (escala)",
+        "CREATE INDEX idx_convocacoes_pro ON convocacoes (pro)",
+        "CREATE INDEX idx_convocacoes_status ON convocacoes (status)"
+      ]
+    },
+    {
+      "name": "pricing_rules",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "update": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "base",
+            "treinamento",
+            "fim_semana",
+            "feriado",
+            "negociado",
+            "multa_falta"
+          ]
+        },
+        {
+          "name": "posto",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "postos"
+        },
+        {
+          "name": "faixa_horas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "dias",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vigencia_inicio",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vigencia_fim",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_pricing_rules_tipo ON pricing_rules (tipo)",
+        "CREATE INDEX idx_pricing_rules_posto ON pricing_rules (posto)"
+      ]
+    },
+    {
+      "name": "holidays",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "update": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "data",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["nacional", "municipal"]
+        },
+        {
+          "name": "cidade",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "uf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_holidays_data ON holidays (data)",
+        "CREATE INDEX idx_holidays_tipo ON holidays (tipo)"
+      ]
+    },
+    {
+      "name": "payouts",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || @request.auth.role = 'pro')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "escala",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "escalas"
+        },
+        {
+          "name": "pro",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "valor",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["retido", "pago", "disputa", "cancelado"]
+        },
+        {
+          "name": "disputa_aberta",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_conclusao",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_liberacao",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "provedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "referencia",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_payouts_status ON payouts (status)",
+        "CREATE INDEX idx_payouts_pro ON payouts (pro)",
+        "CREATE INDEX idx_payouts_liberacao ON payouts (data_liberacao)"
+      ]
+    },
+    {
+      "name": "payment_events",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "payout",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "payouts"
+        },
+        {
+          "name": "tipo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valor",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "metadata",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_payment_events_tipo ON payment_events (tipo)",
+        "CREATE INDEX idx_payment_events_payout ON payment_events (payout)"
+      ]
+    },
+    {
+      "name": "disputas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || pro = @request.auth.id)",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || pro = @request.auth.id)",
+        "create": "@request.auth.id != '' && (pro = @request.auth.id || @request.auth.role = 'admin')",
+        "update": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "payout",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "payouts"
+        },
+        {
+          "name": "pro",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "motivo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "resolucao",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["pendente", "a_favor_pro", "a_favor_empresa"]
+        },
+        {
+          "name": "data_abertura",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_resolucao",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_disputas_resolucao ON disputas (resolucao)",
+        "CREATE INDEX idx_disputas_pro ON disputas (pro)"
+      ]
+    },
+    {
+      "name": "settings",
+      "type": "base",
+      "apiRules": {
+        "list": "",
+        "view": "",
+        "create": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "update": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "nome_empresa",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "logo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cor_primaria",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "cor_secundaria",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "guarantee_period_days",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "dispute_period_hours",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "payout_provider",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["mercadopago", "pix_manual", "outro"]
+        },
+        {
+          "name": "multa_falta_pro",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "multa_empresa_cancelamento",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "conta_pix",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || pro = @request.auth.id)",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || pro = @request.auth.id)",
+        "create": "@request.auth.id != '' && (pro = @request.auth.id || @request.auth.role = 'admin')",
+        "update": "@request.auth.id != '' && (pro = @request.auth.id || @request.auth.role = 'admin')",
+        "delete": "@request.auth.id != '' && (pro = @request.auth.id || @request.auth.role = 'admin')"
+      },
+      "fields": [
+        {
+          "name": "pro",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "tipo_chave",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["cpf", "cnpj", "email", "telefone", "aleatoria"]
+        },
+        {
+          "name": "chave",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "provedor_conta",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conta_referencia",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_conta_pix_pro ON conta_pix (pro)"]
+    }
+  ]
+}

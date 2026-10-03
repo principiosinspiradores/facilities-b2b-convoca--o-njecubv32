@@ -1,0 +1,252 @@
+import React, { useState } from 'react'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
+import { useAuth } from '@/contexts/AuthContext'
+import { useSettings } from '@/contexts/SettingsContext'
+import { Button } from '@/components/ui/button'
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import {
+  Menu,
+  LogOut,
+  User,
+  Building2,
+  Calendar,
+  Activity,
+  Receipt,
+  ShieldCheck,
+  Calculator,
+  ShieldAlert,
+  Sliders,
+  Inbox,
+  Clock,
+  QrCode,
+  DollarSign,
+} from 'lucide-react'
+
+export default function Layout() {
+  const { user, role, logout } = useAuth()
+  const { settings } = useSettings()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
+
+  // Cores dinâmicas white-label
+  const corPrimaria = settings?.cor_primaria || '#0F766E'
+  const corSecundaria = settings?.cor_secundaria || '#134E4A'
+  const nomeEmpresa = settings?.nome_empresa || 'Facilities Pro'
+
+  // Itens de navegação por papel
+  const navItems = []
+
+  if (role === 'pro') {
+    navItems.push(
+      { to: '/convocacoes', label: 'Minhas Convocações', icon: Inbox },
+      { to: '/minhas-escalas', label: 'Meus Postos / Escalas', icon: Calendar },
+      { to: '/meus-repasses', label: 'Meus Repasses (Escrow)', icon: DollarSign },
+      { to: '/minha-conta-pix', label: 'Minha Conta Pix', icon: QrCode },
+    )
+  } else if (role === 'empresa') {
+    navItems.push(
+      { to: '/postos', label: 'Postos de Trabalho', icon: Building2 },
+      { to: '/escalas', label: 'Escalas & Convocações', icon: Calendar },
+      { to: '/cobertura', label: 'Painel de Cobertura', icon: Activity },
+      { to: '/faturamento', label: 'Faturamento Mensal', icon: Receipt },
+    )
+  } else if (role === 'admin') {
+    navItems.push(
+      { to: '/gate', label: 'Gate de Pros & Docs', icon: ShieldCheck },
+      { to: '/motor-precos', label: 'Motor de Preços', icon: Calculator },
+      { to: '/postos', label: 'Postos de Trabalho', icon: Building2 },
+      { to: '/escalas', label: 'Escalas & Convocações', icon: Calendar },
+      { to: '/cobertura', label: 'Painel de Cobertura', icon: Activity },
+      { to: '/disputas', label: 'Disputas de Escrow', icon: ShieldAlert },
+      { to: '/faturamento-admin', label: 'Faturamento Global', icon: Receipt },
+      { to: '/config', label: 'Configurações White-Label', icon: Sliders },
+    )
+  }
+
+  // Se não estiver logado (ex. tela pública dentro do layout)
+  if (!user) {
+    return (
+      <main className="min-h-screen bg-slate-50">
+        <Outlet />
+      </main>
+    )
+  }
+
+  return (
+    <div className="min-h-screen flex bg-slate-50 text-slate-900 font-sans">
+      {/* SIDEBAR FIXA DESKTOP (240px) */}
+      <aside
+        style={{ backgroundColor: corSecundaria }}
+        className="hidden lg:flex flex-col w-60 shrink-0 text-white shadow-xl z-20 justify-between"
+      >
+        <div>
+          {/* Logo / Nome White Label */}
+          <div className="p-5 border-b border-white/10 flex items-center gap-3">
+            <div
+              style={{ backgroundColor: corPrimaria }}
+              className="w-9 h-9 rounded-lg flex items-center justify-center font-black text-white text-base shadow"
+            >
+              {nomeEmpresa.slice(0, 2).toUpperCase()}
+            </div>
+            <div className="overflow-hidden">
+              <div
+                className="font-bold text-sm tracking-tight truncate text-white"
+                title={nomeEmpresa}
+              >
+                {nomeEmpresa}
+              </div>
+              <div className="text-[10px] text-teal-200 uppercase tracking-widest font-semibold">
+                B2B Marketplace
+              </div>
+            </div>
+          </div>
+
+          {/* Links de navegação */}
+          <nav className="p-3 space-y-1">
+            {navItems.map((item) => {
+              const Icon = item.icon
+              const isActive = location.pathname === item.to
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  style={isActive ? { backgroundColor: corPrimaria } : undefined}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
+                    isActive
+                      ? 'text-white shadow-sm'
+                      : 'text-slate-200 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                </NavLink>
+              )
+            })}
+          </nav>
+        </div>
+
+        {/* Perfil & Logout no rodapé da Sidebar */}
+        <div className="p-3 border-t border-white/10 space-y-2 bg-black/10">
+          <div className="flex items-center gap-2.5 px-2 py-1.5">
+            <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold text-white shrink-0">
+              {user.name ? user.name.slice(0, 1).toUpperCase() : 'U'}
+            </div>
+            <div className="overflow-hidden flex-1">
+              <div className="text-xs font-bold text-white truncate">{user.name || user.email}</div>
+              <div className="text-[10px] text-teal-200 capitalize font-medium">Perfil: {role}</div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-red-200 hover:bg-red-500/20 hover:text-red-100 transition-colors"
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span>Sair do Sistema</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* ÁREA PRINCIPAL */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* TOPBAR HEADER */}
+        <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-4 sm:px-6 sticky top-0 z-10 shadow-xs">
+          <div className="flex items-center gap-3">
+            {/* Mobile Drawer Trigger */}
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="lg:hidden text-slate-700">
+                  <Menu className="w-5 h-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                side="left"
+                className="p-0 w-72 text-white border-0"
+                style={{ backgroundColor: corSecundaria }}
+              >
+                <div className="p-5 border-b border-white/10 flex items-center gap-3">
+                  <div
+                    style={{ backgroundColor: corPrimaria }}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white text-sm"
+                  >
+                    {nomeEmpresa.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="font-bold text-sm text-white truncate">{nomeEmpresa}</div>
+                    <div className="text-[10px] text-teal-200 uppercase font-semibold">
+                      Facilities
+                    </div>
+                  </div>
+                </div>
+
+                <nav className="p-3 space-y-1">
+                  {navItems.map((item) => {
+                    const Icon = item.icon
+                    const isActive = location.pathname === item.to
+                    return (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        onClick={() => setMobileMenuOpen(false)}
+                        style={isActive ? { backgroundColor: corPrimaria } : undefined}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold ${
+                          isActive ? 'text-white' : 'text-slate-200 hover:bg-white/10'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4 shrink-0" />
+                        <span>{item.label}</span>
+                      </NavLink>
+                    )
+                  })}
+                </nav>
+
+                <div className="p-4 border-t border-white/10 mt-auto">
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-red-200 hover:bg-red-500/20"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Sair</span>
+                  </button>
+                </div>
+              </SheetContent>
+            </Sheet>
+
+            {/* Nome da plataforma no mobile / status */}
+            <div className="lg:hidden font-bold text-sm text-slate-800">{nomeEmpresa}</div>
+
+            <div className="hidden lg:block text-xs font-medium text-slate-500">
+              Ambiente de Convocação e Escrow &bull;{' '}
+              <strong className="text-slate-800">{nomeEmpresa}</strong>
+            </div>
+          </div>
+
+          {/* User info header */}
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:block text-right">
+              <div className="text-xs font-bold text-slate-900">{user.name || user.email}</div>
+              <div className="text-[11px] text-slate-400 font-medium capitalize">Acesso {role}</div>
+            </div>
+            <div
+              style={{ backgroundColor: corPrimaria }}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-xs"
+            >
+              {user.name ? user.name.slice(0, 1).toUpperCase() : 'U'}
+            </div>
+          </div>
+        </header>
+
+        {/* CONTEÚDO PRINCIPAL (max-w 1200px) */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1200px] w-full mx-auto animate-fade-in">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  )
+}
