@@ -92,10 +92,10 @@ export default function Layout() {
   } else if (role === 'empresa') {
     navItems.push(
       { to: '/mensagens', label: 'Mensagens', icon: MessageSquare, badge: mensagensNaoLidas },
-      { to: '/gate', label: 'Gate de Pros & Docs', icon: ShieldCheck },
-      { to: '/postos', label: 'Postos de Trabalho', icon: Building2 },
-      { to: '/escalas', label: 'Escalas & Convocações', icon: Calendar },
       { to: '/cobertura', label: 'Painel de Cobertura', icon: Activity },
+      { to: '/escalas', label: 'Escalas & Convocações', icon: Calendar },
+      { to: '/postos', label: 'Postos de Trabalho', icon: Building2 },
+      { to: '/gate', label: 'Gate de Pros & Docs', icon: ShieldCheck },
       { to: '/conferencia-ponto', label: 'Espelho de Pontos', icon: Clock },
     )
   } else if (role === 'admin') {
