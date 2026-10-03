@@ -284,10 +284,22 @@ export interface SettingsRecord {
   empresa_pix_tipo?: string
   empresa_titular?: string
   empresa_mp_client_id?: string
+  ultimo_snapshot_em?: string
   created: string
   updated: string
 }
 
+export interface BackupSnapshotHeader {
+  generated_at: string
+  system_version: string
+  counts: Record<string, number>
+  total_collections: number
+}
+
+export interface BackupSnapshotPayload {
+  header: BackupSnapshotHeader
+  data: Record<string, unknown[]>
+}
 export type PixTipoChave = 'cpf' | 'cnpj' | 'email' | 'telefone' | 'aleatoria'
 
 export interface ContaPixRecord {

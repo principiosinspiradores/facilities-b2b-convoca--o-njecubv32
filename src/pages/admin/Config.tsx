@@ -22,16 +22,18 @@ import {
   Clock,
   Ban,
   FileCheck,
+  Database,
 } from 'lucide-react'
 
 import { UserAccessManagement } from './components/UserAccessManagement'
 import { PaymentConfigSection } from './components/PaymentConfigSection'
 import { FuncoesConfigSection } from './components/FuncoesConfigSection'
+import { BackupConfigSection } from './components/BackupConfigSection'
 
 export default function ConfigPage() {
   const { settings, refreshSettings } = useSettings()
   const [activeTab, setActiveTab] = useState<
-    'whitelabel' | 'usuarios' | 'pagamentos' | 'regras' | 'funcoes'
+    'whitelabel' | 'usuarios' | 'pagamentos' | 'regras' | 'funcoes' | 'backup'
   >('whitelabel')
   const [isSaving, setIsSaving] = useState(false)
 
@@ -212,7 +214,7 @@ export default function ConfigPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-6">
-        <TabsList className="bg-slate-200/80 p-1 rounded-lg grid grid-cols-2 sm:grid-cols-5 gap-1">
+        <TabsList className="bg-slate-200/80 p-1 rounded-lg grid grid-cols-2 sm:grid-cols-6 gap-1">
           <TabsTrigger
             value="whitelabel"
             className="text-xs font-semibold flex items-center gap-1.5"
@@ -238,6 +240,10 @@ export default function ConfigPage() {
           <TabsTrigger value="regras" className="text-xs font-semibold flex items-center gap-1.5">
             <Shield className="w-4 h-4" />
             Regras de Cancelamento
+          </TabsTrigger>
+          <TabsTrigger value="backup" className="text-xs font-semibold flex items-center gap-1.5">
+            <Database className="w-4 h-4" />
+            Backup de Dados
           </TabsTrigger>
         </TabsList>
 
@@ -645,6 +651,11 @@ export default function ConfigPage() {
             </div>
           </TabsContent>
         </form>
+
+        {/* ABA 5: BACKUP DE DADOS & SNAPSHOT DA BASE */}
+        <TabsContent value="backup" className="space-y-6 m-0">
+          <BackupConfigSection settings={settings} onSnapshotSuccess={refreshSettings} />
+        </TabsContent>
       </Tabs>
     </div>
   )
