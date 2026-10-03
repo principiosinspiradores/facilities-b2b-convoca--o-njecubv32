@@ -1,8 +1,10 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { getLogoUrl } from '@/services/pricing'
+import { contarNaoLidas } from '@/services/mensagens'
+import { useRealtime } from '@/hooks/use-realtime'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import {
@@ -21,6 +23,7 @@ import {
   Clock,
   QrCode,
   DollarSign,
+  MessageSquare,
 } from 'lucide-react'
 
 export default function Layout() {
@@ -29,6 +32,39 @@ export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [mensagensNaoLidas, setMensagensNaoLidas] = useState(0)
+
+  // Atualizar contador de não lidas
+  const atualizarContadorMensagens = useCallback(async () => {
+    if (!user) return
+    try {
+      const count = await contarNaoLidas(user.id, role || 'pro')
+      setMensagensNaoLidas(count)
+    } catch {
+      // Silencioso
+    }
+  }, [user, role])
+
+  useEffect(() => {
+    atualizarContadorMensagens()
+  }, [atualizarContadorMensagens, location.pathname])
+
+  // Inscrição em realtime nas novas mensagens para atualizar badge instantaneamente
+  useRealtime(
+    'mensagens_mensagens',
+    useCallback(() => {
+      atualizarContadorMensagens()
+    }, [atualizarContadorMensagens]),
+    !!user,
+  )
+
+  useRealtime(
+    'mensagens_conversas',
+    useCallback(() => {
+      atualizarContadorMensagens()
+    }, [atualizarContadorMensagens]),
+    !!user,
+  )
 
   const handleLogout = () => {
     logout()
@@ -47,6 +83,7 @@ export default function Layout() {
   if (role === 'pro') {
     navItems.push(
       { to: '/convocacoes', label: 'Minhas Convocações', icon: Inbox },
+      { to: '/mensagens', label: 'Mensagens', icon: MessageSquare, badge: mensagensNaoLidas },
       { to: '/minhas-escalas', label: 'Meus Postos / Escalas', icon: Calendar },
       { to: '/ponto-pro', label: 'Bater Ponto Digital', icon: Clock },
       { to: '/meus-repasses', label: 'Meus Repasses (Escrow)', icon: DollarSign },
@@ -54,6 +91,7 @@ export default function Layout() {
     )
   } else if (role === 'empresa') {
     navItems.push(
+      { to: '/mensagens', label: 'Mensagens', icon: MessageSquare, badge: mensagensNaoLidas },
       { to: '/gate', label: 'Gate de Pros & Docs', icon: ShieldCheck },
       { to: '/postos', label: 'Postos de Trabalho', icon: Building2 },
       { to: '/escalas', label: 'Escalas & Convocações', icon: Calendar },
@@ -62,6 +100,7 @@ export default function Layout() {
     )
   } else if (role === 'admin') {
     navItems.push(
+      { to: '/mensagens', label: 'Mensagens', icon: MessageSquare, badge: mensagensNaoLidas },
       { to: '/gate', label: 'Gate de Pros & Docs', icon: ShieldCheck },
       { to: '/motor-precos', label: 'Motor de Preços', icon: Calculator },
       { to: '/postos', label: 'Postos de Trabalho', icon: Building2 },
@@ -140,7 +179,12 @@ export default function Layout() {
                   }`}
                 >
                   <Icon className="w-4 h-4 shrink-0" />
-                  <span className="truncate">{item.label}</span>
+                  <span className="truncate flex-1">{item.label}</span>
+                  {item.badge && item.badge > 0 ? (
+                    <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full shrink-0 shadow-xs">
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                  ) : null}
                 </NavLink>
               )
             })}
@@ -226,7 +270,12 @@ export default function Layout() {
                         }`}
                       >
                         <Icon className="w-4 h-4 shrink-0" />
-                        <span>{item.label}</span>
+                        <span className="flex-1">{item.label}</span>
+                        {item.badge && item.badge > 0 ? (
+                          <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full shrink-0">
+                            {item.badge > 99 ? '99+' : item.badge}
+                          </span>
+                        ) : null}
                       </NavLink>
                     )
                   })}

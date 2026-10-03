@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/hooks/use-toast'
+import { useNavigate } from 'react-router-dom'
 import {
   CheckCircle2,
   AlertTriangle,
@@ -14,9 +15,11 @@ import {
   Users,
   Activity,
   UserCheck,
+  MessageSquare,
 } from 'lucide-react'
 
 export default function CoberturaPage() {
+  const navigate = useNavigate()
   const [escalas, setEscalas] = useState<EscalaRecord[]>([])
   const [convocacoes, setConvocacoes] = useState<ConvocacaoRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -327,7 +330,23 @@ export default function CoberturaPage() {
                             </Badge>
                           )}
                         </td>
-                        <td className="py-3.5 text-right space-x-2">
+                        <td className="py-3.5 text-right space-x-1.5 whitespace-nowrap">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs text-teal-700 border-teal-200 hover:bg-teal-50"
+                            onClick={() => {
+                              const proId = aceito?.pro || falta?.pro || convs[0]?.pro || ''
+                              const convId = aceito?.id || falta?.id || convs[0]?.id || ''
+                              navigate(
+                                `/mensagens?escala=${esc.id}&convocacao=${convId}&pro=${proId}`,
+                              )
+                            }}
+                          >
+                            <MessageSquare className="w-3.5 h-3.5 mr-1 text-teal-600" />
+                            Mensagens
+                          </Button>
+
                           {aceito && (
                             <Button
                               variant="outline"
@@ -335,7 +354,7 @@ export default function CoberturaPage() {
                               className="text-xs text-rose-600 border-rose-200 hover:bg-rose-50"
                               onClick={() => handleMarcarFalta(aceito.id, esc.id)}
                             >
-                              Marcar Falta (No-Show)
+                              Marcar Falta
                             </Button>
                           )}
 
@@ -349,7 +368,7 @@ export default function CoberturaPage() {
                               <RefreshCw
                                 className={`w-3.5 h-3.5 mr-1 ${isReoferting === esc.id ? 'animate-spin' : ''}`}
                               />
-                              Reofertar Turno
+                              Reofertar
                             </Button>
                           )}
                         </td>

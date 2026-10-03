@@ -11,6 +11,7 @@ import { RequireAuth, RequireRole } from '@/components/RouteGuards'
 import Layout from '@/components/Layout'
 import Index from '@/pages/Index'
 import NotFound from '@/pages/NotFound'
+import MensagensPage from '@/pages/Mensagens'
 
 // Auth Pages
 import LoginPage from '@/pages/auth/Login'
@@ -106,6 +107,18 @@ const App = () => (
                   <RequireAuth>
                     <RequireRole allowedRoles={['pro', 'admin']}>
                       <MinhaContaPixPage />
+                    </RequireRole>
+                  </RequireAuth>
+                }
+              />
+
+              {/* Rota Compartilhada de Mensagens Internas (Pro, Empresa, Admin) */}
+              <Route
+                path="/mensagens"
+                element={
+                  <RequireAuth>
+                    <RequireRole allowedRoles={['pro', 'empresa', 'admin']}>
+                      <MensagensPage />
                     </RequireRole>
                   </RequireAuth>
                 }

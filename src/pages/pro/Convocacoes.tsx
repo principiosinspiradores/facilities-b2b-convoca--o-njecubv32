@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
+import { useNavigate } from 'react-router-dom'
 import {
   Clock,
   MapPin,
@@ -18,9 +19,11 @@ import {
   ShieldCheck,
   DollarSign,
   Calendar,
+  MessageSquare,
 } from 'lucide-react'
 
 export default function ConvocacoesPage() {
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<'pendentes' | 'minhas'>('pendentes')
   const [convocacoes, setConvocacoes] = useState<ConvocacaoRecord[]>([])
@@ -351,13 +354,13 @@ export default function ConvocacoesPage() {
                   )}
 
                   {/* Ações */}
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
+                  <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
                     {conv.status === 'pendente' ? (
-                      <>
+                      <div className="flex items-center justify-between gap-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          className="w-1/2 border-slate-300 text-slate-600 hover:bg-slate-100 hover:text-red-700"
+                          className="flex-1 border-slate-300 text-slate-600 hover:bg-slate-100 hover:text-red-700"
                           disabled={actionLoading === conv.id}
                           onClick={() => handleRecusar(conv)}
                         >
@@ -367,7 +370,7 @@ export default function ConvocacoesPage() {
 
                         <Button
                           size="sm"
-                          className="w-1/2 bg-teal-700 hover:bg-teal-800 text-white font-medium shadow-sm"
+                          className="flex-1 bg-teal-700 hover:bg-teal-800 text-white font-medium shadow-sm"
                           disabled={actionLoading === conv.id}
                           onClick={() => handleAceitar(conv)}
                         >
@@ -378,7 +381,7 @@ export default function ConvocacoesPage() {
                           )}
                           Aceitar Turno
                         </Button>
-                      </>
+                      </div>
                     ) : (
                       <div className="w-full flex items-center justify-between bg-emerald-50 text-emerald-800 p-2 rounded-lg text-xs">
                         <span className="flex items-center gap-1.5 font-semibold">
@@ -390,6 +393,21 @@ export default function ConvocacoesPage() {
                         </span>
                       </div>
                     )}
+
+                    {/* Botão Contextual de Mensagens para o Turno */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        navigate(
+                          `/mensagens?convocacao=${conv.id}&escala=${conv.escala || ''}&pro=${user?.id || ''}`,
+                        )
+                      }}
+                      className="w-full text-xs text-teal-700 hover:bg-teal-50 hover:text-teal-800 flex items-center justify-center gap-1.5 h-8 border border-teal-100"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      Mensagens sobre este turno (horário / suporte)
+                    </Button>
                   </div>
                 </div>
               </Card>

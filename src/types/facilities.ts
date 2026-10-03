@@ -276,3 +276,43 @@ export interface ContaPixRecord {
     pro?: UserRecord
   }
 }
+
+export type ConversaTipo = 'contextual' | 'direta'
+
+import type { RecordModel } from 'pocketbase'
+
+export interface MensagemConversaRecord extends RecordModel {
+  tipo: ConversaTipo
+  pro: string
+  participantes?: string[]
+  escala?: string
+  convocacao?: string
+  titulo_contexto?: string
+  ultima_mensagem_texto?: string
+  ultima_mensagem_data?: string
+  leitura_empresa_em?: string
+  leitura_pro_em?: string
+  expand?: {
+    pro?: UserRecord
+    participantes?: UserRecord[]
+    escala?: EscalaRecord & { expand?: { posto?: PostoRecord } }
+    convocacao?: ConvocacaoRecord & {
+      expand?: {
+        escala?: EscalaRecord & { expand?: { posto?: PostoRecord } }
+      }
+    }
+  }
+}
+
+export interface MensagemRecord extends RecordModel {
+  conversa: string
+  remetente: string
+  destinatario_tipo?: 'empresa' | 'pro' | 'admin'
+  texto: string
+  lida?: boolean
+  lida_em?: string
+  expand?: {
+    remetente?: UserRecord
+    conversa?: MensagemConversaRecord
+  }
+}

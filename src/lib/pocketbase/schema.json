@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T18:41:03.009Z",
+  "generatedAt": "2026-10-03T18:46:04.905Z",
   "collections": [
     {
       "name": "users",
@@ -1085,6 +1085,170 @@
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_funcoes_nome ON funcoes (nome)"]
+    },
+    {
+      "name": "mensagens_conversas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id || participantes.id ?= @request.auth.id)",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id || participantes.id ?= @request.auth.id)",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || (@request.auth.role = 'pro' && pro = @request.auth.id))",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id || participantes.id ?= @request.auth.id)",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["contextual", "direta"]
+        },
+        {
+          "name": "pro",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "participantes",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "escala",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "escalas"
+        },
+        {
+          "name": "convocacao",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "convocacoes"
+        },
+        {
+          "name": "titulo_contexto",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultima_mensagem_texto",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultima_mensagem_data",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "leitura_empresa_em",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "leitura_pro_em",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "mensagens_mensagens",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || conversa.pro = @request.auth.id || remetente = @request.auth.id)",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || conversa.pro = @request.auth.id || remetente = @request.auth.id)",
+        "create": "@request.auth.id != '' && remetente = @request.auth.id && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || (@request.auth.role = 'pro' && conversa.pro = @request.auth.id))",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || remetente = @request.auth.id || @request.auth.role = 'empresa' || conversa.pro = @request.auth.id)",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "conversa",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "mensagens_conversas"
+        },
+        {
+          "name": "remetente",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "destinatario_tipo",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["empresa", "pro", "admin"]
+        },
+        {
+          "name": "texto",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "lida",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lida_em",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_mensagens_conversa ON mensagens_mensagens (conversa)",
+        "CREATE INDEX idx_mensagens_remetente ON mensagens_mensagens (remetente)",
+        "CREATE INDEX idx_mensagens_created ON mensagens_mensagens (created DESC)"
+      ]
     }
   ]
 }

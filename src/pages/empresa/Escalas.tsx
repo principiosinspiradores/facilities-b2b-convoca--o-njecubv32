@@ -24,6 +24,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { toast } from '@/hooks/use-toast'
+import { useNavigate } from 'react-router-dom'
 import {
   Calendar,
   Plus,
@@ -37,9 +38,11 @@ import {
   ArrowRight,
   ShieldCheck,
   Info,
+  MessageSquare,
 } from 'lucide-react'
 
 export default function EscalasPage() {
+  const navigate = useNavigate()
   const { role } = useAuth()
   const isAdmin = role === 'admin'
   const [escalas, setEscalas] = useState<EscalaRecord[]>([])
@@ -608,14 +611,30 @@ export default function EscalasPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const proIdParaMsg = aceito?.pro || convsDestaEscala[0]?.pro || ''
+                          const convIdParaMsg = aceito?.id || convsDestaEscala[0]?.id || ''
+                          navigate(
+                            `/mensagens?escala=${escala.id}&convocacao=${convIdParaMsg}&pro=${proIdParaMsg}`,
+                          )
+                        }}
+                        className="text-teal-700 border-teal-200 hover:bg-teal-50 text-xs h-9"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 mr-1.5 text-teal-600" />
+                        Mensagens
+                      </Button>
+
                       {aceito ? (
-                        <div className="text-right bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-lg text-xs text-emerald-900">
+                        <div className="text-right bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs text-emerald-900">
                           <div className="font-bold flex items-center gap-1 justify-end">
                             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                            Turno Coberto por:
+                            Turno Coberto:
                           </div>
-                          <div className="font-semibold text-slate-900">
+                          <div className="font-semibold text-slate-900 truncate max-w-[140px]">
                             {aceito.expand?.pro?.name || 'Profissional'}
                             {isPostoComFixa && aceito.pro === posto?.pro_fixo && (
                               <span className="ml-1 text-[10px] text-teal-700 font-bold">
@@ -630,7 +649,7 @@ export default function EscalasPage() {
                           className="bg-teal-700 hover:bg-teal-800 text-white font-medium text-xs h-9"
                         >
                           <Send className="w-3.5 h-3.5 mr-1.5" />
-                          Convocar Profissionais ({convsDestaEscala.length})
+                          Convocar ({convsDestaEscala.length})
                         </Button>
                       )}
                     </div>
