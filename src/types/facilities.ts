@@ -5,6 +5,9 @@ export interface UserDocument {
   tipo: string
   status: 'pendente' | 'verificado' | 'rejeitado'
   arquivo_url?: string
+  arquivo_nome?: string
+  justificativa_recusa?: string
+  avaliado_em?: string
 }
 
 export interface UserRecord {
@@ -19,6 +22,20 @@ export interface UserRecord {
   ajuda_custo?: number
   valor_negociado?: number
   bloqueado_ate?: string
+  telefone?: string
+  funcoes?: string[]
+  endereco_completo?:
+    | Endereco
+    | {
+        logradouro?: string
+        numero?: string
+        bairro?: string
+        cidade?: string
+        uf?: string
+        cep?: string
+        regiao?: string
+      }
+  verified?: boolean
   created: string
   updated: string
 }

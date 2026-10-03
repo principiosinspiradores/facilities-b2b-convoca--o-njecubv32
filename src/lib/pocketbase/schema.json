@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T19:15:04.213Z",
+  "generatedAt": "2026-10-03T19:46:21.700Z",
   "collections": [
     {
       "name": "users",
@@ -7,7 +7,7 @@
       "apiRules": {
         "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || @request.auth.id = id)",
         "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || @request.auth.id = id)",
-        "create": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || (@request.auth.role = 'empresa' && @request.body.role = 'pro'))",
         "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || (@request.auth.role = 'empresa' && role = 'pro') || @request.auth.id = id)",
         "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
       },
@@ -79,6 +79,24 @@
         {
           "name": "bloqueado_ate",
           "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "telefone",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "funcoes",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "endereco_completo",
+          "type": "json",
           "required": false,
           "system": false
         }
