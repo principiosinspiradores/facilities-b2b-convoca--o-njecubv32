@@ -20,7 +20,7 @@ routerAdd('GET', '/backend/v1/admin/backup-snapshot', (e) => {
   const generatedAt = new Date().toISOString()
   const dateFormatted = generatedAt.slice(0, 10)
 
-  // As 16 coleções especificadas
+  // As 17 coleções especificadas (incluindo atestados)
   const collectionsToExport = [
     'users',
     'postos',
@@ -38,6 +38,7 @@ routerAdd('GET', '/backend/v1/admin/backup-snapshot', (e) => {
     'pontos',
     'mensagens_conversas',
     'mensagens_mensagens',
+    'atestados',
   ]
 
   const snapshotData = {}

@@ -7,6 +7,7 @@ import {
   ConvocacaoRecord,
   PostoRecord,
   UserRecord,
+  PontoRecord,
   ItemAlertaCobertura,
   TipoAlertaCobertura,
   HistoricoEscalaRecord,
@@ -71,6 +72,7 @@ export default function CoberturaPage() {
   const [convocacoes, setConvocacoes] = useState<ConvocacaoRecord[]>([])
   const [postos, setPostos] = useState<PostoRecord[]>([])
   const [pros, setPros] = useState<UserRecord[]>([])
+  const [alertasSemConvocacao, setAlertasSemConvocacao] = useState<PontoRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   // Atualização em tempo real do relógio (para cronômetros de tempo aberto)
@@ -106,7 +108,7 @@ export default function CoberturaPage() {
   // Carregamento de dados
   const loadData = useCallback(async () => {
     try {
-      const [escList, convList, postosList, prosList] = await Promise.all([
+      const [escList, convList, postosList, prosList, pontosAlertas] = await Promise.all([
         pb.collection('escalas').getFullList<EscalaRecord>({
           sort: 'data,turno_inicio',
           expand: 'posto,posto.pro_fixo',
@@ -123,11 +125,20 @@ export default function CoberturaPage() {
           filter: 'role = "pro"',
           sort: 'name',
         }),
+        pb
+          .collection('pontos')
+          .getFullList<PontoRecord>({
+            filter: 'aviso_sem_convocacao = true',
+            sort: '-timestamp_real',
+            expand: 'pro,posto,escala.posto',
+          })
+          .catch(() => []),
       ])
       setEscalas(escList)
       setConvocacoes(convList)
       setPostos(postosList)
       setPros(prosList)
+      setAlertasSemConvocacao(pontosAlertas)
     } catch (err) {
       console.error('Erro ao carregar dados de cobertura:', err)
       toast({
@@ -417,6 +428,68 @@ export default function CoberturaPage() {
           </Button>
         </div>
       </div>
+
+      {/* BANNER DE ALERTA DE PRESENÇA SEM CONVOCAÇÃO (NÃO-INTERMEDIAÇÃO) */}
+      {alertasSemConvocacao.length > 0 && (
+        <div className="bg-rose-50 border-2 border-rose-300 rounded-xl p-4 shadow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-rose-100 flex items-center justify-center text-rose-700 shrink-0">
+                <AlertTriangle className="w-5 h-5 text-rose-700 animate-bounce" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-rose-950 flex items-center gap-2">
+                  Alerta Crítico: Presença sem Convocação Detectada
+                  <Badge className="bg-rose-700 text-white font-bold text-xs">
+                    {alertasSemConvocacao.length} ocorrência(s)
+                  </Badge>
+                </h3>
+                <p className="text-xs text-rose-800 mt-0.5">
+                  Profissionais registraram presença no raio de postos de clientes sem convocação
+                  formal aceita para a data (auditoria de não-intermediação).
+                </p>
+              </div>
+            </div>
+
+            <Button
+              size="sm"
+              onClick={() => navigate('/conferencia-ponto')}
+              className="bg-rose-700 hover:bg-rose-800 text-white text-xs font-semibold shrink-0"
+            >
+              Auditar na Conferência de Ponto
+            </Button>
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-rose-200/80 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">
+            {alertasSemConvocacao.slice(0, 3).map((p) => {
+              const pro = p.expand?.pro
+              const posto = p.expand?.posto || p.expand?.escala?.expand?.posto
+              return (
+                <div
+                  key={p.id}
+                  className="bg-white/80 rounded-lg p-2.5 border border-rose-200 flex items-center justify-between"
+                >
+                  <div>
+                    <span className="font-bold text-slate-900 block">
+                      {pro?.name || pro?.email}
+                    </span>
+                    <span className="text-slate-500 text-[11px]">
+                      Posto: {posto?.nome || 'Posto'} &bull;{' '}
+                      {new Date(p.timestamp_real).toLocaleTimeString('pt-BR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] border-rose-300 text-rose-700">
+                    {new Date(p.timestamp_real).toLocaleDateString('pt-BR')}
+                  </Badge>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* CARDS NO TOPO COM TOTAL DE CADA TIPO DE ALERTA */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

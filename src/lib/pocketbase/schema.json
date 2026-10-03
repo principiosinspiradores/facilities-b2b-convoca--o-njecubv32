@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T22:23:02.596Z",
+  "generatedAt": "2026-10-03T22:46:03.316Z",
   "collections": [
     {
       "name": "users",
@@ -99,12 +99,19 @@
           "type": "json",
           "required": false,
           "system": false
+        },
+        {
+          "name": "cpf",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE UNIQUE INDEX `idx_tokenKey__pb_users_auth_` ON `users` (`tokenKey`)",
         "CREATE UNIQUE INDEX `idx_email__pb_users_auth_` ON `users` (`email`) WHERE `email` != ''",
-        "CREATE INDEX `idx_users_role_status` ON `users` (role, status)"
+        "CREATE INDEX `idx_users_role_status` ON `users` (role, status)",
+        "CREATE UNIQUE INDEX `idx_users_cpf_unique` ON `users` (cpf) WHERE cpf != ''"
       ]
     },
     {
@@ -879,6 +886,12 @@
           "type": "date",
           "required": false,
           "system": false
+        },
+        {
+          "name": "prazo_atestado_horas",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": []
@@ -975,7 +988,7 @@
         {
           "name": "escala",
           "type": "relation",
-          "required": true,
+          "required": false,
           "system": false,
           "collectionRef": "escalas"
         },
@@ -1115,6 +1128,19 @@
           "type": "number",
           "required": false,
           "system": false
+        },
+        {
+          "name": "aviso_sem_convocacao",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "posto",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "postos"
         }
       ],
       "indexes": [
@@ -1412,6 +1438,84 @@
         "CREATE INDEX idx_historico_escalas_escala ON historico_escalas (escala)",
         "CREATE INDEX idx_historico_escalas_usuario ON historico_escalas (usuario)",
         "CREATE INDEX idx_historico_escalas_created ON historico_escalas (created DESC)"
+      ]
+    },
+    {
+      "name": "atestados",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || pro = @request.auth.id)",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "convocacao",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "convocacoes"
+        },
+        {
+          "name": "pro",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "arquivo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_envio",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_validacao",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["pendente", "aprovado", "rejeitado"]
+        },
+        {
+          "name": "validado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "observacao_validacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_atestados_convocacao ON atestados (convocacao)",
+        "CREATE INDEX idx_atestados_pro ON atestados (pro)",
+        "CREATE INDEX idx_atestados_status ON atestados (status_validacao)"
       ]
     }
   ]

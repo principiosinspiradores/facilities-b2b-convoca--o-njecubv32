@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { ContaPixRecord, PixTipoChave } from '@/types/facilities'
+import { formatarCPF } from '@/lib/cpf'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,6 +44,9 @@ export default function MinhaContaPixPage() {
           setChave(cp.chave)
           setProvedorConta(cp.provedor_conta || 'mercadopago')
           setContaReferencia(cp.conta_referencia || '')
+        } else if (user.cpf) {
+          // Pré-preencher chave com o CPF do usuário se ainda não configurada
+          setChave(formatarCPF(user.cpf))
         }
       } catch (err) {
         console.error(err)
@@ -133,7 +137,17 @@ export default function MinhaContaPixPage() {
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
                     Tipo de Chave *
                   </label>
-                  <Select value={tipoChave} onValueChange={(v) => setTipoChave(v as PixTipoChave)}>
+                  <Select
+                    value={tipoChave}
+                    onValueChange={(v) => {
+                      const novoTipo = v as PixTipoChave
+                      setTipoChave(novoTipo)
+                      // Se selecionar CPF e o pro já possuir CPF cadastrado, pré-preencher
+                      if (novoTipo === 'cpf' && user?.cpf && (!chave || chave === user.email)) {
+                        setChave(formatarCPF(user.cpf))
+                      }
+                    }}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
@@ -153,7 +167,14 @@ export default function MinhaContaPixPage() {
                   </label>
                   <Input
                     value={chave}
-                    onChange={(e) => setChave(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      if (tipoChave === 'cpf') {
+                        setChave(formatarCPF(val))
+                      } else {
+                        setChave(val)
+                      }
+                    }}
                     placeholder={
                       tipoChave === 'cpf'
                         ? '000.000.000-00'
@@ -163,8 +184,14 @@ export default function MinhaContaPixPage() {
                             ? '(11) 99999-9999'
                             : 'Informe sua chave'
                     }
+                    maxLength={tipoChave === 'cpf' ? 14 : undefined}
                     required
                   />
+                  {tipoChave === 'cpf' && user?.cpf && (
+                    <span className="text-[10px] text-teal-700 block mt-1">
+                      Pré-preenchido com o CPF cadastrado no seu perfil ({formatarCPF(user.cpf)}).
+                    </span>
+                  )}
                 </div>
               </div>
 

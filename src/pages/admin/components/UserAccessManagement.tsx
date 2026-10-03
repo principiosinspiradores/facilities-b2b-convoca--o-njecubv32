@@ -50,6 +50,7 @@ export function UserAccessManagement() {
   // Formulário
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [cpf, setCpf] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<UserRole>('pro')
   const [status, setStatus] = useState<UserStatus>('ativo')
@@ -80,8 +81,9 @@ export function UserAccessManagement() {
     setEditingUser(null)
     setName('')
     setEmail('')
+    setCpf('')
     setPassword('')
-    setRole('pro')
+    setRole('empresa')
     setStatus('ativo')
     setModalOpen(true)
   }
@@ -90,12 +92,12 @@ export function UserAccessManagement() {
     setEditingUser(user)
     setName(user.name || '')
     setEmail(user.email || '')
+    setCpf(user.cpf || '')
     setPassword('')
     setRole(user.role || 'pro')
     setStatus(user.status || 'ativo')
     setModalOpen(true)
   }
-
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim() || !email.trim()) {
@@ -114,6 +116,7 @@ export function UserAccessManagement() {
           name: name.trim(),
           role,
           status,
+          cpf: cpf ? cpf.replace(/\D/g, '') : undefined,
         }
         if (password.trim()) {
           payload.password = password.trim()
@@ -143,6 +146,7 @@ export function UserAccessManagement() {
           name: name.trim(),
           role,
           status,
+          cpf: cpf ? cpf.replace(/\D/g, '') : undefined,
           verified: true,
         })
         toast({
@@ -467,6 +471,17 @@ export function UserAccessManagement() {
                     O e-mail não pode ser alterado diretamente por esta tela de parâmetros.
                   </p>
                 )}
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  CPF (Obrigatório para Pro / Opcional para outros)
+                </label>
+                <Input
+                  value={cpf}
+                  onChange={(e) => setCpf(e.target.value)}
+                  placeholder="000.000.000-00"
+                />
               </div>
 
               <div>

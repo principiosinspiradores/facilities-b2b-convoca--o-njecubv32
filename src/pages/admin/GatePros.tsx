@@ -5,6 +5,7 @@ import { UserRecord, UserStatus, FuncaoRecord, UserDocument } from '@/types/faci
 import { formatCurrencyBRL } from '@/lib/formatters'
 import { listarFuncoes } from '@/services/funcoes'
 import { cadastrarPro, atualizarPro, reenviarConvitePro } from '@/services/pros'
+import { formatarCPF, mascararCPF, validarCPF } from '@/lib/cpf'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -66,6 +67,7 @@ export default function GateProsPage() {
   const [newName, setNewName] = useState('')
   const [newEmail, setNewEmail] = useState('')
   const [newTelefone, setNewTelefone] = useState('')
+  const [newCpf, setNewCpf] = useState('')
   const [newFuncoes, setNewFuncoes] = useState<string[]>([])
   const [newRegiao, setNewRegiao] = useState('')
   const [newCidade, setNewCidade] = useState('São Paulo')
@@ -88,6 +90,7 @@ export default function GateProsPage() {
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
   const [editTelefone, setEditTelefone] = useState('')
+  const [editCpf, setEditCpf] = useState('')
   const [editFuncoes, setEditFuncoes] = useState<string[]>([])
   const [editRegiao, setEditRegiao] = useState('')
   const [editCidade, setEditCidade] = useState('')
@@ -143,6 +146,7 @@ export default function GateProsPage() {
     setNewName('')
     setNewEmail('')
     setNewTelefone('')
+    setNewCpf('')
     // Pré-selecionar a primeira função ativa se houver
     const primeiraAtiva = funcoesCatalogo.find((f) => f.ativo)?.nome || 'Limpeza'
     setNewFuncoes([primeiraAtiva])
@@ -169,6 +173,7 @@ export default function GateProsPage() {
     setEditName(pro.name || '')
     setEditEmail(pro.email || '')
     setEditTelefone(pro.telefone || '')
+    setEditCpf(formatarCPF(pro.cpf || ''))
 
     // Funções
     const funcs = Array.isArray(pro.funcoes) ? pro.funcoes : []
@@ -323,10 +328,19 @@ export default function GateProsPage() {
   // Criar novo Pro
   const handleCreatePro = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newName.trim() || !newEmail.trim()) {
+    if (!newName.trim() || !newEmail.trim() || !newCpf.trim()) {
       toast({
         title: 'Campos obrigatórios',
-        description: 'Nome completo e e-mail são obrigatórios.',
+        description: 'Nome completo, e-mail e CPF válido são obrigatórios.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (!validarCPF(newCpf)) {
+      toast({
+        title: 'CPF inválido',
+        description: 'Digite um CPF válido com 11 dígitos e dígitos verificadores corretos.',
         variant: 'destructive',
       })
       return
@@ -337,6 +351,7 @@ export default function GateProsPage() {
       const res = await cadastrarPro({
         name: newName,
         email: newEmail,
+        cpf: newCpf,
         telefone: newTelefone,
         funcoes: newFuncoes.length > 0 ? newFuncoes : ['Geral'],
         endereco_completo: {
@@ -427,11 +442,21 @@ export default function GateProsPage() {
     e.preventDefault()
     if (!selectedPro) return
 
+    if (editCpf.trim() && !validarCPF(editCpf)) {
+      toast({
+        title: 'CPF inválido',
+        description: 'Verifique os 11 dígitos do CPF informado.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsSaving(true)
     try {
       const payload: any = {
         name: editName.trim(),
         email: editEmail.trim(),
+        cpf: editCpf ? editCpf.replace(/\D/g, '') : undefined,
         telefone: editTelefone.trim(),
         funcoes: editFuncoes.length > 0 ? editFuncoes : ['Geral'],
         endereco_completo: {
@@ -562,6 +587,7 @@ export default function GateProsPage() {
       !q ||
       (p.name || '').toLowerCase().includes(q) ||
       (p.email || '').toLowerCase().includes(q) ||
+      (p.cpf && p.cpf.includes(q.replace(/\D/g, ''))) ||
       (p.telefone || '').includes(q) ||
       (Array.isArray(p.funcoes) && p.funcoes.some((f) => f.toLowerCase().includes(q))) ||
       ((p.endereco_completo as any)?.regiao || '').toLowerCase().includes(q) ||
@@ -691,12 +717,13 @@ export default function GateProsPage() {
                 <thead>
                   <tr className="border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase">
                     <th className="pb-3 px-2">Profissional / Contato</th>
+                    <th className="pb-3 px-2">CPF</th>
                     <th className="pb-3 px-2">Função(ões)</th>
                     <th className="pb-3 px-2">Região</th>
                     <th className="pb-3 px-2">Status Gate</th>
                     <th className="pb-3 px-2">Documentos</th>
                     <th className="pb-3 px-2">Período de Teste</th>
-                    {isAdmin && <th className="pb-3 px-2">Precificação (Admin)</th>}
+                    {isAdmin && <th className="pb-3 px-2">Precificação</th>}
                     <th className="pb-3 px-2 text-right">Ações</th>
                   </tr>
                 </thead>
@@ -733,6 +760,16 @@ export default function GateProsPage() {
                               <Phone className="w-3 h-3 text-slate-400 shrink-0" />
                               <span>{p.telefone}</span>
                             </div>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-2 text-xs font-mono">
+                          {p.cpf ? (
+                            <span className="text-slate-800 font-medium">
+                              {isAdmin ? formatarCPF(p.cpf) : mascararCPF(p.cpf)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 italic">Não inf.</span>
                           )}
                         </td>
 
@@ -937,23 +974,30 @@ export default function GateProsPage() {
 
                 <div>
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    CPF (Obrigatório e Único) *
+                  </label>
+                  <Input
+                    required
+                    placeholder="000.000.000-00"
+                    value={newCpf}
+                    onChange={(e) => setNewCpf(formatarCPF(e.target.value))}
+                    maxLength={14}
+                  />
+                  {newCpf && !validarCPF(newCpf) && (
+                    <span className="text-[10px] text-rose-600 block mt-0.5">
+                      CPF inválido (11 dígitos verificadores)
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
                     Telefone / WhatsApp (com DDD)
                   </label>
                   <Input
                     placeholder="(11) 98765-4321"
                     value={newTelefone}
                     onChange={(e) => setNewTelefone(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Região / Zona de Atuação
-                  </label>
-                  <Input
-                    placeholder="Ex: Zona Sul, Centro, Barueri"
-                    value={newRegiao}
-                    onChange={(e) => setNewRegiao(e.target.value)}
                   />
                 </div>
               </div>
@@ -1258,23 +1302,27 @@ export default function GateProsPage() {
 
                 <div>
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    CPF (Blindagem Única) *
+                  </label>
+                  <Input
+                    placeholder="000.000.000-00"
+                    value={editCpf}
+                    onChange={(e) => setEditCpf(formatarCPF(e.target.value))}
+                    maxLength={14}
+                  />
+                  {editCpf && !validarCPF(editCpf) && (
+                    <span className="text-[10px] text-rose-600 block mt-0.5">CPF inválido</span>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
                     Telefone / WhatsApp
                   </label>
                   <Input
                     placeholder="(11) 98765-4321"
                     value={editTelefone}
                     onChange={(e) => setEditTelefone(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Região / Zona de Atuação
-                  </label>
-                  <Input
-                    placeholder="Ex: Zona Sul, Centro, Barueri"
-                    value={editRegiao}
-                    onChange={(e) => setEditRegiao(e.target.value)}
                   />
                 </div>
               </div>

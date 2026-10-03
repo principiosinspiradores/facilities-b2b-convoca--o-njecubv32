@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/contexts/AuthContext'
-import { ConvocacaoRecord, EscalaRecord, PontoRecord } from '@/types/facilities'
+import { ConvocacaoRecord, EscalaRecord, PontoRecord, PostoRecord } from '@/types/facilities'
 import { formatDateBR } from '@/lib/formatters'
 import {
   calcularDistanciaMetros,
@@ -71,6 +71,13 @@ export default function PontoProPage() {
   const [modalRegistroOpen, setModalRegistroOpen] = useState(false)
   const [tipoRegistro, setTipoRegistro] = useState<'chegada' | 'saida'>('chegada')
   const [selectedEscala, setSelectedEscala] = useState<EscalaRecord | null>(null)
+
+  // Modal de registro de presença sem convocação (alerta de presença)
+  const [modalPresencaSemConvOpen, setModalPresencaSemConvOpen] = useState(false)
+  const [selectedPostoSemConv, setSelectedPostoSemConv] = useState<PostoRecord | null>(null)
+  const [alertaSucessoSemConv, setAlertaSucessoSemConv] = useState(false)
+  const [postosDisponiveis, setPostosDisponiveis] = useState<PostoRecord[]>([])
+
   const [isCapturingLocation, setIsCapturingLocation] = useState(false)
   const [userCoords, setUserCoords] = useState<{
     lat: number
@@ -217,21 +224,26 @@ export default function PontoProPage() {
     try {
       registrarUltimoAcessoOnline()
 
-      // Buscar convocações aceitas pelo pro
-      const convs = await pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
-        filter: `pro = "${user.id}" && status = "aceita"`,
-        sort: '-data_convocacao',
-        expand: 'escala,escala.posto',
-      })
-
-      // Buscar pontos do pro no servidor
-      const pontos = await pb.collection('pontos').getFullList<PontoRecord>({
-        filter: `pro = "${user.id}"`,
-        sort: '-timestamp_real',
-        expand: 'escala,escala.posto',
-      })
+      // Buscar convocações aceitas pelo pro, postos ativos e pontos registrados
+      const [convs, postosList, pontos] = await Promise.all([
+        pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
+          filter: `pro = "${user.id}" && status = "aceita"`,
+          sort: '-data_convocacao',
+          expand: 'escala,escala.posto',
+        }),
+        pb.collection('postos').getFullList<PostoRecord>({
+          filter: 'status = "ativo"',
+          sort: 'nome',
+        }),
+        pb.collection('pontos').getFullList<PontoRecord>({
+          filter: `pro = "${user.id}"`,
+          sort: '-timestamp_real',
+          expand: 'escala,escala.posto,posto',
+        }),
+      ])
 
       setEscalasHoje(convs)
+      setPostosDisponiveis(postosList)
       setPontosRegistrados(pontos)
 
       // Guardar cache persistente para uso offline
@@ -302,6 +314,94 @@ export default function PontoProPage() {
     setCameraActive(false)
     setModalRegistroOpen(true)
     capturarLocalizacao()
+  }
+
+  const openPresencaSemConvocacaoModal = (posto: PostoRecord) => {
+    setSelectedPostoSemConv(posto)
+    setUserCoords(null)
+    setGeoError(null)
+    setFotoFile(null)
+    setFotoPreview(null)
+    setCameraActive(false)
+    setAlertaSucessoSemConv(false)
+    setModalPresencaSemConvOpen(true)
+    capturarLocalizacao()
+  }
+
+  // Salvar registro de Presença sem convocação (alerta operacional)
+  const handleSalvarPresencaSemConvocacao = async () => {
+    if (!selectedPostoSemConv || !user) return
+
+    setIsSaving(true)
+    try {
+      const instanteClique = new Date()
+      const timestampBatimento = instanteClique.toISOString()
+
+      const postoCoords = getCoordenadasPosto(selectedPostoSemConv)
+      const { raioGeocercaM } = getToleranciasPosto(selectedPostoSemConv)
+
+      const latAtual = userCoords?.lat ?? postoCoords.lat
+      const lngAtual = userCoords?.lng ?? postoCoords.lng
+      const distancia = calcularDistanciaMetros(
+        latAtual,
+        lngAtual,
+        postoCoords.lat,
+        postoCoords.lng,
+      )
+
+      if (distancia > raioGeocercaM) {
+        toast({
+          title: 'Bloqueado: Fora do raio do posto',
+          description: `Você está a ${distancia} m do posto "${selectedPostoSemConv.nome}". Aproxime-se para registrar o alerta de presença. (Raio: ${raioGeocercaM} m)`,
+          variant: 'destructive',
+        })
+        setIsSaving(false)
+        return
+      }
+
+      const clientUuid = `alerta_sem_conv_${user.id}_${selectedPostoSemConv.id}_${Date.now()}`
+
+      const formData = new FormData()
+      formData.append('pro', user.id)
+      formData.append('posto', selectedPostoSemConv.id)
+      formData.append('tipo', 'chegada')
+      formData.append('timestamp_real', timestampBatimento)
+      formData.append('latitude', String(latAtual))
+      formData.append('longitude', String(lngAtual))
+      formData.append('dentro_raio', 'true')
+      formData.append('distancia_metros', String(distancia))
+      formData.append('raio_posto_m', String(raioGeocercaM))
+      formData.append('aviso_sem_convocacao', 'true')
+      formData.append('status_validacao', 'alerta')
+      formData.append(
+        'ocorrencia',
+        `Presença no posto ${selectedPostoSemConv.nome} registrada sem convocação formal aceita`,
+      )
+      formData.append('client_uuid', clientUuid)
+
+      if (fotoFile) {
+        formData.append('foto', fotoFile)
+      }
+
+      await pb.collection('pontos').create(formData)
+      setAlertaSucessoSemConv(true)
+
+      toast({
+        title: 'Presença registrada como alerta',
+        description: 'Sua presença foi registrada como alerta para a empresa com transparência.',
+      })
+
+      await loadData(false)
+    } catch (err) {
+      console.error('Erro ao registrar alerta de presença sem convocação:', err)
+      toast({
+        title: 'Erro ao registrar presença',
+        description: 'Não foi possível registrar o alerta. Tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   // Câmera ao vivo
@@ -712,10 +812,15 @@ export default function PontoProPage() {
 
             {escalasHoje.length === 0 ? (
               <Card className="text-center py-8 border-dashed border border-slate-200 bg-white">
-                <CardContent className="space-y-2">
+                <CardContent className="space-y-3">
                   <Clock className="w-8 h-8 text-slate-300 mx-auto" />
-                  <p className="text-sm text-slate-500">
-                    Você não tem turnos confirmados para registrar ponto no momento.
+                  <p className="text-sm text-slate-600 font-medium">
+                    Você não tem escalas com convocação aceita programadas para registrar ponto no
+                    momento.
+                  </p>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    Caso você tenha comparecido presencialmente a um posto sem convocação formal
+                    registrada, você pode registrar sua presença como alerta transparente abaixo.
                   </p>
                 </CardContent>
               </Card>
@@ -890,6 +995,38 @@ export default function PontoProPage() {
                 })}
               </div>
             )}
+          </div>
+
+          {/* SEÇÃO: REGISTRO DE PRESENÇA NO POSTO SEM CONVOCAÇÃO (NÃO-INTERMEDIAÇÃO) */}
+          <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-5 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-amber-900 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-700" />
+                  Está presente em um posto sem convocação aceita?
+                </h3>
+                <p className="text-xs text-amber-800 mt-1 max-w-2xl">
+                  Se você compareceu a um posto de facilities em campo mas não possui convocação
+                  aceita para esta data, registre sua presença aqui. O sistema registrará sua
+                  presença como alerta para a empresa e admins de forma 100% transparente.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 flex flex-wrap gap-2">
+              {postosDisponiveis.map((posto) => (
+                <Button
+                  key={posto.id}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openPresencaSemConvocacaoModal(posto)}
+                  className="bg-white border-amber-300 text-amber-900 hover:bg-amber-100 text-xs font-semibold"
+                >
+                  <MapPin className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                  Estou no posto: {posto.nome}
+                </Button>
+              ))}
+            </div>
           </div>
 
           {/* Histórico Recente de Pontos do Profissional */}
@@ -1081,6 +1218,198 @@ export default function PontoProPage() {
           </div>
         </div>
       )}
+
+      {/* Modal de Registro de Presença sem Convocação */}
+      <Dialog
+        open={modalPresencaSemConvOpen}
+        onOpenChange={(open) => {
+          setModalPresencaSemConvOpen(open)
+          if (!open) stopCamera()
+        }}
+      >
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto bg-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-900 text-base">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              Alerta de Presença sem Convocação
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Posto selecionado: <strong>{selectedPostoSemConv?.nome}</strong>
+            </DialogDescription>
+          </DialogHeader>
+
+          {alertaSucessoSemConv ? (
+            <div className="py-6 text-center space-y-3">
+              <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
+              <h3 className="font-bold text-slate-800 text-sm">
+                Sua presença foi registrada como alerta para a empresa
+              </h3>
+              <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                O gestor do posto e os administradores foram notificados no chat interno sobre sua
+                presença física neste local.
+              </p>
+              <Button
+                size="sm"
+                onClick={() => setModalPresencaSemConvOpen(false)}
+                className="bg-teal-700 text-white text-xs mt-2"
+              >
+                Concluir e Fechar
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2 text-xs">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 space-y-1">
+                <p className="font-semibold">Aviso de Transparência Operacional:</p>
+                <p>
+                  Você está registrando entrada física no posto{' '}
+                  <strong>{selectedPostoSemConv?.nome}</strong> sem convocação formal aceita para
+                  hoje. Sua localização será conferida pelo GPS e o registro será salvo como{' '}
+                  <strong>alerta de presença para a empresa</strong>.
+                </p>
+              </div>
+
+              {/* Geolocalização */}
+              <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-slate-700">Geolocalização do Aparelho:</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={capturarLocalizacao}
+                    className="h-6 text-[11px] text-teal-700"
+                  >
+                    Recapturar GPS
+                  </Button>
+                </div>
+                {userCoords ? (
+                  <p className="text-emerald-700 font-medium">
+                    Coordenadas capturadas (precisão ±{Math.round(userCoords.accuracy)}m)
+                  </p>
+                ) : (
+                  <p className="text-slate-400">Capturando posição GPS...</p>
+                )}
+                {geoError && <p className="text-amber-700 font-medium">{geoError}</p>}
+              </div>
+
+              {/* Foto Opcional / Câmera */}
+              <div className="space-y-2">
+                <label className="font-bold text-slate-700 block">
+                  Foto de Comprovação de Chegada:
+                </label>
+                {fotoPreview ? (
+                  <div className="relative">
+                    <img
+                      src={fotoPreview}
+                      alt="Foto"
+                      className="w-full h-44 object-cover rounded border border-slate-200"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        setFotoFile(null)
+                        setFotoPreview(null)
+                      }}
+                      className="absolute top-2 right-2 h-7 text-[11px]"
+                    >
+                      Remover foto
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {cameraActive ? (
+                      <div className="space-y-2">
+                        <video
+                          ref={videoRef}
+                          className="w-full h-44 object-cover rounded bg-black"
+                          autoPlay
+                          playsInline
+                          muted
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={capturePhoto}
+                            className="flex-1 bg-teal-700 text-white text-xs font-semibold"
+                          >
+                            <Camera className="w-3.5 h-3.5 mr-1" />
+                            Capturar Foto Agora
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={stopCamera}
+                            className="text-xs"
+                          >
+                            Cancelar Câmera
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={startCamera}
+                          className="flex-1 text-xs"
+                        >
+                          <Camera className="w-3.5 h-3.5 mr-1" />
+                          Abrir Câmera
+                        </Button>
+                        <label className="flex-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-xs"
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            <Upload className="w-3.5 h-3.5 mr-1" />
+                            Anexar Arquivo
+                          </Button>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileChange}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter className="gap-2 sm:justify-between pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setModalPresencaSemConvOpen(false)}
+                  disabled={isSaving}
+                  className="text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSalvarPresencaSemConvocacao}
+                  disabled={isSaving}
+                  className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold"
+                >
+                  {isSaving ? 'Registrando...' : 'Confirmar Alerta de Presença'}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Bater Ponto */}
       <Dialog

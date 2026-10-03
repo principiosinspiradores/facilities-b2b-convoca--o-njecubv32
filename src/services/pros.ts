@@ -5,6 +5,7 @@ export interface CriarProPayload {
   name: string
   email: string
   telefone?: string
+  cpf: string
   funcoes: string[]
   endereco_completo?: {
     logradouro?: string
@@ -39,6 +40,7 @@ export interface AtualizarProPayload {
   name?: string
   email?: string
   telefone?: string
+  cpf?: string
   funcoes?: string[]
   endereco_completo?: {
     logradouro?: string
@@ -78,6 +80,7 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
   const payload: Record<string, any> = {
     email: dados.email.trim(),
     name: dados.name.trim(),
+    cpf: (dados.cpf || '').replace(/\D/g, ''),
     role: 'pro',
     status: dados.status || 'teste',
     password: tempPassword,
@@ -156,6 +159,7 @@ export async function atualizarPro(id: string, dados: AtualizarProPayload): Prom
   if (dados.name !== undefined) payload.name = dados.name.trim()
   if (dados.email !== undefined) payload.email = dados.email.trim()
   if (dados.telefone !== undefined) payload.telefone = dados.telefone.trim()
+  if (dados.cpf !== undefined) payload.cpf = dados.cpf.replace(/\D/g, '')
   if (dados.funcoes !== undefined) payload.funcoes = dados.funcoes
   if (dados.endereco_completo !== undefined) payload.endereco_completo = dados.endereco_completo
   if (dados.documentos !== undefined) payload.documentos = dados.documentos

@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/contexts/AuthContext'
-import { ConvocacaoRecord } from '@/types/facilities'
+import { ConvocacaoRecord, AtestadoRecord } from '@/types/facilities'
 import { formatCurrencyBRL, formatDateBR } from '@/lib/formatters'
 import { calcularDiariaEngine } from '@/services/pricing'
+import { listarAtestadosPorPro } from '@/services/atestados'
+import { ModalEnviarAtestado } from '@/components/atestados/ModalEnviarAtestado'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import { useNavigate } from 'react-router-dom'
@@ -17,9 +19,9 @@ import {
   XCircle,
   AlertTriangle,
   ShieldCheck,
-  DollarSign,
   Calendar,
   MessageSquare,
+  FileText,
 } from 'lucide-react'
 
 export default function ConvocacoesPage() {
@@ -27,6 +29,10 @@ export default function ConvocacoesPage() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<'pendentes' | 'minhas'>('pendentes')
   const [convocacoes, setConvocacoes] = useState<ConvocacaoRecord[]>([])
+  const [atestadosPro, setAtestadosPro] = useState<AtestadoRecord[]>([])
+  const [prazoAtestadoHoras, setPrazoAtestadoHoras] = useState<number>(48)
+  const [selectedConvAtestado, setSelectedConvAtestado] = useState<ConvocacaoRecord | null>(null)
+  const [isModalAtestadoOpen, setIsModalAtestadoOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
 
@@ -34,11 +40,23 @@ export default function ConvocacoesPage() {
     if (!user) return
     setIsLoading(true)
     try {
-      const records = await pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
-        filter: `pro = "${user.id}"`,
-        sort: '-created',
-        expand: 'escala,escala.posto',
-      })
+      const [records, atestadosList, settingsList] = await Promise.all([
+        pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
+          filter: `pro = "${user.id}"`,
+          sort: '-created',
+          expand: 'escala,escala.posto',
+        }),
+        listarAtestadosPorPro(user.id).catch(() => []),
+        pb
+          .collection('settings')
+          .getFullList({ sort: '-created', batch: 1 })
+          .catch(() => []),
+      ])
+
+      if (settingsList && settingsList.length > 0) {
+        setPrazoAtestadoHoras(Number((settingsList[0] as any).prazo_atestado_horas) || 48)
+      }
+      setAtestadosPro(atestadosList)
 
       // Recalcular e atualizar em tempo real o valor exato da diária e a regra aplicada
       const updated = await Promise.all(
@@ -147,11 +165,40 @@ export default function ConvocacoesPage() {
 
   const filteredConvocacoes = convocacoes.filter((c) => {
     if (activeTab === 'pendentes') return c.status === 'pendente'
-    return c.status === 'aceita'
+    return c.status === 'aceita' || c.status === 'falta'
   })
+
+  // Função auxiliar para verificar prazo do atestado (X horas após fim do turno)
+  const calcularStatusPrazoAtestado = (conv: ConvocacaoRecord) => {
+    const escala = conv.expand?.escala
+    if (!escala?.data) return { dentroDoPrazo: true, horasRestantes: prazoAtestadoHoras }
+
+    const dataStr = escala.data.slice(0, 10)
+    const horaFim = escala.turno_fim || '18:00'
+    const fimTurno = new Date(`${dataStr}T${horaFim.length === 5 ? horaFim + ':00' : horaFim}`)
+    const agora = new Date()
+
+    const limiteMs = fimTurno.getTime() + prazoAtestadoHoras * 3600 * 1000
+    const diffMs = limiteMs - agora.getTime()
+    const horasRestantes = Math.ceil(diffMs / (3600 * 1000))
+
+    return {
+      dentroDoPrazo: diffMs > 0,
+      horasRestantes: Math.max(0, horasRestantes),
+    }
+  }
 
   return (
     <div className="space-y-6">
+      <ModalEnviarAtestado
+        open={isModalAtestadoOpen}
+        onOpenChange={setIsModalAtestadoOpen}
+        convocacao={selectedConvAtestado}
+        proId={user?.id || ''}
+        onSuccess={() => {
+          loadConvocacoes()
+        }}
+      />
       {/* Header com aviso de teste/status */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
         <div>
@@ -408,6 +455,83 @@ export default function ConvocacoesPage() {
                       <MessageSquare className="w-3.5 h-3.5" />
                       Mensagens sobre este turno (horário / suporte)
                     </Button>
+
+                    {/* Bloco de Falta e Atestado Médico */}
+                    {conv.status === 'falta' &&
+                      (() => {
+                        const atestadoExistente = atestadosPro.find((a) => a.convocacao === conv.id)
+                        const { dentroDoPrazo, horasRestantes } = calcularStatusPrazoAtestado(conv)
+
+                        if (atestadoExistente) {
+                          return (
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-900 flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 font-medium">
+                                <FileText className="w-4 h-4 text-amber-700 shrink-0" />
+                                <span>
+                                  Atestado enviado:{' '}
+                                  <strong className="uppercase">
+                                    {atestadoExistente.status_validacao}
+                                  </strong>
+                                </span>
+                              </div>
+                              <Badge
+                                className={
+                                  atestadoExistente.status_validacao === 'aprovado'
+                                    ? 'bg-emerald-600 text-white'
+                                    : atestadoExistente.status_validacao === 'rejeitado'
+                                      ? 'bg-rose-600 text-white'
+                                      : 'bg-amber-600 text-white'
+                                }
+                              >
+                                {atestadoExistente.status_validacao === 'aprovado'
+                                  ? 'Abonado'
+                                  : atestadoExistente.status_validacao === 'rejeitado'
+                                    ? 'Rejeitado'
+                                    : 'Em análise'}
+                              </Badge>
+                            </div>
+                          )
+                        }
+
+                        return (
+                          <div className="bg-rose-50 border border-rose-200 rounded-lg p-2.5 space-y-2">
+                            <div className="flex items-center justify-between text-xs text-rose-900 font-medium">
+                              <span className="flex items-center gap-1">
+                                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                                Ocorrência de Falta registrada
+                              </span>
+                              {dentroDoPrazo ? (
+                                <span className="text-[11px] text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded font-semibold">
+                                  Prazo: resta(m) {horasRestantes}h
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded font-semibold">
+                                  Prazo expirado ({prazoAtestadoHoras}h)
+                                </span>
+                              )}
+                            </div>
+
+                            <Button
+                              size="sm"
+                              disabled={!dentroDoPrazo}
+                              onClick={() => {
+                                setSelectedConvAtestado(conv)
+                                setIsModalAtestadoOpen(true)
+                              }}
+                              className={`w-full text-xs font-semibold ${
+                                dentroDoPrazo
+                                  ? 'bg-teal-700 hover:bg-teal-800 text-white'
+                                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                              }`}
+                            >
+                              <FileText className="w-3.5 h-3.5 mr-1.5" />
+                              {dentroDoPrazo
+                                ? 'Enviar Atestado Médico'
+                                : `Prazo encerrado (${prazoAtestadoHoras}h após turno)`}
+                            </Button>
+                          </div>
+                        )
+                      })()}
                   </div>
                 </div>
               </Card>

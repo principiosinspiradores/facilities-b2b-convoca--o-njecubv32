@@ -23,6 +23,7 @@ export interface UserRecord {
   valor_negociado?: number
   bloqueado_ate?: string
   telefone?: string
+  cpf?: string
   funcoes?: string[]
   endereco_completo?:
     | Endereco
@@ -118,10 +119,13 @@ export interface PontoRecord {
   atraso_sincronizacao_minutos?: number
   horario_suspeito?: boolean
   client_uuid?: string
+  aviso_sem_convocacao?: boolean
+  posto?: string
   created: string
   updated: string
   expand?: {
     escala?: EscalaRecord & { expand?: { posto?: PostoRecord } }
+    posto?: PostoRecord
     pro?: UserRecord
   }
 }
@@ -285,8 +289,33 @@ export interface SettingsRecord {
   empresa_titular?: string
   empresa_mp_client_id?: string
   ultimo_snapshot_em?: string
+  prazo_atestado_horas?: number
   created: string
   updated: string
+}
+
+export type AtestadoStatusValidacao = 'pendente' | 'aprovado' | 'rejeitado'
+
+export interface AtestadoRecord {
+  id: string
+  convocacao: string
+  pro: string
+  arquivo?: string
+  data_envio: string
+  status_validacao: AtestadoStatusValidacao
+  validado_por?: string
+  observacao_validacao?: string
+  created: string
+  updated: string
+  expand?: {
+    convocacao?: ConvocacaoRecord & {
+      expand?: {
+        escala?: EscalaRecord & { expand?: { posto?: PostoRecord } }
+      }
+    }
+    pro?: UserRecord
+    validado_por?: UserRecord
+  }
 }
 
 export interface BackupSnapshotHeader {
