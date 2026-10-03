@@ -53,10 +53,10 @@ export default function Layout() {
     )
   } else if (role === 'empresa') {
     navItems.push(
+      { to: '/gate', label: 'Gate de Pros & Docs', icon: ShieldCheck },
       { to: '/postos', label: 'Postos de Trabalho', icon: Building2 },
       { to: '/escalas', label: 'Escalas & Convocações', icon: Calendar },
       { to: '/cobertura', label: 'Painel de Cobertura', icon: Activity },
-      { to: '/faturamento', label: 'Faturamento Mensal', icon: Receipt },
     )
   } else if (role === 'admin') {
     navItems.push(
@@ -66,8 +66,8 @@ export default function Layout() {
       { to: '/escalas', label: 'Escalas & Convocações', icon: Calendar },
       { to: '/cobertura', label: 'Painel de Cobertura', icon: Activity },
       { to: '/disputas', label: 'Disputas de Escrow', icon: ShieldAlert },
-      { to: '/faturamento-admin', label: 'Faturamento Global', icon: Receipt },
-      { to: '/config', label: 'Configurações White-Label', icon: Sliders },
+      { to: '/faturamento', label: 'Faturamento Global', icon: Receipt },
+      { to: '/config', label: 'Níveis de Acesso & Config', icon: Sliders },
     )
   }
 

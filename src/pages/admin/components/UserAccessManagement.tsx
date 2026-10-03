@@ -212,8 +212,9 @@ export function UserAccessManagement() {
             Níveis de Acesso & Gestão de Usuários
           </CardTitle>
           <CardDescription>
-            Defina o que cada perfil pode ver e operar: Admin (total), Empresa (postos e escalas) e
-            Pro (convocações e repasses).
+            Defina o que cada perfil pode ver e operar: Admin (total e faturamento), Empresa
+            (múltiplos colaboradores para gate, postos e escalas) e Pro (apenas convocações e
+            repasses).
           </CardDescription>
         </div>
         <Button
@@ -243,11 +244,12 @@ export function UserAccessManagement() {
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 font-bold text-blue-900">
               <Building2 className="w-3.5 h-3.5 text-blue-600" />
-              EMPRESA (CONTRATANTE)
+              EMPRESA (MÚLTIPLOS USUÁRIOS)
             </div>
             <p className="text-slate-600 leading-relaxed">
-              Gerencia postos de trabalho, escalas, convocações de profissionais, faturamento e
-              cobertura de turnos.
+              Gestão operacional compartilhada (RH, supervisão e operações): aprova cadastro/gate de
+              pros, bloqueia/desbloqueia, cria postos, escalas e cobertura. Sem acesso a
+              faturamento.
             </p>
           </div>
 
@@ -496,7 +498,7 @@ export function UserAccessManagement() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="admin">Admin (Total)</SelectItem>
-                      <SelectItem value="empresa">Empresa (Contratante)</SelectItem>
+                      <SelectItem value="empresa">Empresa (Colaborador / RH / Gestão)</SelectItem>
                       <SelectItem value="pro">Pro (Profissional)</SelectItem>
                     </SelectContent>
                   </Select>

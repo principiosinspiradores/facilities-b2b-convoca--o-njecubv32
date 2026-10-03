@@ -144,15 +144,15 @@ export default function LoginPage() {
             <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
               Acesso Rápido de Teste (Skip@Pass):
             </span>
-            <div className="grid grid-cols-3 gap-1.5 w-full">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 w-full">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="text-[11px] h-8 px-1"
+                className="text-[11px] h-8 px-1 font-semibold"
                 onClick={() => handleQuickLogin('janluyfranca@gmail.com')}
               >
-                Admin
+                Admin (Total)
               </Button>
               <Button
                 type="button"
@@ -161,7 +161,16 @@ export default function LoginPage() {
                 className="text-[11px] h-8 px-1"
                 onClick={() => handleQuickLogin('empresa@facilitiespro.com.br')}
               >
-                Empresa
+                Empresa (Alpha)
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-[11px] h-8 px-1"
+                onClick={() => handleQuickLogin('rh@facilitiespro.com.br')}
+              >
+                Empresa (RH)
               </Button>
               <Button
                 type="button"
@@ -170,7 +179,7 @@ export default function LoginPage() {
                 className="text-[11px] h-8 px-1"
                 onClick={() => handleQuickLogin('carlos.silva@pro.com.br')}
               >
-                Pro Ativo
+                Pro (Carlos)
               </Button>
             </div>
           </CardFooter>

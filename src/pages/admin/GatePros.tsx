@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
+import { useAuth } from '@/contexts/AuthContext'
 import { UserRecord, UserStatus } from '@/types/facilities'
 import { formatCurrencyBRL } from '@/lib/formatters'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -30,9 +31,12 @@ import {
   CheckCircle2,
   XCircle,
   Edit,
+  Lock,
+  Unlock,
 } from 'lucide-react'
 
 export default function GateProsPage() {
+  const { role } = useAuth()
   const [pros, setPros] = useState<UserRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -45,6 +49,7 @@ export default function GateProsPage() {
   const [valorNegociado, setValorNegociado] = useState<number | undefined>(undefined)
   const [documentos, setDocumentos] = useState<any[]>([])
   const [isSaving, setIsSaving] = useState(false)
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
   const loadPros = async () => {
     setIsLoading(true)
@@ -94,23 +99,70 @@ export default function GateProsPage() {
     setDocumentos(updated)
   }
 
+  const handleToggleBlock = async (pro: UserRecord) => {
+    const isCurrentlyBlocked = pro.status === 'bloqueado'
+    const newStatus: UserStatus = isCurrentlyBlocked ? 'ativo' : 'bloqueado'
+    const actionText = isCurrentlyBlocked ? 'desbloquear' : 'bloquear'
+
+    if (
+      !window.confirm(
+        `Deseja realmente ${actionText} o profissional "${pro.name || pro.email}"?${
+          !isCurrentlyBlocked ? ' Ele deixará de receber convocações de escalas.' : ''
+        }`,
+      )
+    ) {
+      return
+    }
+
+    setActionLoadingId(pro.id)
+    try {
+      await pb.collection('users').update(pro.id, {
+        status: newStatus,
+        bloqueado_ate: !isCurrentlyBlocked
+          ? new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString()
+          : null,
+      })
+
+      toast({
+        title: isCurrentlyBlocked ? 'Profissional Desbloqueado' : 'Profissional Bloqueado',
+        description: `O profissional "${pro.name || pro.email}" agora está com status ${newStatus.toUpperCase()}.`,
+      })
+      loadPros()
+    } catch (err) {
+      console.error(err)
+      toast({
+        title: `Erro ao ${actionText} profissional`,
+        variant: 'destructive',
+      })
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedPro) return
 
     setIsSaving(true)
     try {
-      await pb.collection('users').update(selectedPro.id, {
+      const payload: Record<string, any> = {
         status,
         periodo_teste_dias: Number(periodoTesteDias),
         ajuda_custo: Number(ajudaCusto),
-        valor_negociado: valorNegociado ? Number(valorNegociado) : null,
         documentos,
-      })
+      }
+      if (status !== 'bloqueado') {
+        payload.bloqueado_ate = null
+      }
+      if (role === 'admin') {
+        payload.valor_negociado = valorNegociado ? Number(valorNegociado) : null
+      }
+
+      await pb.collection('users').update(selectedPro.id, payload)
 
       toast({
         title: 'Cadastro do profissional atualizado!',
-        description: 'Status de conformidade e gate salvos.',
+        description: 'Status de conformidade, gate e permissões salvos.',
       })
       setModalOpen(false)
       loadPros()
@@ -231,15 +283,38 @@ export default function GateProsPage() {
                             <span className="text-slate-400">Tabela padrão do posto</span>
                           )}
                         </td>
-                        <td className="py-3.5 text-right">
+                        <td className="py-3.5 text-right space-x-1">
+                          {p.status === 'bloqueado' ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={actionLoadingId === p.id}
+                              className="text-emerald-700 border-emerald-200 hover:bg-emerald-50 text-xs h-8"
+                              onClick={() => handleToggleBlock(p)}
+                            >
+                              <Unlock className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                              Desbloquear
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={actionLoadingId === p.id}
+                              className="text-rose-700 border-rose-200 hover:bg-rose-50 text-xs h-8"
+                              onClick={() => handleToggleBlock(p)}
+                            >
+                              <Lock className="w-3.5 h-3.5 mr-1 text-rose-600" />
+                              Bloquear
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-teal-700 hover:text-teal-900 hover:bg-teal-50 text-xs"
+                            className="text-teal-700 hover:text-teal-900 hover:bg-teal-50 text-xs h-8"
                             onClick={() => openEditModal(p)}
                           >
                             <Edit className="w-3.5 h-3.5 mr-1" />
-                            Avaliar Gate
+                            Gate & Docs
                           </Button>
                         </td>
                       </tr>

@@ -98,7 +98,17 @@ const App = () => (
                 }
               />
 
-              {/* Rotas de Empresa & Admin */}
+              {/* Rotas Operacionais Compartilhadas (Empresa & Admin) */}
+              <Route
+                path="/gate"
+                element={
+                  <RequireAuth>
+                    <RequireRole allowedRoles={['empresa', 'admin']}>
+                      <GateProsPage />
+                    </RequireRole>
+                  </RequireAuth>
+                }
+              />
               <Route
                 path="/postos"
                 element={
@@ -129,24 +139,24 @@ const App = () => (
                   </RequireAuth>
                 }
               />
+
+              {/* Rotas Exclusivas do Admin — Empresa NÃO tem acesso a Faturamento nem Config/Motor/Disputas */}
               <Route
                 path="/faturamento"
                 element={
                   <RequireAuth>
-                    <RequireRole allowedRoles={['empresa', 'admin']}>
-                      <FaturamentoPage isAdmin={false} />
+                    <RequireRole allowedRoles={['admin']}>
+                      <FaturamentoPage isAdmin={true} />
                     </RequireRole>
                   </RequireAuth>
                 }
               />
-
-              {/* Rotas Exclusivas do Admin */}
               <Route
-                path="/gate"
+                path="/faturamento-admin"
                 element={
                   <RequireAuth>
                     <RequireRole allowedRoles={['admin']}>
-                      <GateProsPage />
+                      <Navigate to="/faturamento" replace />
                     </RequireRole>
                   </RequireAuth>
                 }
@@ -167,16 +177,6 @@ const App = () => (
                   <RequireAuth>
                     <RequireRole allowedRoles={['admin']}>
                       <DisputasPage />
-                    </RequireRole>
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/faturamento-admin"
-                element={
-                  <RequireAuth>
-                    <RequireRole allowedRoles={['admin']}>
-                      <FaturamentoPage isAdmin={true} />
                     </RequireRole>
                   </RequireAuth>
                 }

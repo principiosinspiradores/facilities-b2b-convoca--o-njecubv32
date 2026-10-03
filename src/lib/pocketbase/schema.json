@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T13:50:18.877Z",
+  "generatedAt": "2026-10-03T16:27:52.536Z",
   "collections": [
     {
       "name": "users",
@@ -7,8 +7,8 @@
       "apiRules": {
         "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || @request.auth.id = id)",
         "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || @request.auth.id = id)",
-        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
-        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || @request.auth.id = id)",
+        "create": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || (@request.auth.role = 'empresa' && role = 'pro') || @request.auth.id = id)",
         "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
       },
       "fields": [
@@ -473,10 +473,10 @@
       "name": "payouts",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
-        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
-        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || @request.auth.role = 'pro')",
-        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || pro = @request.auth.id)",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || pro = @request.auth.id)",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'pro')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || pro = @request.auth.id)",
         "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
       },
       "fields": [
@@ -562,9 +562,9 @@
       "name": "payment_events",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
-        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
-        "create": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "view": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "create": "@request.auth.id != '' && @request.auth.role = 'admin'",
         "update": "@request.auth.id != '' && @request.auth.role = 'admin'",
         "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
       },
