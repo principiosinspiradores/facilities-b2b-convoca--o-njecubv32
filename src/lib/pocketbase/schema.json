@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T18:46:04.905Z",
+  "generatedAt": "2026-10-03T18:58:45.092Z",
   "collections": [
     {
       "name": "users",
@@ -1025,12 +1025,50 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "batido_offline",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "gps_precisao_m",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sincronizado_em",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "atraso_sincronizacao_minutos",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "horario_suspeito",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "client_uuid",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE INDEX idx_pontos_escala ON pontos (escala)",
         "CREATE INDEX idx_pontos_pro ON pontos (pro)",
-        "CREATE INDEX idx_pontos_timestamp ON pontos (timestamp_real)"
+        "CREATE INDEX idx_pontos_timestamp ON pontos (timestamp_real)",
+        "CREATE INDEX `idx_pontos_client_uuid` ON `pontos` (client_uuid)",
+        "CREATE INDEX `idx_pontos_offline` ON `pontos` (batido_offline)"
       ]
     },
     {

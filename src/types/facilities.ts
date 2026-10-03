@@ -90,6 +90,12 @@ export interface PontoRecord {
   ocorrencia?: string
   status_validacao?: PontoValidacaoStatus
   observacao_gestao?: string
+  batido_offline?: boolean
+  gps_precisao_m?: number
+  sincronizado_em?: string
+  atraso_sincronizacao_minutos?: number
+  horario_suspeito?: boolean
+  client_uuid?: string
   created: string
   updated: string
   expand?: {

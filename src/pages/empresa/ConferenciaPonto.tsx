@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import pb from '@/lib/pocketbase/client'
-import { PontoRecord, PostoRecord, UserRecord, EscalaRecord } from '@/types/facilities'
-import { formatDateBR } from '@/lib/formatters'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { PontoRecord, PostoRecord, UserRecord } from '@/types/facilities'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -24,18 +23,14 @@ import {
 import { toast } from '@/hooks/use-toast'
 import {
   Clock,
-  Filter,
   Download,
   AlertTriangle,
   CheckCircle2,
   XCircle,
   Eye,
   RefreshCw,
-  Search,
-  MapPin,
-  Calendar,
-  Building2,
-  UserCheck,
+  WifiOff,
+  ShieldAlert,
 } from 'lucide-react'
 
 export default function ConferenciaPontoPage() {
@@ -48,6 +43,7 @@ export default function ConferenciaPontoPage() {
   const [filtroPosto, setFiltroPosto] = useState<string>('todos')
   const [filtroPro, setFiltroPro] = useState<string>('todos')
   const [filtroStatus, setFiltroStatus] = useState<string>('todos')
+  const [filtroOrigem, setFiltroOrigem] = useState<string>('todos') // todos | offline | sincronizado_atraso | suspeito
   const [filtroDataInicio, setFiltroDataInicio] = useState<string>('')
   const [filtroDataFim, setFiltroDataFim] = useState<string>('')
 
@@ -105,6 +101,15 @@ export default function ConferenciaPontoPage() {
         if (status !== filtroStatus) return false
       }
 
+      // Filtro por origem/sincronização offline
+      if (filtroOrigem === 'offline' && !p.batido_offline) return false
+      if (
+        filtroOrigem === 'sincronizado_atraso' &&
+        (!p.atraso_sincronizacao_minutos || p.atraso_sincronizacao_minutos < 15)
+      )
+        return false
+      if (filtroOrigem === 'suspeito' && !p.horario_suspeito) return false
+
       if (filtroDataInicio) {
         const dataPonto = p.timestamp_real.slice(0, 10)
         if (dataPonto < filtroDataInicio) return false
@@ -117,7 +122,7 @@ export default function ConferenciaPontoPage() {
 
       return true
     })
-  }, [pontos, filtroPosto, filtroPro, filtroStatus, filtroDataInicio, filtroDataFim])
+  }, [pontos, filtroPosto, filtroPro, filtroStatus, filtroOrigem, filtroDataInicio, filtroDataFim])
 
   // Ações de Validação / Contestação
   const handleAcaoValidacao = async (novoStatus: 'valido' | 'contestado' | 'aprovado_manual') => {
@@ -147,7 +152,7 @@ export default function ConferenciaPontoPage() {
     }
   }
 
-  // Exportação CSV do relatório do ponto mensal por posto e por profissional
+  // Exportação CSV do relatório do ponto mensal com novas colunas offline/sincronização
   const handleExportCSV = () => {
     if (pontosFiltrados.length === 0) {
       toast({ title: 'Nenhum registro para exportar', variant: 'destructive' })
@@ -157,7 +162,7 @@ export default function ConferenciaPontoPage() {
     const headers = [
       'ID Registro',
       'Data Turno',
-      'Horario Real',
+      'Horario Real Batimento',
       'Tipo (Entrada/Saida)',
       'Profissional',
       'Email Pro',
@@ -165,6 +170,11 @@ export default function ConferenciaPontoPage() {
       'Carga Horaria (h)',
       'Dentro do Raio Geocerca',
       'Distancia Calculada (m)',
+      'Precisao GPS (m)',
+      'Origem Offline',
+      'Data/Hora Sincronizacao',
+      'Atraso Sincronizacao (minutos)',
+      'Horario Suspeito Antifraude',
       'Status Validacao',
       'Ocorrencia / Alerta',
       'Observacao Gestao',
@@ -177,6 +187,9 @@ export default function ConferenciaPontoPage() {
 
       const dataTurno = escala?.data ? escala.data.slice(0, 10) : ''
       const horaReal = new Date(p.timestamp_real).toLocaleTimeString('pt-BR')
+      const horaSync = p.sincronizado_em
+        ? new Date(p.sincronizado_em).toLocaleString('pt-BR')
+        : 'Tempo real'
 
       return [
         p.id,
@@ -189,6 +202,11 @@ export default function ConferenciaPontoPage() {
         posto?.carga_horaria || 8,
         p.dentro_raio ? 'SIM' : 'NÃO',
         p.distancia_metros ?? 0,
+        p.gps_precisao_m ?? '',
+        p.batido_offline ? 'SIM (Offline)' : 'NÃO (Online)',
+        horaSync,
+        p.atraso_sincronizacao_minutos ?? 0,
+        p.horario_suspeito ? 'SIM (Alerta)' : 'NÃO (Conforme)',
         p.status_validacao || 'valido',
         `"${(p.ocorrencia || 'Regular').replace(/"/g, '""')}"`,
         `"${(p.observacao_gestao || '').replace(/"/g, '""')}"`,
@@ -214,6 +232,14 @@ export default function ConferenciaPontoPage() {
     })
   }
 
+  // Contadores
+  const qtdOffline = useMemo(() => pontos.filter((p) => p.batido_offline).length, [pontos])
+  const qtdAtraso = useMemo(
+    () => pontos.filter((p) => (p.atraso_sincronizacao_minutos || 0) >= 15).length,
+    [pontos],
+  )
+  const qtdSuspeitos = useMemo(() => pontos.filter((p) => p.horario_suspeito).length, [pontos])
+
   return (
     <div className="space-y-6">
       {/* Cabeçalho */}
@@ -221,11 +247,11 @@ export default function ConferenciaPontoPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Clock className="w-6 h-6 text-teal-700" />
-            Espelho & Conferência de Pontos (Modelo Profreela)
+            Espelho & Conferência de Pontos
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Conferência operacional das entradas e saídas com alerta visual de geocerca e horário,
-            validação e exportação CSV.
+            Conferência operacional das entradas e saídas com rastreabilidade de batimentos offline,
+            sincronização com hora oficial preservada e indicadores de integridade.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -243,10 +269,85 @@ export default function ConferenciaPontoPage() {
         </div>
       </div>
 
+      {/* Cartões Rápidos de Integridade e Batimentos Offline */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card
+          className={`border transition-all cursor-pointer ${
+            filtroOrigem === 'offline' ? 'ring-2 ring-teal-600 bg-teal-50/40' : 'bg-white'
+          }`}
+          onClick={() => setFiltroOrigem(filtroOrigem === 'offline' ? 'todos' : 'offline')}
+        >
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                Batidos Offline
+              </span>
+              <span className="text-2xl font-bold text-slate-800">{qtdOffline}</span>
+              <span className="text-[11px] text-slate-500 block mt-0.5">
+                Salvos no celular e sincronizados
+              </span>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-teal-100 text-teal-800 flex items-center justify-center">
+              <WifiOff className="w-5 h-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          className={`border transition-all cursor-pointer ${
+            filtroOrigem === 'sincronizado_atraso'
+              ? 'ring-2 ring-amber-500 bg-amber-50/40'
+              : 'bg-white'
+          }`}
+          onClick={() =>
+            setFiltroOrigem(
+              filtroOrigem === 'sincronizado_atraso' ? 'todos' : 'sincronizado_atraso',
+            )
+          }
+        >
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                Sincronizados c/ Atraso
+              </span>
+              <span className="text-2xl font-bold text-amber-800">{qtdAtraso}</span>
+              <span className="text-[11px] text-amber-700 block mt-0.5">
+                Hora oficial preservada (&gt;15 min)
+              </span>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center">
+              <Clock className="w-5 h-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          className={`border transition-all cursor-pointer ${
+            filtroOrigem === 'suspeito' ? 'ring-2 ring-rose-500 bg-rose-50/40' : 'bg-white'
+          }`}
+          onClick={() => setFiltroOrigem(filtroOrigem === 'suspeito' ? 'todos' : 'suspeito')}
+        >
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                Alerta de Horário Suspeito
+              </span>
+              <span className="text-2xl font-bold text-rose-700">{qtdSuspeitos}</span>
+              <span className="text-[11px] text-rose-600 block mt-0.5">
+                Auditoria antifraude para revisão
+              </span>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-800 flex items-center justify-center">
+              <ShieldAlert className="w-5 h-5" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Barra de Filtros */}
       <Card className="border border-slate-200 bg-white">
         <CardContent className="p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
             {/* Posto */}
             <div>
               <label className="text-xs font-semibold text-slate-600 block mb-1">
@@ -306,6 +407,24 @@ export default function ConferenciaPontoPage() {
               </Select>
             </div>
 
+            {/* Origem e Sincronização */}
+            <div>
+              <label className="text-xs font-semibold text-slate-600 block mb-1">
+                Origem & Sincronização
+              </label>
+              <Select value={filtroOrigem} onValueChange={setFiltroOrigem}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Todas as origens" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todas as origens</SelectItem>
+                  <SelectItem value="offline">Batidos Offline</SelectItem>
+                  <SelectItem value="sincronizado_atraso">Sincronizados c/ Atraso</SelectItem>
+                  <SelectItem value="suspeito">Horário Suspeito</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Data Início */}
             <div>
               <label className="text-xs font-semibold text-slate-600 block mb-1">Data Início</label>
@@ -342,17 +461,17 @@ export default function ConferenciaPontoPage() {
             <Clock className="w-10 h-10 text-slate-300 mx-auto" />
             <h3 className="font-semibold text-slate-700">Nenhum registro de ponto encontrado</h3>
             <p className="text-xs text-slate-400">
-              Ajuste os filtros de data, posto ou profissional para localizar os registros.
+              Ajuste os filtros de data, posto, profissional ou origem para localizar os registros.
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-          <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600 font-medium">
+          <div className="p-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between text-xs text-slate-600 font-medium gap-2">
             <span>
-              Total: <strong>{pontosFiltrados.length}</strong> registro(s) de ponto
+              Total: <strong>{pontosFiltrados.length}</strong> registro(s) filtrado(s)
             </span>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <span className="flex items-center gap-1 text-emerald-700 font-semibold">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 {
@@ -384,9 +503,10 @@ export default function ConferenciaPontoPage() {
                   <th className="p-3">Tipo</th>
                   <th className="p-3">Profissional</th>
                   <th className="p-3">Posto</th>
-                  <th className="p-3">Cerca Digital (Distância)</th>
+                  <th className="p-3">Origem & Sincronização</th>
+                  <th className="p-3">Cerca Digital</th>
                   <th className="p-3">Foto Chegada</th>
-                  <th className="p-3">Alerta / Ocorrência</th>
+                  <th className="p-3">Ocorrência / Integridade</th>
                   <th className="p-3">Validação</th>
                   <th className="p-3 text-right">Ação</th>
                 </tr>
@@ -400,19 +520,23 @@ export default function ConferenciaPontoPage() {
                   const horaFormatada = new Date(p.timestamp_real).toLocaleTimeString('pt-BR')
                   const fotoUrl = p.foto ? pb.files.getURL(p, p.foto) : null
                   const temAlerta =
-                    p.status_validacao === 'alerta' || !p.dentro_raio || !!p.ocorrencia
+                    p.status_validacao === 'alerta' || !p.dentro_raio || p.horario_suspeito
 
                   return (
                     <tr
                       key={p.id}
                       className={`hover:bg-slate-50 transition-colors ${
-                        temAlerta ? 'bg-amber-50/30' : ''
+                        p.horario_suspeito ? 'bg-rose-50/40' : temAlerta ? 'bg-amber-50/30' : ''
                       }`}
                     >
                       <td className="p-3">
                         <div className="font-semibold text-slate-900">{dataFormatada}</div>
-                        <div className="text-[11px] text-slate-500">{horaFormatada}</div>
+                        <div className="text-[11px] text-slate-600 font-bold">{horaFormatada}</div>
+                        <span className="text-[10px] text-slate-400 block">
+                          Hora oficial batida
+                        </span>
                       </td>
+
                       <td className="p-3">
                         <Badge
                           className={
@@ -424,13 +548,50 @@ export default function ConferenciaPontoPage() {
                           {p.tipo === 'chegada' ? 'Entrada' : 'Saída'}
                         </Badge>
                       </td>
+
                       <td className="p-3">
                         <div className="font-semibold text-slate-800">
                           {pro?.name || pro?.email}
                         </div>
                         <div className="text-[10px] text-slate-400">{pro?.email}</div>
                       </td>
+
                       <td className="p-3 font-medium text-slate-700">{posto?.nome || 'Posto'}</td>
+
+                      {/* Coluna Origem & Sincronização */}
+                      <td className="p-3">
+                        {p.batido_offline ? (
+                          <div className="space-y-0.5">
+                            <Badge className="bg-teal-100 text-teal-800 border-teal-300 text-[10px] flex items-center gap-1 w-fit">
+                              <WifiOff className="w-3 h-3 text-teal-700" />
+                              Batido Offline
+                            </Badge>
+                            {p.atraso_sincronizacao_minutos &&
+                            p.atraso_sincronizacao_minutos >= 5 ? (
+                              <span className="text-[10px] text-slate-500 block">
+                                Sincronizado com atraso de{' '}
+                                <strong>
+                                  {p.atraso_sincronizacao_minutos >= 60
+                                    ? `${(p.atraso_sincronizacao_minutos / 60).toFixed(1)}h`
+                                    : `${p.atraso_sincronizacao_minutos}min`}
+                                </strong>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 block">
+                                Sincronizado logo após
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div>
+                            <Badge variant="outline" className="text-slate-600 text-[10px]">
+                              Online Direto
+                            </Badge>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Cerca Digital */}
                       <td className="p-3">
                         {p.dentro_raio ? (
                           <div className="text-emerald-700 font-semibold flex items-center gap-1">
@@ -445,8 +606,11 @@ export default function ConferenciaPontoPage() {
                         )}
                         <span className="text-[10px] text-slate-400 block">
                           Tolerância: {posto?.raio_geocerca_m || 150}m
+                          {p.gps_precisao_m ? ` &bull; GPS: ±${p.gps_precisao_m}m` : ''}
                         </span>
                       </td>
+
+                      {/* Foto */}
                       <td className="p-3">
                         {fotoUrl ? (
                           <a href={fotoUrl} target="_blank" rel="noopener noreferrer">
@@ -460,10 +624,21 @@ export default function ConferenciaPontoPage() {
                           <span className="text-slate-400 italic">Sem foto</span>
                         )}
                       </td>
-                      <td className="p-3 max-w-[200px]">
+
+                      {/* Ocorrência / Integridade */}
+                      <td className="p-3 max-w-[220px]">
+                        {p.horario_suspeito ? (
+                          <div className="mb-1">
+                            <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] flex items-center gap-1 w-fit">
+                              <ShieldAlert className="w-3 h-3 text-rose-700" />
+                              Horário Suspeito Antifraude
+                            </Badge>
+                          </div>
+                        ) : null}
+
                         {p.ocorrencia ? (
                           <span
-                            className="text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[11px] block truncate"
+                            className="text-amber-900 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[11px] block truncate"
                             title={p.ocorrencia}
                           >
                             {p.ocorrencia}
@@ -472,6 +647,8 @@ export default function ConferenciaPontoPage() {
                           <span className="text-emerald-700 font-medium">Regular</span>
                         )}
                       </td>
+
+                      {/* Validação */}
                       <td className="p-3">
                         {p.status_validacao === 'contestado' ? (
                           <Badge variant="destructive" className="text-[10px]">
@@ -491,6 +668,7 @@ export default function ConferenciaPontoPage() {
                           </Badge>
                         )}
                       </td>
+
                       <td className="p-3 text-right">
                         <Button
                           size="sm"
@@ -523,8 +701,7 @@ export default function ConferenciaPontoPage() {
               Conferência de Ponto Digital
             </DialogTitle>
             <DialogDescription>
-              Analise as evidências geográficas, fotográficas e decida por validar ou contestar o
-              ponto.
+              Analise as evidências geográficas, de horário real batido e integridade do registro.
             </DialogDescription>
           </DialogHeader>
 
@@ -547,11 +724,64 @@ export default function ConferenciaPontoPage() {
                   Turno Programado: {modalPonto.expand?.escala?.turno_inicio} às{' '}
                   {modalPonto.expand?.escala?.turno_fim}
                 </div>
-                <div className="text-slate-600">
-                  Horário Real Registrado:{' '}
-                  <strong>{new Date(modalPonto.timestamp_real).toLocaleString('pt-BR')}</strong>
+                <div className="text-slate-600 flex items-center gap-1.5">
+                  Horário Oficial do Batimento:{' '}
+                  <strong className="text-teal-900 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
+                    {new Date(modalPonto.timestamp_real).toLocaleString('pt-BR')}
+                  </strong>
                 </div>
               </div>
+
+              {/* Rastreabilidade Offline / Sincronização */}
+              <div className="bg-teal-50/50 p-3 rounded-lg border border-teal-200 space-y-1">
+                <div className="font-bold text-teal-900 flex items-center gap-1.5">
+                  <WifiOff className="w-4 h-4 text-teal-700" />
+                  Rastreabilidade de Transmissão
+                </div>
+                <div className="text-slate-700">
+                  Origem do Batimento:{' '}
+                  <strong>
+                    {modalPonto.batido_offline
+                      ? 'Registrado Offline no Aparelho'
+                      : 'Registrado Online'}
+                  </strong>
+                </div>
+                {modalPonto.sincronizado_em && (
+                  <div className="text-slate-700">
+                    Sincronizado no Servidor:{' '}
+                    <strong>{new Date(modalPonto.sincronizado_em).toLocaleString('pt-BR')}</strong>
+                  </div>
+                )}
+                {modalPonto.atraso_sincronizacao_minutos !== undefined && (
+                  <div className="text-slate-700">
+                    Tempo até sincronizar:{' '}
+                    <strong>
+                      {modalPonto.atraso_sincronizacao_minutos >= 60
+                        ? `${(modalPonto.atraso_sincronizacao_minutos / 60).toFixed(1)} hora(s)`
+                        : `${modalPonto.atraso_sincronizacao_minutos} minuto(s)`}
+                    </strong>
+                    <span className="text-[11px] text-teal-700 block mt-0.5">
+                      ✓ A hora oficial considerada é estritamente a do momento do batimento no
+                      aparelho.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Alerta de Horário Suspeito se houver */}
+              {modalPonto.horario_suspeito && (
+                <div className="bg-rose-50 border border-rose-300 text-rose-900 p-3 rounded-lg">
+                  <div className="font-bold flex items-center gap-1.5 text-rose-800">
+                    <ShieldAlert className="w-4 h-4 text-rose-600" />
+                    Alerta Antifraude: Horário Suspeito Detectado
+                  </div>
+                  <p className="mt-1">
+                    O horário registrado neste batimento offline é anterior ao último acesso online
+                    conhecido do dispositivo da profissional. Verifique com a profissional se houve
+                    alteração manual de relógio ou falha de fuso.
+                  </p>
+                </div>
+              )}
 
               {/* Análise de Cerca Digital e Horário */}
               <div className="grid grid-cols-2 gap-2">
@@ -574,6 +804,11 @@ export default function ConferenciaPontoPage() {
                     {modalPonto.dentro_raio ? 'Dentro do raio' : 'Fora do raio'} (
                     {modalPonto.distancia_metros ?? 0}m de distância)
                   </div>
+                  {modalPonto.gps_precisao_m && (
+                    <div className="text-[11px] opacity-75 mt-0.5">
+                      Precisão GPS: ±{modalPonto.gps_precisao_m}m
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
@@ -589,7 +824,7 @@ export default function ConferenciaPontoPage() {
                 <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-lg">
                   <div className="font-bold flex items-center gap-1 text-amber-800">
                     <AlertTriangle className="w-4 h-4 text-amber-600" />
-                    Alerta de Divergência Gerado
+                    Ocorrências Registradas
                   </div>
                   <p className="mt-1">{modalPonto.ocorrencia}</p>
                 </div>
@@ -613,7 +848,7 @@ export default function ConferenciaPontoPage() {
                   Observação / Justificativa da Gestão
                 </label>
                 <Input
-                  placeholder="Ex: Ponto aprovado após justificativa operacional de trânsito..."
+                  placeholder="Ex: Ponto aprovado após justificativa operacional de falta de sinal no posto..."
                   value={observacaoGestao}
                   onChange={(e) => setObservacaoGestao(e.target.value)}
                   className="text-xs"

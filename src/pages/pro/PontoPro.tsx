@@ -8,6 +8,17 @@ import {
   getCoordenadasPosto,
   verificarHorarioTurno,
 } from '@/services/ponto'
+import {
+  PontoPendenteItem,
+  salvarPontoOffline,
+  listarPontosPendentes,
+  sincronizarPontosPendentes,
+  salvarCachePro,
+  carregarCachePro,
+  registrarUltimoAcessoOnline,
+  verificarHorarioSuspeito,
+  fileToDataURL,
+} from '@/services/pontoOffline'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -30,22 +41,41 @@ import {
   RefreshCw,
   Navigation,
   FileCheck,
-  ShieldCheck,
   Calendar,
+  Wifi,
+  WifiOff,
+  CloudUpload,
+  Smartphone,
+  CheckCheck,
 } from 'lucide-react'
 
 export default function PontoProPage() {
   const { user } = useAuth()
   const [escalasHoje, setEscalasHoje] = useState<ConvocacaoRecord[]>([])
   const [pontosRegistrados, setPontosRegistrados] = useState<PontoRecord[]>([])
+  const [pontosPendentes, setPontosPendentes] = useState<PontoPendenteItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // Status de conectividade
+  const [isOnline, setIsOnline] = useState<boolean>(
+    typeof navigator !== 'undefined' ? navigator.onLine : true,
+  )
+  const [isSyncing, setIsSyncing] = useState(false)
+
+  // Suporte a instalação PWA
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+  const [pwaInstalled, setPwaInstalled] = useState(false)
 
   // Modal de Registro
   const [modalRegistroOpen, setModalRegistroOpen] = useState(false)
   const [tipoRegistro, setTipoRegistro] = useState<'chegada' | 'saida'>('chegada')
   const [selectedEscala, setSelectedEscala] = useState<EscalaRecord | null>(null)
   const [isCapturingLocation, setIsCapturingLocation] = useState(false)
-  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const [userCoords, setUserCoords] = useState<{
+    lat: number
+    lng: number
+    accuracy?: number
+  } | null>(null)
   const [geoError, setGeoError] = useState<string | null>(null)
   const [fotoFile, setFotoFile] = useState<File | null>(null)
   const [fotoPreview, setFotoPreview] = useState<string | null>(null)
@@ -55,10 +85,137 @@ export default function PontoProPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const loadData = async () => {
+  // Monitorar evento beforeinstallprompt do PWA
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault()
+      setDeferredPrompt(e)
+    }
+
+    const handleAppInstalled = () => {
+      setPwaInstalled(true)
+      setDeferredPrompt(null)
+      toast({
+        title: 'App instalado com sucesso!',
+        description: 'Agora você pode acessar o ponto direto da tela inicial mesmo offline.',
+      })
+    }
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+    window.addEventListener('appinstalled', handleAppInstalled)
+
+    // Se já estiver rodando standalone (PWA instalado)
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setPwaInstalled(true)
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+      window.removeEventListener('appinstalled', handleAppInstalled)
+    }
+  }, [])
+
+  const handleInstallPwa = async () => {
+    if (!deferredPrompt) {
+      toast({
+        title: 'Como instalar',
+        description:
+          'No navegador do celular, toque no menu de opções (três pontos ou compartilhar) e selecione "Adicionar à tela de início".',
+      })
+      return
+    }
+    deferredPrompt.prompt()
+    const { outcome } = await deferredPrompt.userChoice
+    if (outcome === 'accepted') {
+      setPwaInstalled(true)
+    }
+    setDeferredPrompt(null)
+  }
+
+  // Recarregar pontos pendentes do IndexedDB
+  const atualizarPontosPendentes = async () => {
     if (!user) return
-    setIsLoading(true)
     try {
+      const pendentes = await listarPontosPendentes(user.id)
+      setPontosPendentes(pendentes)
+    } catch (e) {
+      console.warn('Erro ao ler fila offline:', e)
+    }
+  }
+
+  // Sincronização automática
+  const triggerSync = async () => {
+    if (!user || isSyncing || !navigator.onLine) return
+    setIsSyncing(true)
+    try {
+      const res = await sincronizarPontosPendentes(user.id)
+      if (res.sucessos > 0) {
+        toast({
+          title: 'Sincronização concluída!',
+          description: `${res.sucessos} registro(s) de ponto enviado(s) ao sistema com a hora oficial do batimento.`,
+        })
+        await loadData(false)
+      }
+      await atualizarPontosPendentes()
+    } catch (err) {
+      console.error('Erro na sincronização automática:', err)
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  // Listeners de rede online/offline
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true)
+      registrarUltimoAcessoOnline()
+      toast({
+        title: 'Conexão restaurada!',
+        description: 'Sincronizando pontos registrados offline...',
+      })
+      triggerSync()
+    }
+
+    const handleOffline = () => {
+      setIsOnline(false)
+      toast({
+        title: 'Você está offline',
+        description:
+          'Você pode bater o ponto normalmente. O registro será salvo no aparelho e enviado ao reconectar.',
+        variant: 'destructive',
+      })
+    }
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [user])
+
+  // Carregar dados (com cache offline)
+  const loadData = async (showLoading = true) => {
+    if (!user) return
+    if (showLoading) setIsLoading(true)
+
+    // Sempre carregar fila offline primeiro
+    await atualizarPontosPendentes()
+
+    if (!navigator.onLine) {
+      // Modo offline: carregar do cache IndexedDB/localStorage
+      const cachedConvs = await carregarCachePro<ConvocacaoRecord[]>(`escalas_${user.id}`)
+      const cachedPontos = await carregarCachePro<PontoRecord[]>(`pontos_${user.id}`)
+      if (cachedConvs) setEscalasHoje(cachedConvs)
+      if (cachedPontos) setPontosRegistrados(cachedPontos)
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      registrarUltimoAcessoOnline()
+
       // Buscar convocações aceitas pelo pro
       const convs = await pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
         filter: `pro = "${user.id}" && status = "aceita"`,
@@ -66,7 +223,7 @@ export default function PontoProPage() {
         expand: 'escala,escala.posto',
       })
 
-      // Buscar pontos do pro
+      // Buscar pontos do pro no servidor
       const pontos = await pb.collection('pontos').getFullList<PontoRecord>({
         filter: `pro = "${user.id}"`,
         sort: '-timestamp_real',
@@ -75,12 +232,19 @@ export default function PontoProPage() {
 
       setEscalasHoje(convs)
       setPontosRegistrados(pontos)
+
+      // Guardar cache persistente para uso offline
+      await salvarCachePro(`escalas_${user.id}`, convs)
+      await salvarCachePro(`pontos_${user.id}`, pontos)
+
+      // Se houver pendências locais, tenta sincronizar logo após carregar
+      await triggerSync()
     } catch (err) {
-      console.error(err)
-      toast({
-        title: 'Erro ao carregar dados do ponto',
-        variant: 'destructive',
-      })
+      console.warn('Erro ao buscar dados online, tentando cache local:', err)
+      const cachedConvs = await carregarCachePro<ConvocacaoRecord[]>(`escalas_${user.id}`)
+      const cachedPontos = await carregarCachePro<PontoRecord[]>(`pontos_${user.id}`)
+      if (cachedConvs) setEscalasHoje(cachedConvs)
+      if (cachedPontos) setPontosRegistrados(cachedPontos)
     } finally {
       setIsLoading(false)
     }
@@ -90,13 +254,13 @@ export default function PontoProPage() {
     loadData()
   }, [user])
 
-  // Capturar Geolocalização do navegador
+  // Capturar Geolocalização do dispositivo (funciona com o chip GPS nativo sem precisar de internet)
   const capturarLocalizacao = () => {
     setIsCapturingLocation(true)
     setGeoError(null)
 
     if (!navigator.geolocation) {
-      setGeoError('Geolocalização não é suportada pelo seu navegador.')
+      setGeoError('Geolocalização não é suportada pelo seu dispositivo.')
       setIsCapturingLocation(false)
       return
     }
@@ -106,23 +270,23 @@ export default function PontoProPage() {
         setUserCoords({
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
         })
         setIsCapturingLocation(false)
       },
       (err) => {
         console.warn('Erro ao obter geolocalização:', err.message)
-        // Se houver bloqueio de permissão de geolocalização, simular coordenadas padrão de teste
+        // Se houver bloqueio de permissão de geolocalização, simular coordenadas padrão de teste do posto
         const postoCoords = getCoordenadasPosto(selectedEscala?.expand?.posto)
         setUserCoords({
           lat: postoCoords.lat,
           lng: postoCoords.lng,
+          accuracy: 50,
         })
-        setGeoError(
-          'Aviso: GPS indisponível no dispositivo. Usando ponto de ancoragem do posto para teste.',
-        )
+        setGeoError('Aviso: GPS do dispositivo inacessível. Usando referência do posto.')
         setIsCapturingLocation(false)
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
     )
   }
 
@@ -203,11 +367,11 @@ export default function PontoProPage() {
     }
   }
 
-  // Salvar registro de ponto
+  // Salvar registro de ponto (com suporte offline transparente)
   const handleSalvarPonto = async () => {
     if (!selectedEscala || !user) return
 
-    // Chegada exige foto
+    // Chegada exige foto de comprovação
     if (tipoRegistro === 'chegada' && !fotoFile) {
       toast({
         title: 'Foto obrigatória',
@@ -219,14 +383,19 @@ export default function PontoProPage() {
 
     setIsSaving(true)
     try {
+      // 1. CAPTURA NO MOMENTO EXATO DO TOQUE
+      const instanteClique = new Date()
+      const timestampBatimento = instanteClique.toISOString()
+
       const posto = selectedEscala.expand?.posto
       const postoCoords = getCoordenadasPosto(posto)
       const raioConfig = posto?.raio_geocerca_m || 150
 
-      const latAtual = userCoords?.lat || postoCoords.lat
-      const lngAtual = userCoords?.lng || postoCoords.lng
+      const latAtual = userCoords?.lat ?? postoCoords.lat
+      const lngAtual = userCoords?.lng ?? postoCoords.lng
+      const precisaoGps = userCoords?.accuracy ?? 25
 
-      // Distância do posto
+      // Distância do posto (validação offline pelo GPS e coordenadas do posto)
       const distancia = calcularDistanciaMetros(
         latAtual,
         lngAtual,
@@ -235,15 +404,14 @@ export default function PontoProPage() {
       )
       const dentroRaio = distancia <= raioConfig
 
-      // Verificação de horário do turno
+      // Verificação de horário do turno no instante do toque
       const horaProgramada =
         tipoRegistro === 'chegada' ? selectedEscala.turno_inicio : selectedEscala.turno_fim
-      const agora = new Date()
       const verHorario = verificarHorarioTurno(
         tipoRegistro,
         selectedEscala.data,
         horaProgramada,
-        agora,
+        instanteClique,
         30,
       )
 
@@ -263,38 +431,138 @@ export default function PontoProPage() {
         statusValidacao = 'alerta'
       }
 
-      const formData = new FormData()
-      formData.append('escala', selectedEscala.id)
-      formData.append('pro', user.id)
-      formData.append('tipo', tipoRegistro)
-      formData.append('timestamp_real', agora.toISOString())
-      formData.append('latitude', String(latAtual))
-      formData.append('longitude', String(lngAtual))
-      formData.append('dentro_raio', String(dentroRaio))
-      formData.append('distancia_metros', String(distancia))
-      formData.append('status_validacao', statusValidacao)
-      formData.append('ocorrencia', ocorrencias.join(' | '))
-
-      if (fotoFile) {
-        formData.append('foto', fotoFile)
+      // Verificação antifraude de horário suspeito
+      const suspeito = verificarHorarioSuspeito(timestampBatimento)
+      if (suspeito) {
+        ocorrencias.push('Horário suspeito: batimento anterior ao último acesso online')
+        statusValidacao = 'alerta'
       }
 
-      await pb.collection('pontos').create(formData)
+      // UUID exclusivo do cliente para idempotência
+      const clientUuid = `ponto_${user.id}_${selectedEscala.id}_${tipoRegistro}_${Date.now()}`
 
-      toast({
-        title: `Ponto de ${tipoRegistro === 'chegada' ? 'Chegada' : 'Saída'} registrado!`,
-        description:
-          dentroRaio && verHorario.dentroHorario
-            ? 'Registro verificado com sucesso dentro do posto e no horário.'
-            : 'Ponto registrado com alerta visual para conferência da gestão.',
-        variant: dentroRaio && verHorario.dentroHorario ? 'default' : 'destructive',
-      })
+      // Preparar dataURL da foto se houver para persistência offline
+      let fotoDataUrl: string | null = null
+      if (fotoFile) {
+        fotoDataUrl = await fileToDataURL(fotoFile)
+      }
+
+      const estaOffline = !navigator.onLine
+
+      if (estaOffline) {
+        // MODO OFFLINE: Salvar diretamente no IndexedDB
+        const itemPendente: PontoPendenteItem = {
+          client_uuid: clientUuid,
+          escala: selectedEscala.id,
+          pro: user.id,
+          tipo: tipoRegistro,
+          timestamp_real: timestampBatimento,
+          latitude: latAtual,
+          longitude: lngAtual,
+          gps_precisao_m: Math.round(precisaoGps),
+          dentro_raio: dentroRaio,
+          distancia_metros: distancia,
+          fotoDataUrl: fotoDataUrl,
+          fotoName: fotoFile ? fotoFile.name : undefined,
+          fotoType: fotoFile ? fotoFile.type : undefined,
+          ocorrencia: ocorrencias.join(' | '),
+          status_validacao: statusValidacao,
+          batido_offline: true,
+          horario_suspeito: suspeito,
+          postoNome: posto?.nome,
+          turnoInfo: `${selectedEscala.turno_inicio} às ${selectedEscala.turno_fim}`,
+          criado_em: new Date().toISOString(),
+          tentativasEnvio: 0,
+          status: 'pendente',
+        }
+
+        await salvarPontoOffline(itemPendente)
+        await atualizarPontosPendentes()
+
+        toast({
+          title: `Ponto registrado ✓ aguardando envio`,
+          description: `Horário salvo: ${instanteClique.toLocaleTimeString('pt-BR')}. Será enviado automaticamente quando a internet voltar.`,
+        })
+      } else {
+        // MODO ONLINE: Tentar enviar direto; se falhar, salvar na fila offline
+        try {
+          const formData = new FormData()
+          formData.append('escala', selectedEscala.id)
+          formData.append('pro', user.id)
+          formData.append('tipo', tipoRegistro)
+          formData.append('timestamp_real', timestampBatimento)
+          formData.append('latitude', String(latAtual))
+          formData.append('longitude', String(lngAtual))
+          formData.append('gps_precisao_m', String(Math.round(precisaoGps)))
+          formData.append('dentro_raio', String(dentroRaio))
+          formData.append('distancia_metros', String(distancia))
+          formData.append('status_validacao', statusValidacao)
+          formData.append('ocorrencia', ocorrencias.join(' | '))
+          formData.append('batido_offline', 'false')
+          formData.append('sincronizado_em', new Date().toISOString())
+          formData.append('atraso_sincronizacao_minutos', '0')
+          formData.append('horario_suspeito', String(suspeito))
+          formData.append('client_uuid', clientUuid)
+
+          if (fotoFile) {
+            formData.append('foto', fotoFile)
+          }
+
+          await pb.collection('pontos').create(formData)
+          registrarUltimoAcessoOnline()
+
+          toast({
+            title: `Ponto de ${tipoRegistro === 'chegada' ? 'Chegada' : 'Saída'} enviado!`,
+            description:
+              dentroRaio && verHorario.dentroHorario
+                ? 'Registro verificado com sucesso dentro do posto e no horário.'
+                : 'Ponto enviado com alerta para conferência da gestão.',
+            variant: dentroRaio && verHorario.dentroHorario ? 'default' : 'destructive',
+          })
+
+          await loadData(false)
+        } catch (envioErr) {
+          console.warn('Falha no envio online, salvando na fila offline:', envioErr)
+          const itemPendente: PontoPendenteItem = {
+            client_uuid: clientUuid,
+            escala: selectedEscala.id,
+            pro: user.id,
+            tipo: tipoRegistro,
+            timestamp_real: timestampBatimento,
+            latitude: latAtual,
+            longitude: lngAtual,
+            gps_precisao_m: Math.round(precisaoGps),
+            dentro_raio: dentroRaio,
+            distancia_metros: distancia,
+            fotoDataUrl: fotoDataUrl,
+            fotoName: fotoFile ? fotoFile.name : undefined,
+            fotoType: fotoFile ? fotoFile.type : undefined,
+            ocorrencia: ocorrencias.join(' | '),
+            status_validacao: statusValidacao,
+            batido_offline: true,
+            horario_suspeito: suspeito,
+            postoNome: posto?.nome,
+            turnoInfo: `${selectedEscala.turno_inicio} às ${selectedEscala.turno_fim}`,
+            criado_em: new Date().toISOString(),
+            tentativasEnvio: 1,
+            ultimoErro: 'Rede instável no envio',
+            status: 'pendente',
+          }
+
+          await salvarPontoOffline(itemPendente)
+          await atualizarPontosPendentes()
+
+          toast({
+            title: `Ponto registrado ✓ aguardando envio`,
+            description: `Instabilidade na rede detectada. Ponto guardado com segurança e será sincronizado automaticamente.`,
+          })
+        }
+      }
 
       stopCamera()
       setModalRegistroOpen(false)
-      loadData()
     } catch (err) {
-      console.error('Erro ao salvar ponto:', err)
+      console.error('Erro ao processar ponto:', err)
       toast({
         title: 'Erro ao registrar ponto',
         description: 'Tente novamente.',
@@ -307,22 +575,105 @@ export default function PontoProPage() {
 
   return (
     <div className="space-y-6">
+      {/* Barra de Status de Conectividade e PWA */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Clock className="w-6 h-6 text-teal-700" />
-            Registro de Ponto Digital (Modelo Profreela)
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+              <Clock className="w-6 h-6 text-teal-700" />
+              Registro de Ponto Digital
+            </h1>
+            {isOnline ? (
+              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 gap-1 text-[11px]">
+                <Wifi className="w-3 h-3 text-emerald-600" />
+                Online
+              </Badge>
+            ) : (
+              <Badge className="bg-amber-100 text-amber-900 border-amber-300 gap-1 text-[11px] animate-pulse">
+                <WifiOff className="w-3 h-3 text-amber-700" />
+                Modo Offline Ativo
+              </Badge>
+            )}
+          </div>
           <p className="text-slate-500 text-sm mt-1">
-            Bata a chegada e saída das suas escalas com verificação de cerca digital e foto de
-            comprovação.
+            Bata a chegada e saída mesmo sem sinal de internet no posto. O registro é salvo no
+            aparelho e sobe automaticamente.
           </p>
         </div>
-        <Button onClick={loadData} variant="outline" size="sm" className="text-xs">
-          <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-          Atualizar Pontos
-        </Button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Botão de Instalar PWA */}
+          {!pwaInstalled && (
+            <Button
+              onClick={handleInstallPwa}
+              variant="outline"
+              size="sm"
+              className="text-xs border-teal-600 text-teal-800 hover:bg-teal-50"
+            >
+              <Smartphone className="w-3.5 h-3.5 mr-1.5 text-teal-700" />
+              Instalar App PWA
+            </Button>
+          )}
+
+          {/* Sincronização manual se houver pendências */}
+          {pontosPendentes.length > 0 && (
+            <Button
+              onClick={triggerSync}
+              disabled={isSyncing || !isOnline}
+              size="sm"
+              className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold"
+            >
+              <CloudUpload className={`w-3.5 h-3.5 mr-1.5 ${isSyncing ? 'animate-bounce' : ''}`} />
+              {isSyncing ? 'Enviando...' : `Sincronizar (${pontosPendentes.length})`}
+            </Button>
+          )}
+
+          <Button
+            onClick={() => loadData(true)}
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            disabled={isLoading}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isLoading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+        </div>
       </div>
+
+      {/* Alerta de Pontos Pendentes de Envio */}
+      {pontosPendentes.length > 0 && (
+        <Card className="border-amber-300 bg-amber-50 shadow-sm">
+          <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center shrink-0">
+                <CloudUpload className="w-5 h-5 text-amber-800" />
+              </div>
+              <div>
+                <h4 className="font-bold text-amber-900 text-sm">
+                  {pontosPendentes.length} batida(s) de ponto armazenada(s) localmente
+                </h4>
+                <p className="text-xs text-amber-800 mt-0.5">
+                  Registradas com sucesso no aparelho com hora real de batimento e coordenadas GPS.
+                  {isOnline
+                    ? ' Conexão ativa: clique para enviar agora ou aguarde o envio automático.'
+                    : ' Aguardando conexão de internet para enviar ao sistema.'}
+                </p>
+              </div>
+            </div>
+            {isOnline && (
+              <Button
+                size="sm"
+                onClick={triggerSync}
+                disabled={isSyncing}
+                className="bg-amber-700 hover:bg-amber-800 text-white text-xs font-semibold shrink-0"
+              >
+                {isSyncing ? 'Enviando ao servidor...' : 'Enviar Agora'}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {isLoading ? (
         <div className="flex justify-center py-12">
@@ -353,10 +704,18 @@ export default function PontoProPage() {
                   const posto = escala?.expand?.posto
                   const end = posto?.endereco as any
 
-                  // Pontos já registrados para esta escala
+                  // Pontos já registrados no servidor para esta escala
                   const pontosEscala = pontosRegistrados.filter((p) => p.escala === escala?.id)
-                  const pontoChegada = pontosEscala.find((p) => p.tipo === 'chegada')
-                  const pontoSaida = pontosEscala.find((p) => p.tipo === 'saida')
+                  const pontoChegadaServidor = pontosEscala.find((p) => p.tipo === 'chegada')
+                  const pontoSaidaServidor = pontosEscala.find((p) => p.tipo === 'saida')
+
+                  // Pontos pendentes na fila local offline
+                  const pendentesEscala = pontosPendentes.filter((p) => p.escala === escala?.id)
+                  const pendenteChegada = pendentesEscala.find((p) => p.tipo === 'chegada')
+                  const pendenteSaida = pendentesEscala.find((p) => p.tipo === 'saida')
+
+                  const temChegada = !!pontoChegadaServidor || !!pendenteChegada
+                  const temSaida = !!pontoSaidaServidor || !!pendenteSaida
 
                   return (
                     <Card
@@ -406,48 +765,72 @@ export default function PontoProPage() {
 
                         {/* Status dos registros */}
                         <div className="space-y-2 text-xs">
+                          {/* Chegada */}
                           <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
                             <span className="font-medium text-slate-600">Chegada:</span>
-                            {pontoChegada ? (
-                              <div className="flex items-center gap-1.5 font-semibold text-emerald-700">
-                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                                {new Date(pontoChegada.timestamp_real).toLocaleTimeString('pt-BR', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                                {pontoChegada.dentro_raio ? (
-                                  <Badge className="bg-emerald-100 text-emerald-800 text-[10px]">
-                                    No Posto
-                                  </Badge>
-                                ) : (
-                                  <Badge className="bg-rose-100 text-rose-800 text-[10px]">
-                                    Fora Raio
-                                  </Badge>
+                            {pendenteChegada ? (
+                              <div className="flex items-center gap-1.5 font-semibold text-amber-700">
+                                <Clock className="w-4 h-4 text-amber-600" />
+                                {new Date(pendenteChegada.timestamp_real).toLocaleTimeString(
+                                  'pt-BR',
+                                  {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  },
                                 )}
+                                <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px]">
+                                  Ponto registrado ✓ aguardando envio
+                                </Badge>
+                              </div>
+                            ) : pontoChegadaServidor ? (
+                              <div className="flex items-center gap-1.5 font-semibold text-emerald-700">
+                                <CheckCheck className="w-4 h-4 text-emerald-600" />
+                                {new Date(pontoChegadaServidor.timestamp_real).toLocaleTimeString(
+                                  'pt-BR',
+                                  {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  },
+                                )}
+                                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]">
+                                  Enviado ao sistema
+                                </Badge>
                               </div>
                             ) : (
                               <span className="text-slate-400 italic">Pendente</span>
                             )}
                           </div>
 
+                          {/* Saída */}
                           <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
                             <span className="font-medium text-slate-600">Saída:</span>
-                            {pontoSaida ? (
-                              <div className="flex items-center gap-1.5 font-semibold text-emerald-700">
-                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                                {new Date(pontoSaida.timestamp_real).toLocaleTimeString('pt-BR', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                                {pontoSaida.dentro_raio ? (
-                                  <Badge className="bg-emerald-100 text-emerald-800 text-[10px]">
-                                    No Posto
-                                  </Badge>
-                                ) : (
-                                  <Badge className="bg-rose-100 text-rose-800 text-[10px]">
-                                    Fora Raio
-                                  </Badge>
+                            {pendenteSaida ? (
+                              <div className="flex items-center gap-1.5 font-semibold text-amber-700">
+                                <Clock className="w-4 h-4 text-amber-600" />
+                                {new Date(pendenteSaida.timestamp_real).toLocaleTimeString(
+                                  'pt-BR',
+                                  {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  },
                                 )}
+                                <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px]">
+                                  Ponto registrado ✓ aguardando envio
+                                </Badge>
+                              </div>
+                            ) : pontoSaidaServidor ? (
+                              <div className="flex items-center gap-1.5 font-semibold text-emerald-700">
+                                <CheckCheck className="w-4 h-4 text-emerald-600" />
+                                {new Date(pontoSaidaServidor.timestamp_real).toLocaleTimeString(
+                                  'pt-BR',
+                                  {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  },
+                                )}
+                                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]">
+                                  Enviado ao sistema
+                                </Badge>
                               </div>
                             ) : (
                               <span className="text-slate-400 italic">Pendente</span>
@@ -459,23 +842,23 @@ export default function PontoProPage() {
                         <div className="grid grid-cols-2 gap-2 pt-1">
                           <Button
                             size="sm"
-                            disabled={!!pontoChegada}
+                            disabled={temChegada}
                             onClick={() => openRegistroModal(conv, 'chegada')}
                             className="bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold"
                           >
                             <Camera className="w-3.5 h-3.5 mr-1" />
-                            {pontoChegada ? 'Chegada OK' : 'Registrar Chegada'}
+                            {temChegada ? 'Chegada Registrada' : 'Registrar Chegada'}
                           </Button>
 
                           <Button
                             size="sm"
-                            disabled={!pontoChegada || !!pontoSaida}
+                            disabled={!temChegada || temSaida}
                             onClick={() => openRegistroModal(conv, 'saida')}
-                            variant={pontoSaida ? 'outline' : 'secondary'}
+                            variant={temSaida ? 'outline' : 'secondary'}
                             className="text-xs font-semibold"
                           >
                             <Clock className="w-3.5 h-3.5 mr-1" />
-                            {pontoSaida ? 'Saída OK' : 'Registrar Saída'}
+                            {temSaida ? 'Saída Registrada' : 'Registrar Saída'}
                           </Button>
                         </div>
                       </CardContent>
@@ -488,12 +871,17 @@ export default function PontoProPage() {
 
           {/* Histórico Recente de Pontos do Profissional */}
           <div className="space-y-3 pt-4 border-t border-slate-200">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
-              <FileCheck className="w-4 h-4 text-teal-700" />
-              Histórico dos Meus Registros de Ponto
+            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <FileCheck className="w-4 h-4 text-teal-700" />
+                Histórico dos Meus Registros de Ponto
+              </span>
+              <span className="text-xs font-normal text-slate-400">
+                {pontosPendentes.length} pendente(s) | {pontosRegistrados.length} enviado(s)
+              </span>
             </h2>
 
-            {pontosRegistrados.length === 0 ? (
+            {pontosPendentes.length === 0 && pontosRegistrados.length === 0 ? (
               <p className="text-xs text-slate-400">
                 Nenhum registro de ponto computado até o momento.
               </p>
@@ -507,11 +895,81 @@ export default function PontoProPage() {
                         <th className="p-3">Tipo</th>
                         <th className="p-3">Posto</th>
                         <th className="p-3">Geocerca</th>
+                        <th className="p-3">Origem & Estado</th>
                         <th className="p-3">Foto</th>
                         <th className="p-3">Ocorrência / Validação</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
+                      {/* 1. Pontos Pendentes da Fila Local */}
+                      {pontosPendentes.map((item) => (
+                        <tr key={item.client_uuid} className="bg-amber-50/50 hover:bg-amber-50">
+                          <td className="p-3">
+                            <div className="font-semibold text-amber-900">
+                              {new Date(item.timestamp_real).toLocaleString('pt-BR')}
+                            </div>
+                            <span className="text-[10px] text-amber-700 block">
+                              Salvo no aparelho
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <Badge
+                              className={
+                                item.tipo === 'chegada'
+                                  ? 'bg-teal-100 text-teal-800 border-teal-200 uppercase text-[10px]'
+                                  : 'bg-indigo-100 text-indigo-800 border-indigo-200 uppercase text-[10px]'
+                              }
+                            >
+                              {item.tipo}
+                            </Badge>
+                          </td>
+                          <td className="p-3 font-medium text-slate-700">
+                            {item.postoNome || 'Posto em campo'}
+                          </td>
+                          <td className="p-3">
+                            {item.dentro_raio ? (
+                              <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                Dentro ({item.distancia_metros ?? 0}m)
+                              </span>
+                            ) : (
+                              <span className="text-rose-600 font-semibold flex items-center gap-1">
+                                <AlertTriangle className="w-3.5 h-3.5" />
+                                Fora ({item.distancia_metros ?? 0}m)
+                              </span>
+                            )}
+                            <span className="text-[10px] text-slate-400 block">
+                              Precisão GPS: ±{item.gps_precisao_m ?? 20}m
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] flex items-center gap-1 w-fit">
+                              <CloudUpload className="w-3 h-3 text-amber-700" />
+                              Ponto registrado ✓ aguardando envio
+                            </Badge>
+                          </td>
+                          <td className="p-3">
+                            {item.fotoDataUrl ? (
+                              <img
+                                src={item.fotoDataUrl}
+                                alt="Foto pendente"
+                                className="w-10 h-10 object-cover rounded border border-amber-300 ring-1 ring-amber-400"
+                              />
+                            ) : (
+                              <span className="text-slate-400 italic">Sem foto</span>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            {item.ocorrencia ? (
+                              <span className="text-amber-800 font-medium">{item.ocorrencia}</span>
+                            ) : (
+                              <span className="text-emerald-700 font-medium">Regular</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+
+                      {/* 2. Pontos Já Enviados ao Servidor */}
                       {pontosRegistrados.map((p) => {
                         const escala = p.expand?.escala
                         const posto = escala?.expand?.posto
@@ -545,6 +1003,22 @@ export default function PontoProPage() {
                                 <span className="text-rose-600 font-semibold flex items-center gap-1">
                                   <AlertTriangle className="w-3.5 h-3.5" />
                                   Fora ({p.distancia_metros ?? 0}m)
+                                </span>
+                              )}
+                              {p.gps_precisao_m && (
+                                <span className="text-[10px] text-slate-400 block">
+                                  Precisão GPS: ±{p.gps_precisao_m}m
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] flex items-center gap-1 w-fit">
+                                <CheckCheck className="w-3 h-3 text-emerald-600" />
+                                Enviado ao sistema
+                              </Badge>
+                              {p.batido_offline && (
+                                <span className="text-[10px] text-teal-700 block font-medium mt-0.5">
+                                  Origem: Batido offline
                                 </span>
                               )}
                             </td>
@@ -606,12 +1080,23 @@ export default function PontoProPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-3">
+            {/* Aviso de conectividade no modal */}
+            {!isOnline && (
+              <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-center gap-2">
+                <WifiOff className="w-4 h-4 text-amber-700 shrink-0" />
+                <div>
+                  <strong>Modo Offline Ativo:</strong> Seu registro será gravado com a hora exata
+                  deste momento no aparelho e enviado assim que a internet voltar.
+                </div>
+              </div>
+            )}
+
             {/* 1. Geolocalização e Cerca Digital */}
             <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-2">
               <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
                 <span className="flex items-center gap-1.5">
                   <Navigation className="w-4 h-4 text-teal-700" />
-                  Cerca Digital & Localização
+                  Cerca Digital & Localização GPS
                 </span>
                 <Button
                   size="sm"
@@ -630,7 +1115,7 @@ export default function PontoProPage() {
               {isCapturingLocation ? (
                 <div className="text-xs text-slate-500 flex items-center gap-2 py-2">
                   <div className="w-3.5 h-3.5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
-                  Obtendo coordenadas do GPS...
+                  Obtendo coordenadas do GPS (funciona offline)...
                 </div>
               ) : userCoords ? (
                 <div className="text-xs space-y-1">
@@ -664,7 +1149,8 @@ export default function PontoProPage() {
                               {dentro ? 'Dentro da cerca digital' : 'Fora da cerca digital'}
                             </div>
                             <div className="text-[11px] opacity-80">
-                              Distância: {dist}m do posto (Raio tolerado: {raio}m)
+                              Distância: {dist}m do posto (Raio tolerado: {raio}m) &bull; Precisão
+                              GPS: ±{Math.round(userCoords.accuracy || 20)}m
                             </div>
                           </div>
                         </div>
@@ -685,12 +1171,12 @@ export default function PontoProPage() {
               )}
             </div>
 
-            {/* 2. Horário do Turno vs Horário Real */}
+            {/* 2. Horário do Turno vs Horário Real do Toque */}
             <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 text-xs space-y-1">
               <div className="flex items-center justify-between font-semibold text-slate-700">
                 <span className="flex items-center gap-1.5">
                   <Clock className="w-4 h-4 text-teal-700" />
-                  Horário Real vs Turno
+                  Horário Oficial do Batimento
                 </span>
                 <span className="text-slate-500 font-normal">
                   Turno: {selectedEscala?.turno_inicio} às {selectedEscala?.turno_fim}
@@ -721,7 +1207,10 @@ export default function PontoProPage() {
                     ) : (
                       <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                     )}
-                    <span>{v.mensagem}</span>
+                    <span>
+                      {v.mensagem} &bull; Horário capturado agora:{' '}
+                      {new Date().toLocaleTimeString('pt-BR')}
+                    </span>
                   </div>
                 )
               })()}
@@ -837,8 +1326,10 @@ export default function PontoProPage() {
               className="bg-teal-700 hover:bg-teal-800 text-white font-medium"
             >
               {isSaving
-                ? 'Salvando Ponto...'
-                : `Confirmar Ponto de ${tipoRegistro === 'chegada' ? 'Chegada' : 'Saída'}`}
+                ? 'Gravando Ponto...'
+                : isOnline
+                  ? `Confirmar Ponto de ${tipoRegistro === 'chegada' ? 'Chegada' : 'Saída'}`
+                  : `Salvar Ponto Offline (${tipoRegistro === 'chegada' ? 'Chegada' : 'Saída'})`}
             </Button>
           </DialogFooter>
         </DialogContent>
