@@ -6,6 +6,7 @@ import { formatDateBR } from '@/lib/formatters'
 import {
   calcularDistanciaMetros,
   getCoordenadasPosto,
+  getToleranciasPosto,
   verificarHorarioTurno,
 } from '@/services/ponto'
 import {
@@ -389,7 +390,8 @@ export default function PontoProPage() {
 
       const posto = selectedEscala.expand?.posto
       const postoCoords = getCoordenadasPosto(posto)
-      const raioConfig = posto?.raio_geocerca_m || 150
+      const { raioGeocercaM, toleranciaEntradaMinutos, toleranciaSaidaMinutos } =
+        getToleranciasPosto(posto)
 
       const latAtual = userCoords?.lat ?? postoCoords.lat
       const lngAtual = userCoords?.lng ?? postoCoords.lng
@@ -402,9 +404,23 @@ export default function PontoProPage() {
         postoCoords.lat,
         postoCoords.lng,
       )
-      const dentroRaio = distancia <= raioConfig
+      const dentroRaio = distancia <= raioGeocercaM
 
-      // Verificação de horário do turno no instante do toque
+      // Se a batida ficar fora do raio, BLOQUEAR com mensagem clara exigida:
+      // "Você está fora da cerca do posto (X m do local). Aproxime-se para registrar o ponto."
+      if (!dentroRaio) {
+        toast({
+          title: 'Bloqueado: Fora da cerca do posto',
+          description: `Você está fora da cerca do posto (${distancia} m do local). Aproxime-se para registrar o ponto. (Raio permitido: ${raioGeocercaM} m)`,
+          variant: 'destructive',
+        })
+        setIsSaving(false)
+        return
+      }
+
+      // Verificação de tolerância de horário do turno no instante do toque
+      const toleranciaTurnoMinutos =
+        tipoRegistro === 'chegada' ? toleranciaEntradaMinutos : toleranciaSaidaMinutos
       const horaProgramada =
         tipoRegistro === 'chegada' ? selectedEscala.turno_inicio : selectedEscala.turno_fim
       const verHorario = verificarHorarioTurno(
@@ -412,22 +428,19 @@ export default function PontoProPage() {
         selectedEscala.data,
         horaProgramada,
         instanteClique,
-        30,
+        toleranciaTurnoMinutos,
       )
+
+      const foraJanela = !verHorario.dentroHorario
 
       // Identificar ocorrências
       const ocorrencias: string[] = []
       let statusValidacao: 'valido' | 'alerta' = 'valido'
 
-      if (!dentroRaio) {
+      if (foraJanela) {
         ocorrencias.push(
-          `Fora da cerca digital: ${distancia}m de distância (máximo permitido: ${raioConfig}m)`,
+          `Fora da janela de tolerância (${toleranciaTurnoMinutos}min): ${verHorario.mensagem}`,
         )
-        statusValidacao = 'alerta'
-      }
-
-      if (!verHorario.dentroHorario) {
-        ocorrencias.push(`Horário divergente: ${verHorario.mensagem}`)
         statusValidacao = 'alerta'
       }
 
@@ -462,6 +475,9 @@ export default function PontoProPage() {
           gps_precisao_m: Math.round(precisaoGps),
           dentro_raio: dentroRaio,
           distancia_metros: distancia,
+          raio_posto_m: raioGeocercaM,
+          tolerancia_aplicada_minutos: toleranciaTurnoMinutos,
+          fora_janela: foraJanela,
           fotoDataUrl: fotoDataUrl,
           fotoName: fotoFile ? fotoFile.name : undefined,
           fotoType: fotoFile ? fotoFile.type : undefined,
@@ -496,6 +512,9 @@ export default function PontoProPage() {
           formData.append('gps_precisao_m', String(Math.round(precisaoGps)))
           formData.append('dentro_raio', String(dentroRaio))
           formData.append('distancia_metros', String(distancia))
+          formData.append('raio_posto_m', String(raioGeocercaM))
+          formData.append('tolerancia_aplicada_minutos', String(toleranciaTurnoMinutos))
+          formData.append('fora_janela', String(foraJanela))
           formData.append('status_validacao', statusValidacao)
           formData.append('ocorrencia', ocorrencias.join(' | '))
           formData.append('batido_offline', 'false')
@@ -514,10 +533,10 @@ export default function PontoProPage() {
           toast({
             title: `Ponto de ${tipoRegistro === 'chegada' ? 'Chegada' : 'Saída'} enviado!`,
             description:
-              dentroRaio && verHorario.dentroHorario
+              dentroRaio && !foraJanela
                 ? 'Registro verificado com sucesso dentro do posto e no horário.'
-                : 'Ponto enviado com alerta para conferência da gestão.',
-            variant: dentroRaio && verHorario.dentroHorario ? 'default' : 'destructive',
+                : 'Ponto registrado fora da janela de tolerância e enviado para revisão na conferência.',
+            variant: dentroRaio && !foraJanela ? 'default' : 'destructive',
           })
 
           await loadData(false)
@@ -534,6 +553,9 @@ export default function PontoProPage() {
             gps_precisao_m: Math.round(precisaoGps),
             dentro_raio: dentroRaio,
             distancia_metros: distancia,
+            raio_posto_m: raioGeocercaM,
+            tolerancia_aplicada_minutos: toleranciaTurnoMinutos,
+            fora_janela: foraJanela,
             fotoDataUrl: fotoDataUrl,
             fotoName: fotoFile ? fotoFile.name : undefined,
             fotoType: fotoFile ? fotoFile.type : undefined,
@@ -755,10 +777,11 @@ export default function PontoProPage() {
                           </div>
                           <div>
                             <span className="text-[10px] uppercase font-semibold text-slate-400 block">
-                              Cerca Digital
+                              Cerca Digital & Tolerância
                             </span>
                             <span className="font-semibold text-teal-700">
-                              Raio de {posto?.raio_geocerca_m || 150}m
+                              Raio de {posto?.raio_geocerca_m || 100}m &bull; Tol.{' '}
+                              {posto?.tolerancia_entrada_minutos || 10}min
                             </span>
                           </div>
                         </div>
@@ -1121,21 +1144,21 @@ export default function PontoProPage() {
                 <div className="text-xs space-y-1">
                   {(() => {
                     const postoCoords = getCoordenadasPosto(selectedEscala?.expand?.posto)
-                    const raio = selectedEscala?.expand?.posto?.raio_geocerca_m || 150
+                    const { raioGeocercaM } = getToleranciasPosto(selectedEscala?.expand?.posto)
                     const dist = calcularDistanciaMetros(
                       userCoords.lat,
                       userCoords.lng,
                       postoCoords.lat,
                       postoCoords.lng,
                     )
-                    const dentro = dist <= raio
+                    const dentro = dist <= raioGeocercaM
 
                     return (
                       <div
                         className={`p-2.5 rounded border text-xs font-medium flex items-center justify-between ${
                           dentro
                             ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                            : 'bg-rose-50 border-rose-200 text-rose-800'
+                            : 'bg-rose-50 border-rose-300 text-rose-900'
                         }`}
                       >
                         <div className="flex items-center gap-2">
@@ -1145,20 +1168,27 @@ export default function PontoProPage() {
                             <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                           )}
                           <div>
-                            <div>
-                              {dentro ? 'Dentro da cerca digital' : 'Fora da cerca digital'}
+                            <div className="font-bold">
+                              {dentro
+                                ? 'Dentro da cerca digital'
+                                : 'Fora da cerca do posto (Bloqueado)'}
                             </div>
-                            <div className="text-[11px] opacity-80">
-                              Distância: {dist}m do posto (Raio tolerado: {raio}m) &bull; Precisão
-                              GPS: ±{Math.round(userCoords.accuracy || 20)}m
+                            <div className="text-[11px] opacity-90 mt-0.5">
+                              {dentro
+                                ? `Distância: ${dist}m do local (Raio permitido: ${raioGeocercaM}m) • Precisão GPS: ±${Math.round(userCoords.accuracy || 20)}m`
+                                : `Você está fora da cerca do posto (${dist} m do local). Aproxime-se para registrar o ponto. (Raio permitido: ${raioGeocercaM} m)`}
                             </div>
                           </div>
                         </div>
                         <Badge
                           variant="outline"
-                          className={dentro ? 'border-emerald-300' : 'border-rose-300'}
+                          className={
+                            dentro
+                              ? 'border-emerald-300 text-emerald-800'
+                              : 'border-rose-400 bg-rose-100 text-rose-900 font-bold'
+                          }
                         >
-                          {dentro ? 'Permitido' : 'Alerta'}
+                          {dentro ? 'Permitido' : 'Bloqueado'}
                         </Badge>
                       </div>
                     )
@@ -1183,6 +1213,11 @@ export default function PontoProPage() {
                 </span>
               </div>
               {(() => {
+                const { toleranciaEntradaMinutos, toleranciaSaidaMinutos } = getToleranciasPosto(
+                  selectedEscala?.expand?.posto,
+                )
+                const tolAtual =
+                  tipoRegistro === 'chegada' ? toleranciaEntradaMinutos : toleranciaSaidaMinutos
                 const horaRef =
                   tipoRegistro === 'chegada'
                     ? selectedEscala?.turno_inicio || ''
@@ -1192,25 +1227,44 @@ export default function PontoProPage() {
                   selectedEscala?.data || '',
                   horaRef,
                   new Date(),
-                  30,
+                  tolAtual,
                 )
                 return (
                   <div
-                    className={`p-2 rounded border mt-1.5 flex items-center gap-2 ${
+                    className={`p-2 rounded border mt-1.5 flex items-center justify-between text-xs ${
                       v.dentroHorario
                         ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                        : 'bg-amber-50 border-amber-200 text-amber-800'
+                        : 'bg-amber-50 border-amber-300 text-amber-900'
                     }`}
                   >
-                    {v.dentroHorario ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    ) : (
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                    )}
-                    <span>
-                      {v.mensagem} &bull; Horário capturado agora:{' '}
-                      {new Date().toLocaleTimeString('pt-BR')}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {v.dentroHorario ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      )}
+                      <div>
+                        <div className="font-semibold">
+                          {v.dentroHorario
+                            ? 'Dentro da tolerância'
+                            : 'Fora da janela de tolerância (registrado com marcação para revisão)'}
+                        </div>
+                        <div className="text-[11px] opacity-85">
+                          {v.mensagem} &bull; Tolerância: ±{tolAtual} min &bull; Hora do batimento:{' '}
+                          {new Date().toLocaleTimeString('pt-BR')}
+                        </div>
+                      </div>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={
+                        v.dentroHorario
+                          ? 'border-emerald-300 text-emerald-800'
+                          : 'border-amber-400 bg-amber-100 text-amber-900 font-semibold'
+                      }
+                    >
+                      {v.dentroHorario ? 'No horário' : 'Fora da janela'}
+                    </Badge>
                   </div>
                 )
               })()}
@@ -1320,17 +1374,44 @@ export default function PontoProPage() {
             >
               Cancelar
             </Button>
-            <Button
-              onClick={handleSalvarPonto}
-              disabled={isSaving || (tipoRegistro === 'chegada' && !fotoFile)}
-              className="bg-teal-700 hover:bg-teal-800 text-white font-medium"
-            >
-              {isSaving
-                ? 'Gravando Ponto...'
-                : isOnline
-                  ? `Confirmar Ponto de ${tipoRegistro === 'chegada' ? 'Chegada' : 'Saída'}`
-                  : `Salvar Ponto Offline (${tipoRegistro === 'chegada' ? 'Chegada' : 'Saída'})`}
-            </Button>
+            {(() => {
+              const postoCoords = getCoordenadasPosto(selectedEscala?.expand?.posto)
+              const { raioGeocercaM } = getToleranciasPosto(selectedEscala?.expand?.posto)
+              const latAtual = userCoords?.lat ?? postoCoords.lat
+              const lngAtual = userCoords?.lng ?? postoCoords.lng
+              const dist = calcularDistanciaMetros(
+                latAtual,
+                lngAtual,
+                postoCoords.lat,
+                postoCoords.lng,
+              )
+              const foraDaCerca = dist > raioGeocercaM
+
+              return (
+                <Button
+                  onClick={handleSalvarPonto}
+                  disabled={isSaving || (tipoRegistro === 'chegada' && !fotoFile) || foraDaCerca}
+                  className={
+                    foraDaCerca
+                      ? 'bg-slate-400 cursor-not-allowed text-white'
+                      : 'bg-teal-700 hover:bg-teal-800 text-white font-medium'
+                  }
+                  title={
+                    foraDaCerca
+                      ? `Você está fora da cerca do posto (${dist} m do local). Aproxime-se para registrar o ponto.`
+                      : undefined
+                  }
+                >
+                  {isSaving
+                    ? 'Gravando Ponto...'
+                    : foraDaCerca
+                      ? 'Fora da Cerca (Bloqueado)'
+                      : isOnline
+                        ? `Confirmar Ponto de ${tipoRegistro === 'chegada' ? 'Chegada' : 'Saída'}`
+                        : `Salvar Ponto Offline (${tipoRegistro === 'chegada' ? 'Chegada' : 'Saída'})`}
+                </Button>
+              )
+            })()}
           </DialogFooter>
         </DialogContent>
       </Dialog>

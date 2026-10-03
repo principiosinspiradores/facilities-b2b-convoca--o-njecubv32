@@ -19,6 +19,9 @@ export interface PontoPendenteItem {
   gps_precisao_m?: number
   dentro_raio?: boolean
   distancia_metros?: number
+  raio_posto_m?: number
+  tolerancia_aplicada_minutos?: number
+  fora_janela?: boolean
   fotoDataUrl?: string | null // Data URL persistente da foto capturada
   fotoName?: string
   fotoType?: string
@@ -336,6 +339,11 @@ export async function sincronizarPontosPendentes(proId?: string): Promise<SyncRe
         if (item.dentro_raio !== undefined) formData.append('dentro_raio', String(item.dentro_raio))
         if (item.distancia_metros !== undefined)
           formData.append('distancia_metros', String(item.distancia_metros))
+        if (item.raio_posto_m !== undefined)
+          formData.append('raio_posto_m', String(item.raio_posto_m))
+        if (item.tolerancia_aplicada_minutos !== undefined)
+          formData.append('tolerancia_aplicada_minutos', String(item.tolerancia_aplicada_minutos))
+        if (item.fora_janela !== undefined) formData.append('fora_janela', String(item.fora_janela))
 
         formData.append('status_validacao', item.status_validacao || 'valido')
         formData.append('ocorrencia', ocorrenciasList.join(' | '))

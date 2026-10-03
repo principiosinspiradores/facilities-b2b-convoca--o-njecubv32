@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T20:09:58.891Z",
+  "generatedAt": "2026-10-03T20:20:25.249Z",
   "collections": [
     {
       "name": "users",
@@ -205,6 +205,18 @@
           "name": "funcao",
           "type": "text",
           "required": true,
+          "system": false
+        },
+        {
+          "name": "tolerancia_entrada_minutos",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tolerancia_saida_minutos",
+          "type": "number",
+          "required": false,
           "system": false
         }
       ],
@@ -1079,6 +1091,24 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "fora_janela",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "raio_posto_m",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tolerancia_aplicada_minutos",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -1086,7 +1116,8 @@
         "CREATE INDEX idx_pontos_pro ON pontos (pro)",
         "CREATE INDEX idx_pontos_timestamp ON pontos (timestamp_real)",
         "CREATE INDEX `idx_pontos_client_uuid` ON `pontos` (client_uuid)",
-        "CREATE INDEX `idx_pontos_offline` ON `pontos` (batido_offline)"
+        "CREATE INDEX `idx_pontos_offline` ON `pontos` (batido_offline)",
+        "CREATE INDEX `idx_pontos_fora_janela` ON `pontos` (fora_janela)"
       ]
     },
     {

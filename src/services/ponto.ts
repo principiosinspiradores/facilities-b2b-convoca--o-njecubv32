@@ -65,15 +65,35 @@ export function getCoordenadasPosto(posto?: PostoRecord): { lat: number; lng: nu
 }
 
 /**
+ * Obtém as tolerâncias de entrada e saída configuradas para o posto (padrão 10 min)
+ */
+export function getToleranciasPosto(posto?: PostoRecord): {
+  toleranciaEntradaMinutos: number
+  toleranciaSaidaMinutos: number
+  raioGeocercaM: number
+} {
+  const raio = Number(posto?.raio_geocerca_m) || 100
+  const entrada = Number(posto?.tolerancia_entrada_minutos) || 10
+  // Se tolerancia_saida_minutos for omitido ou não definido, utiliza a de entrada ou 10
+  const saida = Number(posto?.tolerancia_saida_minutos) || entrada || 10
+
+  return {
+    raioGeocercaM: Math.max(20, Math.min(1000, raio)),
+    toleranciaEntradaMinutos: Math.max(1, entrada),
+    toleranciaSaidaMinutos: Math.max(1, saida),
+  }
+}
+
+/**
  * Compara se o horário real está muito distante do horário programado do turno
- * Tolerância padrão de 30 minutos
+ * Baseado na tolerância do posto (padrão sugerido: 10 minutos)
  */
 export function verificarHorarioTurno(
   tipo: 'chegada' | 'saida',
   dataTurnoIso: string,
   turnoHora: string, // ex: "07:00"
   timestampReal: Date = new Date(),
-  toleranciaMinutos: number = 30,
+  toleranciaMinutos: number = 10,
 ): { dentroHorario: boolean; diferencaMinutos: number; mensagem: string } {
   try {
     const dataOnly = dataTurnoIso.slice(0, 10)

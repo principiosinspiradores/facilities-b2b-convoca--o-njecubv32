@@ -72,7 +72,10 @@ export default function PostosPage() {
   const [proFixoId, setProFixoId] = useState<string>('nenhum')
   const [tipoRemuneracaoFixa, setTipoRemuneracaoFixa] = useState<TipoRemuneracaoFixa>('mensal')
   const [valorRemuneracaoFixa, setValorRemuneracaoFixa] = useState<number>(2200)
-  const [raioGeocercaM, setRaioGeocercaM] = useState<number>(150)
+  const [raioGeocercaM, setRaioGeocercaM] = useState<number>(100)
+  const [toleranciaEntradaMinutos, setToleranciaEntradaMinutos] = useState<number>(10)
+  const [toleranciaSaidaMinutos, setToleranciaSaidaMinutos] = useState<number>(10)
+  const [usarToleranciaSaidaSeparada, setUsarToleranciaSaidaSeparada] = useState(false)
   const [buscaPro, setBuscaPro] = useState('')
 
   // Endereço
@@ -135,7 +138,10 @@ export default function PostosPage() {
     setProFixoId('nenhum')
     setTipoRemuneracaoFixa('mensal')
     setValorRemuneracaoFixa(2200)
-    setRaioGeocercaM(150)
+    setRaioGeocercaM(100)
+    setToleranciaEntradaMinutos(10)
+    setToleranciaSaidaMinutos(10)
+    setUsarToleranciaSaidaSeparada(false)
     setBuscaPro('')
     setLogradouro('')
     setNumero('')
@@ -168,7 +174,17 @@ export default function PostosPage() {
           ? 25
           : 2200,
     )
-    setRaioGeocercaM(posto.raio_geocerca_m || 150)
+    setRaioGeocercaM(posto.raio_geocerca_m || 100)
+    const entTol =
+      posto.tolerancia_entrada_minutos !== undefined ? posto.tolerancia_entrada_minutos : 10
+    const saiTol =
+      posto.tolerancia_saida_minutos !== undefined ? posto.tolerancia_saida_minutos : entTol
+    setToleranciaEntradaMinutos(entTol)
+    setToleranciaSaidaMinutos(saiTol)
+    setUsarToleranciaSaidaSeparada(
+      posto.tolerancia_saida_minutos !== undefined &&
+        posto.tolerancia_saida_minutos !== posto.tolerancia_entrada_minutos,
+    )
     setBuscaPro('')
 
     const end = (posto.endereco as any) || {}
@@ -260,7 +276,24 @@ export default function PostosPage() {
         pro_fixo: hasProFixo ? proFixoId : null,
         tipo_remuneracao_fixa: hasProFixo ? tipoRemuneracaoFixa : null,
         valor_remuneracao_fixa: hasProFixo ? Number(valorRemuneracaoFixa) : null,
-        raio_geocerca_m: Number(raioGeocercaM) || 150,
+        raio_geocerca_m: raioGeocercaM ? Math.max(20, Math.min(1000, Number(raioGeocercaM))) : 100,
+        tolerancia_entrada_minutos:
+          toleranciaEntradaMinutos !== undefined &&
+          toleranciaEntradaMinutos !== null &&
+          !isNaN(Number(toleranciaEntradaMinutos)) &&
+          Number(toleranciaEntradaMinutos) > 0
+            ? Number(toleranciaEntradaMinutos)
+            : 10,
+        tolerancia_saida_minutos:
+          usarToleranciaSaidaSeparada &&
+          toleranciaSaidaMinutos !== undefined &&
+          toleranciaSaidaMinutos !== null &&
+          !isNaN(Number(toleranciaSaidaMinutos)) &&
+          Number(toleranciaSaidaMinutos) > 0
+            ? Number(toleranciaSaidaMinutos)
+            : toleranciaEntradaMinutos !== undefined && Number(toleranciaEntradaMinutos) > 0
+              ? Number(toleranciaEntradaMinutos)
+              : 10,
         endereco: {
           logradouro: logradouro.trim(),
           numero: numero.trim(),
@@ -367,7 +400,8 @@ export default function PostosPage() {
                   <div className="flex items-center gap-2 text-slate-600 text-xs">
                     <Navigation className="w-4 h-4 text-teal-600 shrink-0" />
                     <span>
-                      Cerca Digital: <strong>{p.raio_geocerca_m || 150}m de raio</strong>
+                      Cerca Digital: <strong>{p.raio_geocerca_m || 100}m de raio</strong> &bull;
+                      Tol.: <strong>{p.tolerancia_entrada_minutos || 10}min</strong>
                     </span>
                   </div>
                   <div className="flex items-start gap-2 text-slate-500 text-xs">
@@ -659,14 +693,97 @@ export default function PostosPage() {
                     type="number"
                     value={raioGeocercaM}
                     onChange={(e) => setRaioGeocercaM(Number(e.target.value))}
-                    min={10}
-                    max={5000}
-                    placeholder="150"
+                    min={20}
+                    max={1000}
+                    placeholder="100"
                     required
                   />
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Distância máxima tolerada para validação de presença no ponto (padrão: 150m).
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Calibração do raio de presença do dispositivo (padrão 100m; aceita 20 a 1000m).
+                    Postos compactos (portaria única) usam raios menores (ex: 30-50m); condomínios
+                    ou galpões grandes usam raios maiores (ex: 200-500m).
                   </p>
+                </div>
+              </div>
+
+              {/* Calibração de Tolerância de Horário */}
+              <div className="bg-teal-50/50 p-3.5 rounded-lg border border-teal-200/80 space-y-3">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-teal-900 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-teal-700" />
+                    Tolerância de Horário de Batida (Minutos)
+                  </h4>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    Define a janela permitida em relação ao início e fim do turno. Se o profissional
+                    bater antes ou depois da tolerância, o ponto é registrado normalmente com
+                    marcação <strong>"fora da janela"</strong> para auditoria na conferência.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Tolerância de Chegada / Entrada (minutos) *
+                    </label>
+                    <Input
+                      type="number"
+                      value={toleranciaEntradaMinutos}
+                      onChange={(e) => setToleranciaEntradaMinutos(Number(e.target.value))}
+                      min={1}
+                      max={120}
+                      placeholder="10"
+                      className="bg-white"
+                      required
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Padrão sugerido: 10 min. Ex.: pro pode registrar a chegada até 10 minutos
+                      antes ou depois do início programado.
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-semibold text-slate-700 block">
+                        Tolerância de Saída (minutos)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const novo = !usarToleranciaSaidaSeparada
+                          setUsarToleranciaSaidaSeparada(novo)
+                          if (!novo) setToleranciaSaidaMinutos(toleranciaEntradaMinutos)
+                        }}
+                        className="text-[10px] text-teal-700 hover:underline font-medium"
+                      >
+                        {usarToleranciaSaidaSeparada
+                          ? 'Usar mesma da entrada'
+                          : 'Tolerância separada?'}
+                      </button>
+                    </div>
+
+                    {usarToleranciaSaidaSeparada ? (
+                      <div>
+                        <Input
+                          type="number"
+                          value={toleranciaSaidaMinutos}
+                          onChange={(e) => setToleranciaSaidaMinutos(Number(e.target.value))}
+                          min={1}
+                          max={120}
+                          placeholder="10"
+                          className="bg-white"
+                          required
+                        />
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          Janela personalizada de encerramento do posto (ex: passagem de bastão).
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="p-2 bg-white rounded border border-slate-200 text-xs text-slate-500">
+                        Mesma tolerância da chegada (
+                        <strong>{toleranciaEntradaMinutos || 10} min</strong>).
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="pt-2 border-t border-slate-100">

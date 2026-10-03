@@ -81,6 +81,8 @@ export interface PostoRecord {
   tipo_remuneracao_fixa?: TipoRemuneracaoFixa
   valor_remuneracao_fixa?: number
   raio_geocerca_m?: number
+  tolerancia_entrada_minutos?: number
+  tolerancia_saida_minutos?: number
   latitude?: number
   longitude?: number
   created: string
@@ -103,6 +105,9 @@ export interface PontoRecord {
   longitude?: number
   dentro_raio?: boolean
   distancia_metros?: number
+  raio_posto_m?: number
+  tolerancia_aplicada_minutos?: number
+  fora_janela?: boolean
   foto?: string
   ocorrencia?: string
   status_validacao?: PontoValidacaoStatus

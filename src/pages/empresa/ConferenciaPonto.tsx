@@ -43,7 +43,7 @@ export default function ConferenciaPontoPage() {
   const [filtroPosto, setFiltroPosto] = useState<string>('todos')
   const [filtroPro, setFiltroPro] = useState<string>('todos')
   const [filtroStatus, setFiltroStatus] = useState<string>('todos')
-  const [filtroOrigem, setFiltroOrigem] = useState<string>('todos') // todos | offline | sincronizado_atraso | suspeito
+  const [filtroOrigem, setFiltroOrigem] = useState<string>('todos') // todos | offline | sincronizado_atraso | suspeito | fora_cerca | fora_janela
   const [filtroDataInicio, setFiltroDataInicio] = useState<string>('')
   const [filtroDataFim, setFiltroDataFim] = useState<string>('')
 
@@ -101,7 +101,7 @@ export default function ConferenciaPontoPage() {
         if (status !== filtroStatus) return false
       }
 
-      // Filtro por origem/sincronização offline
+      // Filtro por origem/sincronização offline e indicadores de cerca/janela
       if (filtroOrigem === 'offline' && !p.batido_offline) return false
       if (
         filtroOrigem === 'sincronizado_atraso' &&
@@ -109,6 +109,20 @@ export default function ConferenciaPontoPage() {
       )
         return false
       if (filtroOrigem === 'suspeito' && !p.horario_suspeito) return false
+      if (filtroOrigem === 'fora_cerca') {
+        const fora =
+          p.dentro_raio === false ||
+          (p.ocorrencia && p.ocorrencia.toLowerCase().includes('fora da cerca'))
+        if (!fora) return false
+      }
+      if (filtroOrigem === 'fora_janela') {
+        const fora =
+          p.fora_janela === true ||
+          (p.ocorrencia &&
+            (p.ocorrencia.toLowerCase().includes('fora da janela') ||
+              p.ocorrencia.toLowerCase().includes('horário divergente')))
+        if (!fora) return false
+      }
 
       if (filtroDataInicio) {
         const dataPonto = p.timestamp_real.slice(0, 10)
@@ -170,7 +184,10 @@ export default function ConferenciaPontoPage() {
       'Carga Horaria (h)',
       'Dentro do Raio Geocerca',
       'Distancia Calculada (m)',
+      'Raio Posto Calibrado (m)',
       'Precisao GPS (m)',
+      'Fora da Janela Tolerancia',
+      'Tolerancia Aplicada (minutos)',
       'Origem Offline',
       'Data/Hora Sincronizacao',
       'Atraso Sincronizacao (minutos)',
@@ -190,6 +207,11 @@ export default function ConferenciaPontoPage() {
       const horaSync = p.sincronizado_em
         ? new Date(p.sincronizado_em).toLocaleString('pt-BR')
         : 'Tempo real'
+      const raioPosto = p.raio_posto_m || posto?.raio_geocerca_m || 100
+      const foraJanelaStr =
+        p.fora_janela || (p.ocorrencia && p.ocorrencia.toLowerCase().includes('fora da janela'))
+          ? 'SIM (Fora Janela)'
+          : 'NÃO (No Horário)'
 
       return [
         p.id,
@@ -200,9 +222,12 @@ export default function ConferenciaPontoPage() {
         pro?.email || '',
         `"${posto?.nome || ''}"`,
         posto?.carga_horaria || 8,
-        p.dentro_raio ? 'SIM' : 'NÃO',
+        p.dentro_raio ? 'SIM (No Raio)' : 'NÃO (Fora da Cerca)',
         p.distancia_metros ?? 0,
+        raioPosto,
         p.gps_precisao_m ?? '',
+        foraJanelaStr,
+        p.tolerancia_aplicada_minutos ?? posto?.tolerancia_entrada_minutos ?? 10,
         p.batido_offline ? 'SIM (Offline)' : 'NÃO (Online)',
         horaSync,
         p.atraso_sincronizacao_minutos ?? 0,
@@ -239,6 +264,26 @@ export default function ConferenciaPontoPage() {
     [pontos],
   )
   const qtdSuspeitos = useMemo(() => pontos.filter((p) => p.horario_suspeito).length, [pontos])
+  const qtdForaCerca = useMemo(
+    () =>
+      pontos.filter(
+        (p) =>
+          p.dentro_raio === false ||
+          (p.ocorrencia && p.ocorrencia.toLowerCase().includes('fora da cerca')),
+      ).length,
+    [pontos],
+  )
+  const qtdForaJanela = useMemo(
+    () =>
+      pontos.filter(
+        (p) =>
+          p.fora_janela === true ||
+          (p.ocorrencia &&
+            (p.ocorrencia.toLowerCase().includes('fora da janela') ||
+              p.ocorrencia.toLowerCase().includes('horário divergente'))),
+      ).length,
+    [pontos],
+  )
 
   return (
     <div className="space-y-6">
@@ -269,26 +314,64 @@ export default function ConferenciaPontoPage() {
         </div>
       </div>
 
-      {/* Cartões Rápidos de Integridade e Batimentos Offline */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Cartões Rápidos de Integridade, Cerca e Janela de Tolerância */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Card
           className={`border transition-all cursor-pointer ${
             filtroOrigem === 'offline' ? 'ring-2 ring-teal-600 bg-teal-50/40' : 'bg-white'
           }`}
           onClick={() => setFiltroOrigem(filtroOrigem === 'offline' ? 'todos' : 'offline')}
         >
-          <CardContent className="p-4 flex items-center justify-between">
+          <CardContent className="p-3.5 flex items-center justify-between">
             <div>
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
                 Batidos Offline
               </span>
-              <span className="text-2xl font-bold text-slate-800">{qtdOffline}</span>
-              <span className="text-[11px] text-slate-500 block mt-0.5">
-                Salvos no celular e sincronizados
-              </span>
+              <span className="text-xl font-bold text-slate-800">{qtdOffline}</span>
+              <span className="text-[10px] text-slate-500 block">Sincronizados</span>
             </div>
-            <div className="w-10 h-10 rounded-full bg-teal-100 text-teal-800 flex items-center justify-center">
-              <WifiOff className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-800 flex items-center justify-center">
+              <WifiOff className="w-4 h-4" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          className={`border transition-all cursor-pointer ${
+            filtroOrigem === 'fora_cerca' ? 'ring-2 ring-rose-500 bg-rose-50/40' : 'bg-white'
+          }`}
+          onClick={() => setFiltroOrigem(filtroOrigem === 'fora_cerca' ? 'todos' : 'fora_cerca')}
+        >
+          <CardContent className="p-3.5 flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-semibold text-rose-700 uppercase tracking-wider block">
+                Fora da Cerca
+              </span>
+              <span className="text-xl font-bold text-rose-800">{qtdForaCerca}</span>
+              <span className="text-[10px] text-rose-600 block">&gt; raio calibrado</span>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-800 flex items-center justify-center">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          className={`border transition-all cursor-pointer ${
+            filtroOrigem === 'fora_janela' ? 'ring-2 ring-amber-500 bg-amber-50/40' : 'bg-white'
+          }`}
+          onClick={() => setFiltroOrigem(filtroOrigem === 'fora_janela' ? 'todos' : 'fora_janela')}
+        >
+          <CardContent className="p-3.5 flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-semibold text-amber-800 uppercase tracking-wider block">
+                Fora da Janela
+              </span>
+              <span className="text-xl font-bold text-amber-900">{qtdForaJanela}</span>
+              <span className="text-[10px] text-amber-700 block">&gt; tolerância turno</span>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-900 flex items-center justify-center">
+              <Clock className="w-4 h-4" />
             </div>
           </CardContent>
         </Card>
@@ -305,18 +388,16 @@ export default function ConferenciaPontoPage() {
             )
           }
         >
-          <CardContent className="p-4 flex items-center justify-between">
+          <CardContent className="p-3.5 flex items-center justify-between">
             <div>
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                Sincronizados c/ Atraso
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                Sinc. c/ Atraso
               </span>
-              <span className="text-2xl font-bold text-amber-800">{qtdAtraso}</span>
-              <span className="text-[11px] text-amber-700 block mt-0.5">
-                Hora oficial preservada (&gt;15 min)
-              </span>
+              <span className="text-xl font-bold text-amber-800">{qtdAtraso}</span>
+              <span className="text-[10px] text-amber-700 block">&gt;15 min delay</span>
             </div>
-            <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center">
-              <Clock className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center">
+              <RefreshCw className="w-4 h-4" />
             </div>
           </CardContent>
         </Card>
@@ -327,18 +408,16 @@ export default function ConferenciaPontoPage() {
           }`}
           onClick={() => setFiltroOrigem(filtroOrigem === 'suspeito' ? 'todos' : 'suspeito')}
         >
-          <CardContent className="p-4 flex items-center justify-between">
+          <CardContent className="p-3.5 flex items-center justify-between">
             <div>
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                Alerta de Horário Suspeito
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                Horário Suspeito
               </span>
-              <span className="text-2xl font-bold text-rose-700">{qtdSuspeitos}</span>
-              <span className="text-[11px] text-rose-600 block mt-0.5">
-                Auditoria antifraude para revisão
-              </span>
+              <span className="text-xl font-bold text-rose-700">{qtdSuspeitos}</span>
+              <span className="text-[10px] text-rose-600 block">Antifraude</span>
             </div>
-            <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-800 flex items-center justify-center">
-              <ShieldAlert className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-800 flex items-center justify-center">
+              <ShieldAlert className="w-4 h-4" />
             </div>
           </CardContent>
         </Card>
@@ -417,10 +496,12 @@ export default function ConferenciaPontoPage() {
                   <SelectValue placeholder="Todas as origens" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todos">Todas as origens</SelectItem>
+                  <SelectItem value="todos">Todas as origens e indicadores</SelectItem>
+                  <SelectItem value="fora_cerca">Fora da Cerca Digital</SelectItem>
+                  <SelectItem value="fora_janela">Fora da Janela de Tolerância</SelectItem>
                   <SelectItem value="offline">Batidos Offline</SelectItem>
                   <SelectItem value="sincronizado_atraso">Sincronizados c/ Atraso</SelectItem>
-                  <SelectItem value="suspeito">Horário Suspeito</SelectItem>
+                  <SelectItem value="suspeito">Horário Suspeito Antifraude</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -591,21 +672,21 @@ export default function ConferenciaPontoPage() {
                         )}
                       </td>
 
-                      {/* Cerca Digital */}
+                      {/* Cerca Digital & Distância */}
                       <td className="p-3">
                         {p.dentro_raio ? (
                           <div className="text-emerald-700 font-semibold flex items-center gap-1">
                             <CheckCircle2 className="w-3.5 h-3.5" />
-                            No Raio ({p.distancia_metros ?? 0}m)
+                            Dentro ({p.distancia_metros ?? 0}m)
                           </div>
                         ) : (
                           <div className="text-rose-600 font-semibold flex items-center gap-1">
                             <AlertTriangle className="w-3.5 h-3.5" />
-                            Fora ({p.distancia_metros ?? 0}m)
+                            Fora da cerca ({p.distancia_metros ?? 0}m)
                           </div>
                         )}
-                        <span className="text-[10px] text-slate-400 block">
-                          Tolerância: {posto?.raio_geocerca_m || 150}m
+                        <span className="text-[10px] text-slate-500 block">
+                          Raio do posto: {p.raio_posto_m || posto?.raio_geocerca_m || 100}m
                           {p.gps_precisao_m ? ` &bull; GPS: ±${p.gps_precisao_m}m` : ''}
                         </span>
                       </td>
@@ -625,27 +706,37 @@ export default function ConferenciaPontoPage() {
                         )}
                       </td>
 
-                      {/* Ocorrência / Integridade */}
+                      {/* Ocorrência / Integridade / Janela */}
                       <td className="p-3 max-w-[220px]">
-                        {p.horario_suspeito ? (
-                          <div className="mb-1">
+                        <div className="space-y-1">
+                          {p.fora_janela ||
+                          (p.ocorrencia &&
+                            (p.ocorrencia.toLowerCase().includes('fora da janela') ||
+                              p.ocorrencia.toLowerCase().includes('horário divergente'))) ? (
+                            <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] flex items-center gap-1 w-fit">
+                              <Clock className="w-3 h-3 text-amber-700" />
+                              Fora da Janela (Revisão)
+                            </Badge>
+                          ) : null}
+
+                          {p.horario_suspeito ? (
                             <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] flex items-center gap-1 w-fit">
                               <ShieldAlert className="w-3 h-3 text-rose-700" />
                               Horário Suspeito Antifraude
                             </Badge>
-                          </div>
-                        ) : null}
+                          ) : null}
 
-                        {p.ocorrencia ? (
-                          <span
-                            className="text-amber-900 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[11px] block truncate"
-                            title={p.ocorrencia}
-                          >
-                            {p.ocorrencia}
-                          </span>
-                        ) : (
-                          <span className="text-emerald-700 font-medium">Regular</span>
-                        )}
+                          {p.ocorrencia ? (
+                            <span
+                              className="text-amber-900 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[11px] block truncate"
+                              title={p.ocorrencia}
+                            >
+                              {p.ocorrencia}
+                            </span>
+                          ) : (
+                            <span className="text-emerald-700 font-medium block">Regular</span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Validação */}
@@ -783,7 +874,7 @@ export default function ConferenciaPontoPage() {
                 </div>
               )}
 
-              {/* Análise de Cerca Digital e Horário */}
+              {/* Análise de Cerca Digital e Janela de Tolerância */}
               <div className="grid grid-cols-2 gap-2">
                 <div
                   className={`p-3 rounded-lg border ${
@@ -798,23 +889,47 @@ export default function ConferenciaPontoPage() {
                     ) : (
                       <AlertTriangle className="w-4 h-4 text-rose-600" />
                     )}
-                    Cerca Digital
+                    Cerca Digital do Posto
                   </div>
                   <div className="mt-1">
-                    {modalPonto.dentro_raio ? 'Dentro do raio' : 'Fora do raio'} (
-                    {modalPonto.distancia_metros ?? 0}m de distância)
+                    {modalPonto.dentro_raio ? 'Dentro do raio permitido' : 'Fora da cerca digital'}{' '}
+                    ({modalPonto.distancia_metros ?? 0}m de distância)
                   </div>
-                  {modalPonto.gps_precisao_m && (
-                    <div className="text-[11px] opacity-75 mt-0.5">
-                      Precisão GPS: ±{modalPonto.gps_precisao_m}m
-                    </div>
-                  )}
+                  <div className="text-[11px] opacity-80 mt-0.5">
+                    Raio calibrado no posto:{' '}
+                    {modalPonto.raio_posto_m ||
+                      modalPonto.expand?.escala?.expand?.posto?.raio_geocerca_m ||
+                      100}
+                    m{modalPonto.gps_precisao_m ? ` • GPS: ±${modalPonto.gps_precisao_m}m` : ''}
+                  </div>
                 </div>
 
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-                  <div className="font-bold text-slate-800">Status Validação Atual</div>
-                  <div className="mt-1 font-semibold capitalize text-teal-800">
-                    {modalPonto.status_validacao || 'valido'}
+                <div
+                  className={`p-3 rounded-lg border ${
+                    modalPonto.fora_janela ||
+                    (modalPonto.ocorrencia &&
+                      modalPonto.ocorrencia.toLowerCase().includes('fora da janela'))
+                      ? 'bg-amber-50 border-amber-300 text-amber-900'
+                      : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  }`}
+                >
+                  <div className="font-bold flex items-center gap-1">
+                    <Clock className="w-4 h-4 text-teal-700" />
+                    Janela de Horário
+                  </div>
+                  <div className="mt-1 font-semibold">
+                    {modalPonto.fora_janela ||
+                    (modalPonto.ocorrencia &&
+                      modalPonto.ocorrencia.toLowerCase().includes('fora da janela'))
+                      ? 'Fora da janela de tolerância'
+                      : 'Dentro da tolerância do turno'}
+                  </div>
+                  <div className="text-[11px] opacity-80 mt-0.5">
+                    Tolerância do posto:{' '}
+                    {modalPonto.tolerancia_aplicada_minutos ||
+                      modalPonto.expand?.escala?.expand?.posto?.tolerancia_entrada_minutos ||
+                      10}{' '}
+                    min
                   </div>
                 </div>
               </div>
