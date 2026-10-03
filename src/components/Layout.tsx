@@ -59,7 +59,6 @@ export default function Layout() {
       { to: '/escalas', label: 'Escalas & Convocações', icon: Calendar },
       { to: '/cobertura', label: 'Painel de Cobertura', icon: Activity },
       { to: '/conferencia-ponto', label: 'Espelho de Pontos', icon: Clock },
-      { to: '/relatorio-custos', label: 'Custo por Posto', icon: DollarSign },
     )
   } else if (role === 'admin') {
     navItems.push(

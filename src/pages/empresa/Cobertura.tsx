@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { EscalaRecord, ConvocacaoRecord } from '@/types/facilities'
-import { formatDateBR, formatCurrencyBRL } from '@/lib/formatters'
+import { formatDateBR } from '@/lib/formatters'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -271,8 +271,8 @@ export default function CoberturaPage() {
                               <span className="text-[11px] text-teal-700 font-normal lowercase">
                                 • fixa: <strong>{proFixoData?.name || 'Designada'}</strong> (
                                 {posto?.tipo_remuneracao_fixa === 'por_hora'
-                                  ? `${formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}/h`
-                                  : `${formatCurrencyBRL(posto?.valor_remuneracao_fixa || 0)}/mês`}
+                                  ? 'por hora'
+                                  : 'mensal'}{' '}
                                 )
                               </span>
                             )}

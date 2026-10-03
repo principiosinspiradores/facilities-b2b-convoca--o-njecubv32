@@ -148,13 +148,13 @@ export default function GateProsPage() {
       const payload: Record<string, any> = {
         status,
         periodo_teste_dias: Number(periodoTesteDias),
-        ajuda_custo: Number(ajudaCusto),
         documentos,
       }
       if (status !== 'bloqueado') {
         payload.bloqueado_ate = null
       }
       if (role === 'admin') {
+        payload.ajuda_custo = Number(ajudaCusto)
         payload.valor_negociado = valorNegociado ? Number(valorNegociado) : null
       }
 
@@ -218,7 +218,7 @@ export default function GateProsPage() {
                     <th className="pb-3">Status Gate</th>
                     <th className="pb-3">Documentos</th>
                     <th className="pb-3">Período de Teste</th>
-                    <th className="pb-3">Precificação Especial</th>
+                    {role === 'admin' && <th className="pb-3">Precificação Especial</th>}
                     <th className="pb-3 text-right">Ação</th>
                   </tr>
                 </thead>
@@ -270,19 +270,21 @@ export default function GateProsPage() {
                         <td className="py-3.5 text-xs text-slate-600">
                           {isTeste ? `${p.periodo_teste_dias || 10} dias probatórios` : 'Concluído'}
                         </td>
-                        <td className="py-3.5 text-xs">
-                          {isTeste ? (
-                            <span className="font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded">
-                              Ajuda de Custo: {formatCurrencyBRL(p.ajuda_custo || 50)}
-                            </span>
-                          ) : p.valor_negociado ? (
-                            <span className="font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded">
-                              Negociado: {formatCurrencyBRL(p.valor_negociado)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">Tabela padrão do posto</span>
-                          )}
-                        </td>
+                        {role === 'admin' && (
+                          <td className="py-3.5 text-xs">
+                            {isTeste ? (
+                              <span className="font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded">
+                                Ajuda de Custo: {formatCurrencyBRL(p.ajuda_custo || 50)}
+                              </span>
+                            ) : p.valor_negociado ? (
+                              <span className="font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded">
+                                Negociado: {formatCurrencyBRL(p.valor_negociado)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">Tabela padrão do posto</span>
+                            )}
+                          </td>
+                        )}
                         <td className="py-3.5 text-right space-x-1">
                           {p.status === 'bloqueado' ? (
                             <Button
@@ -372,32 +374,34 @@ export default function GateProsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Ajuda de Custo Fixa (Teste) R$
-                  </label>
-                  <Input
-                    type="number"
-                    value={ajudaCusto}
-                    onChange={(e) => setAjudaCusto(Number(e.target.value))}
-                  />
-                </div>
+              {role === 'admin' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Ajuda de Custo Fixa (Teste) R$
+                    </label>
+                    <Input
+                      type="number"
+                      value={ajudaCusto}
+                      onChange={(e) => setAjudaCusto(Number(e.target.value))}
+                    />
+                  </div>
 
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Valor Negociado Diária (Opcional) R$
-                  </label>
-                  <Input
-                    type="number"
-                    value={valorNegociado || ''}
-                    onChange={(e) =>
-                      setValorNegociado(e.target.value ? Number(e.target.value) : undefined)
-                    }
-                    placeholder="Ex: 190.00"
-                  />
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Valor Negociado Diária (Opcional) R$
+                    </label>
+                    <Input
+                      type="number"
+                      value={valorNegociado || ''}
+                      onChange={(e) =>
+                        setValorNegociado(e.target.value ? Number(e.target.value) : undefined)
+                      }
+                      placeholder="Ex: 190.00"
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="pt-2 border-t border-slate-100">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">

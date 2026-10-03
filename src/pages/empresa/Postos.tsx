@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
+import { useAuth } from '@/contexts/AuthContext'
 import { PostoRecord, PostoFuncao, UserRecord, TipoRemuneracaoFixa } from '@/types/facilities'
 import { formatDateBR, formatCurrencyBRL } from '@/lib/formatters'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -39,6 +40,8 @@ import {
 } from 'lucide-react'
 
 export default function PostosPage() {
+  const { role } = useAuth()
+  const isAdmin = role === 'admin'
   const [postos, setPostos] = useState<PostoRecord[]>([])
   const [pros, setPros] = useState<UserRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -324,29 +327,38 @@ export default function PostosPage() {
                             p.expand?.pro_fixo?.email ||
                             'Profissional vinculada'}
                         </div>
-                        <div className="text-[11px] text-slate-600">
-                          {p.tipo_remuneracao_fixa === 'por_hora' ? (
-                            <span>
-                              Remuneração:{' '}
-                              <strong>
-                                {formatCurrencyBRL(p.valor_remuneracao_fixa || 0)}/hora
-                              </strong>{' '}
-                              (
-                              {formatCurrencyBRL(
-                                (p.valor_remuneracao_fixa || 0) * (p.carga_horaria || 8),
-                              )}
-                              /turno de {p.carga_horaria}h)
-                            </span>
-                          ) : (
-                            <span>
-                              Salário Mensal:{' '}
-                              <strong>
-                                {formatCurrencyBRL(p.valor_remuneracao_fixa || 0)}/mês
-                              </strong>{' '}
-                              (fora de diárias)
-                            </span>
-                          )}
-                        </div>
+                        {isAdmin ? (
+                          <div className="text-[11px] text-slate-600">
+                            {p.tipo_remuneracao_fixa === 'por_hora' ? (
+                              <span>
+                                Remuneração:{' '}
+                                <strong>
+                                  {formatCurrencyBRL(p.valor_remuneracao_fixa || 0)}/hora
+                                </strong>{' '}
+                                (
+                                {formatCurrencyBRL(
+                                  (p.valor_remuneracao_fixa || 0) * (p.carga_horaria || 8),
+                                )}
+                                /turno de {p.carga_horaria}h)
+                              </span>
+                            ) : (
+                              <span>
+                                Salário Mensal:{' '}
+                                <strong>
+                                  {formatCurrencyBRL(p.valor_remuneracao_fixa || 0)}/mês
+                                </strong>{' '}
+                                (fora de diárias)
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-slate-500">
+                            Contrato{' '}
+                            {p.tipo_remuneracao_fixa === 'por_hora'
+                              ? 'por hora apurada em ponto'
+                              : 'mensal fixo'}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-500">
@@ -622,10 +634,12 @@ export default function PostosPage() {
                 </div>
 
                 {proFixoId && proFixoId !== 'nenhum' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                  <div
+                    className={`grid grid-cols-1 ${isAdmin ? 'sm:grid-cols-2' : ''} gap-3 pt-2 border-t border-slate-200`}
+                  >
                     <div>
                       <label className="text-xs font-semibold text-slate-700 block mb-1">
-                        Tipo de Remuneração da Fixa *
+                        Tipo de Modelo da Fixa *
                       </label>
                       <Select
                         value={tipoRemuneracaoFixa}
@@ -643,35 +657,37 @@ export default function PostosPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="mensal">Mensal (Salário Contratado Fixo)</SelectItem>
-                          <SelectItem value="por_hora">Por Hora Trabalhada</SelectItem>
+                          <SelectItem value="mensal">Mensal (Contrato Fixo Mensalista)</SelectItem>
+                          <SelectItem value="por_hora">Por Hora Trabalhada (Ponto)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
-                    <div>
-                      <label className="text-xs font-semibold text-slate-700 block mb-1">
-                        {tipoRemuneracaoFixa === 'mensal'
-                          ? 'Valor Mensal Contratado (R$) *'
-                          : 'Valor da Hora (R$/h) *'}
-                      </label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={valorRemuneracaoFixa}
-                        onChange={(e) => setValorRemuneracaoFixa(Number(e.target.value))}
-                        className="bg-white text-xs"
-                        required={proFixoId !== 'nenhum'}
-                      />
-                      <p className="text-[10px] text-slate-500 mt-1">
-                        {tipoRemuneracaoFixa === 'mensal'
-                          ? 'Não gera cobrança de diária no escrow por escala.'
-                          : `Total por turno (${cargaHoraria}h): ${formatCurrencyBRL(
-                              Number(valorRemuneracaoFixa) * Number(cargaHoraria),
-                            )}`}
-                      </p>
-                    </div>
+                    {isAdmin && (
+                      <div>
+                        <label className="text-xs font-semibold text-slate-700 block mb-1">
+                          {tipoRemuneracaoFixa === 'mensal'
+                            ? 'Valor Mensal Contratado (R$) *'
+                            : 'Valor da Hora (R$/h) *'}
+                        </label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={valorRemuneracaoFixa}
+                          onChange={(e) => setValorRemuneracaoFixa(Number(e.target.value))}
+                          className="bg-white text-xs"
+                          required={proFixoId !== 'nenhum'}
+                        />
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          {tipoRemuneracaoFixa === 'mensal'
+                            ? 'Não gera cobrança de diária no escrow por escala.'
+                            : `Total por turno (${cargaHoraria}h): ${formatCurrencyBRL(
+                                Number(valorRemuneracaoFixa) * Number(cargaHoraria),
+                              )}`}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

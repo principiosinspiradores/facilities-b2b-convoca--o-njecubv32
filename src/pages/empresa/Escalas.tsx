@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import pb from '@/lib/pocketbase/client'
+import { useAuth } from '@/contexts/AuthContext'
 import { EscalaRecord, PostoRecord, UserRecord, ConvocacaoRecord } from '@/types/facilities'
 import { formatDateBR, formatCurrencyBRL } from '@/lib/formatters'
 import { estimarDiariaParaData } from '@/services/pricing'
@@ -39,6 +40,8 @@ import {
 } from 'lucide-react'
 
 export default function EscalasPage() {
+  const { role } = useAuth()
+  const isAdmin = role === 'admin'
   const [escalas, setEscalas] = useState<EscalaRecord[]>([])
   const [postos, setPostos] = useState<PostoRecord[]>([])
   const [pros, setPros] = useState<UserRecord[]>([])
@@ -556,11 +559,17 @@ export default function EscalasPage() {
                         {isPostoComFixa && (
                           <Badge className="bg-teal-700 text-white text-xs font-medium flex items-center gap-1">
                             <UserCheck className="w-3 h-3" />
-                            Posto c/ Profissional Fixa: {proFixoData?.name || 'Fixa vinculada'} (
-                            {posto?.tipo_remuneracao_fixa === 'por_hora'
-                              ? `Por Hora - ${formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}/h`
-                              : `Mensalista - ${formatCurrencyBRL(posto?.valor_remuneracao_fixa || 0)}/mês`}
-                            )
+                            Posto c/ Profissional Fixa: {proFixoData?.name || 'Fixa vinculada'}
+                            {isAdmin && (
+                              <span>
+                                {' '}
+                                (
+                                {posto?.tipo_remuneracao_fixa === 'por_hora'
+                                  ? `Por Hora - ${formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}/h`
+                                  : `Mensalista - ${formatCurrencyBRL(posto?.valor_remuneracao_fixa || 0)}/mês`}
+                                )
+                              </span>
+                            )}
                           </Badge>
                         )}
                       </div>
@@ -578,21 +587,24 @@ export default function EscalasPage() {
                           <Clock className="w-3.5 h-3.5 text-teal-600" />
                           {escala.turno_inicio} às {escala.turno_fim} ({posto?.carga_horaria || 8}h)
                         </span>
-                        <span>
-                          {posto?.tipo_remuneracao_fixa === 'mensal' && isPostoComFixa ? (
-                            <strong className="text-teal-700">
-                              Salário Mensal ({formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}
-                              /mês)
-                            </strong>
-                          ) : (
-                            <>
-                              Remuneração Turno:{' '}
-                              <strong className="text-slate-800">
-                                {formatCurrencyBRL(escala.valor_diaria)}
+                        {isAdmin && (
+                          <span>
+                            {posto?.tipo_remuneracao_fixa === 'mensal' && isPostoComFixa ? (
+                              <strong className="text-teal-700">
+                                Salário Mensal (
+                                {formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}
+                                /mês)
                               </strong>
-                            </>
-                          )}
-                        </span>
+                            ) : (
+                              <>
+                                Remuneração Turno:{' '}
+                                <strong className="text-slate-800">
+                                  {formatCurrencyBRL(escala.valor_diaria)}
+                                </strong>
+                              </>
+                            )}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -652,11 +664,13 @@ export default function EscalasPage() {
                                 {c.expand?.pro?.name || 'Pro'}
                                 {isProFixoDestePosto && ' (Fixa do Posto)'}
                               </span>
-                              <span className="text-slate-500">
-                                {c.valor_diaria && c.valor_diaria > 0
-                                  ? `(${formatCurrencyBRL(c.valor_diaria)})`
-                                  : '(Fixo Mensal)'}
-                              </span>
+                              {isAdmin && (
+                                <span className="text-slate-500">
+                                  {c.valor_diaria && c.valor_diaria > 0
+                                    ? `(${formatCurrencyBRL(c.valor_diaria)})`
+                                    : '(Fixo Mensal)'}
+                                </span>
+                              )}
                               <Badge
                                 variant="outline"
                                 className={
@@ -796,15 +810,17 @@ export default function EscalasPage() {
                       . A convocação será enviada primeiro a ela. Se recusar ou faltar, o turno é
                       reofertado automaticamente aos freelancers com pagamento pelo motor de diária.
                     </p>
-                    <div className="text-[11px] font-semibold text-teal-800 pt-1">
-                      Remuneração da Fixa:{' '}
-                      {selectedPosto.tipo_remuneracao_fixa === 'por_hora'
-                        ? `${formatCurrencyBRL(selectedPosto.valor_remuneracao_fixa || 0)}/hora (Total turno: ${formatCurrencyBRL(
-                            (selectedPosto.valor_remuneracao_fixa || 0) *
-                              (selectedPosto.carga_horaria || 8),
-                          )})`
-                        : `${formatCurrencyBRL(selectedPosto.valor_remuneracao_fixa || 0)}/mês contratado (fora do escrow por diária)`}
-                    </div>
+                    {isAdmin && (
+                      <div className="text-[11px] font-semibold text-teal-800 pt-1">
+                        Remuneração da Fixa:{' '}
+                        {selectedPosto.tipo_remuneracao_fixa === 'por_hora'
+                          ? `${formatCurrencyBRL(selectedPosto.valor_remuneracao_fixa || 0)}/hora (Total turno: ${formatCurrencyBRL(
+                              (selectedPosto.valor_remuneracao_fixa || 0) *
+                                (selectedPosto.carga_horaria || 8),
+                            )})`
+                          : `${formatCurrencyBRL(selectedPosto.valor_remuneracao_fixa || 0)}/mês contratado (fora do escrow por diária)`}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -945,25 +961,26 @@ export default function EscalasPage() {
                   </div>
                 </div>
 
-                {/* Valor base da diária (ou fixo do posto) */}
-                {(!selectedPosto?.pro_fixo ||
-                  selectedPosto.tipo_remuneracao_fixa === 'por_hora') && (
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 block mb-1">
-                      Valor da Diária Base (R$)
-                    </label>
-                    <Input
-                      type="number"
-                      value={valorDiaria}
-                      onChange={(e) => setValorDiaria(Number(e.target.value))}
-                      required
-                    />
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Para períodos, fins de semana e feriados terão o valor ajustado
-                      automaticamente pelo motor de regras em 3 camadas.
-                    </p>
-                  </div>
-                )}
+                {/* Valor base da diária (ou fixo do posto) — Visível apenas para Admin */}
+                {isAdmin &&
+                  (!selectedPosto?.pro_fixo ||
+                    selectedPosto.tipo_remuneracao_fixa === 'por_hora') && (
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        Valor da Diária Base (R$)
+                      </label>
+                      <Input
+                        type="number"
+                        value={valorDiaria}
+                        onChange={(e) => setValorDiaria(Number(e.target.value))}
+                        required
+                      />
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Para períodos, fins de semana e feriados terão o valor ajustado
+                        automaticamente pelo motor de regras em 3 camadas.
+                      </p>
+                    </div>
+                  )}
               </div>
 
               <DialogFooter>
@@ -1052,13 +1069,19 @@ export default function EscalasPage() {
                           </span>
                         </div>
                         <div className="text-right">
-                          <span className="font-bold text-teal-700">
-                            {selectedPosto?.tipo_remuneracao_fixa === 'mensal' &&
-                            selectedPosto.pro_fixo
-                              ? 'Fixo Mensal'
-                              : formatCurrencyBRL(p.valor)}
-                          </span>
-                          <span className="text-[10px] text-slate-400 block">{p.regra}</span>
+                          {isAdmin ? (
+                            <>
+                              <span className="font-bold text-teal-700">
+                                {selectedPosto?.tipo_remuneracao_fixa === 'mensal' &&
+                                selectedPosto.pro_fixo
+                                  ? 'Fixo Mensal'
+                                  : formatCurrencyBRL(p.valor)}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block">{p.regra}</span>
+                            </>
+                          ) : (
+                            <span className="text-xs font-semibold text-teal-700">Programado</span>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1113,11 +1136,13 @@ export default function EscalasPage() {
                   {selectedEscala?.turno_fim})
                 </div>
               </div>
-              <div className="text-right">
-                <span className="text-teal-700 font-bold">
-                  {formatCurrencyBRL(selectedEscala?.valor_diaria)}
-                </span>
-              </div>
+              {isAdmin && (
+                <div className="text-right">
+                  <span className="text-teal-700 font-bold">
+                    {formatCurrencyBRL(selectedEscala?.valor_diaria)}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -1157,8 +1182,10 @@ export default function EscalasPage() {
                             <div className="font-semibold">{pro.name || pro.email}</div>
                             <div className="text-[11px] text-slate-500 flex items-center gap-2">
                               <span>Status: {pro.status}</span>
-                              {pro.status === 'teste' && <span>(Ajuda de Custo: R$ 50)</span>}
-                              {pro.valor_negociado && (
+                              {isAdmin && pro.status === 'teste' && (
+                                <span>(Ajuda de Custo: R$ 50)</span>
+                              )}
+                              {isAdmin && pro.valor_negociado && (
                                 <span>(Negociado: {formatCurrencyBRL(pro.valor_negociado)})</span>
                               )}
                             </div>

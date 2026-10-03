@@ -162,18 +162,17 @@ const App = () => (
                   </RequireAuth>
                 }
               />
+              {/* Rotas Exclusivas do Admin — Empresa NÃO tem acesso a Faturamento, Relatório de Custos nem Config/Motor/Disputas */}
               <Route
                 path="/relatorio-custos"
                 element={
                   <RequireAuth>
-                    <RequireRole allowedRoles={['empresa', 'admin']}>
+                    <RequireRole allowedRoles={['admin']}>
                       <RelatorioCustosPage />
                     </RequireRole>
                   </RequireAuth>
                 }
               />
-
-              {/* Rotas Exclusivas do Admin — Empresa NÃO tem acesso a Faturamento nem Config/Motor/Disputas */}
               <Route
                 path="/faturamento"
                 element={
