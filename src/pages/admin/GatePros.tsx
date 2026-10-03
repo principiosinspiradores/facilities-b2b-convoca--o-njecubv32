@@ -358,15 +358,22 @@ export default function GateProsPage() {
           : {}),
       })
 
-      if (res.emailVerificationSent) {
+      if (res.verificationOutcome === 'sent') {
         toast({
           title: 'Pro cadastrado com sucesso!',
-          description: `E-mail de boas-vindas e acesso enviado para ${newEmail.trim()}.`,
+          description: `E-mail de boas-vindas e link de ativação enviados para ${newEmail.trim()}.`,
+        })
+      } else if (res.verificationOutcome === 'already_verified') {
+        toast({
+          title: 'Pro cadastrado com sucesso!',
+          description: `E-mail de boas-vindas enviado. Pro já verificado — use "Reenviar convite" se precisar reenviar o link de acesso.`,
         })
       } else {
+        // Falha no requestVerification, mas o hook do backend já disparou as boas-vindas
         toast({
           title: 'Pro cadastrado com sucesso!',
-          description: `Pro criado, mas o e-mail de boas-vindas não foi enviado — use Reenviar convite na tabela se necessário.`,
+          description:
+            'Pro cadastrado! E-mail de boas-vindas enviado; o link de verificação não pôde ser reenviado agora.',
         })
       }
 
@@ -374,12 +381,40 @@ export default function GateProsPage() {
       loadData()
     } catch (err: any) {
       console.error(err)
+
+      // Detecção de e-mail duplicado
+      const emailFieldMsg =
+        err?.data?.data?.email?.message || err?.response?.data?.email?.message || ''
+      const emailFieldCode = err?.data?.data?.email?.code || err?.response?.data?.email?.code || ''
+      const generalMsg = (
+        err?.data?.message ||
+        err?.response?.message ||
+        err?.message ||
+        ''
+      ).toLowerCase()
+
+      const isEmailDuplicate =
+        emailFieldCode === 'validation_not_unique' ||
+        emailFieldMsg.toLowerCase().includes('unique') ||
+        emailFieldMsg.toLowerCase().includes('duplicat') ||
+        emailFieldMsg.toLowerCase().includes('exist') ||
+        emailFieldMsg.toLowerCase().includes('já') ||
+        generalMsg.includes('unique') ||
+        generalMsg.includes('email already') ||
+        generalMsg.includes('e-mail já')
+
+      let errorDescription = 'Verifique os dados informados e tente novamente.'
+      if (isEmailDuplicate) {
+        errorDescription = 'Este e-mail já está cadastrado na base de profissionais.'
+      } else if (emailFieldMsg) {
+        errorDescription = emailFieldMsg
+      } else if (err?.message) {
+        errorDescription = err.message
+      }
+
       toast({
         title: 'Erro ao cadastrar profissional',
-        description:
-          err?.data?.data?.email?.message ||
-          err?.message ||
-          'Verifique se o e-mail já não está cadastrado na base.',
+        description: errorDescription,
         variant: 'destructive',
       })
     } finally {
@@ -446,16 +481,23 @@ export default function GateProsPage() {
   const handleResendInvite = async (pro: UserRecord) => {
     setActionLoadingId(`invite-${pro.id}`)
     try {
-      await reenviarConvitePro(pro.email)
+      const outcome = await reenviarConvitePro(pro.email, pro.verified)
       toast({
         title: 'Convite reenviado!',
-        description: `Link de ativação e verificação enviado novamente para ${pro.email}.`,
+        description:
+          outcome.type === 'access_link'
+            ? `Link de acesso enviado com sucesso para ${pro.email}.`
+            : `Link de ativação e verificação enviado novamente para ${pro.email}.`,
       })
     } catch (err: any) {
       console.error(err)
       toast({
         title: 'Erro ao reenviar convite',
-        description: err?.message || 'Tente novamente em alguns instantes.',
+        description:
+          err?.data?.data?.email?.message ||
+          err?.data?.message ||
+          err?.message ||
+          'Tente novamente em alguns instantes.',
         variant: 'destructive',
       })
     } finally {

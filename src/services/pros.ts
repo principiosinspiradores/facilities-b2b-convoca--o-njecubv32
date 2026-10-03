@@ -22,9 +22,17 @@ export interface CriarProPayload {
   valor_negociado?: number
 }
 
+export type VerificationOutcome = 'sent' | 'already_verified' | 'failed'
+
 export interface CadastrarProResult {
   record: UserRecord
-  emailVerificationSent: boolean
+  verificationOutcome: VerificationOutcome
+  verificationMessage?: string
+}
+
+export type ReenviarConviteOutcome = {
+  type: 'access_link' | 'verification_link'
+  message: string
 }
 
 export interface AtualizarProPayload {
@@ -99,15 +107,44 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
   // O e-mail de boas-vindas com dados completos e botão de login é disparado
   // de forma assíncrona pelo hook server-side hook_boas_vindas_pro.
   // Aqui no frontend, solicitamos o token nativo de verificação do PocketBase em modo tolerante:
-  let emailVerificationSent = true
-  try {
-    await pb.collection('users').requestVerification(created.email)
-  } catch (mailErr) {
-    console.warn('Aviso: falha não-bloqueante ao solicitar verificação de e-mail:', mailErr)
-    emailVerificationSent = false
+  let verificationOutcome: VerificationOutcome = 'sent'
+  let verificationMessage: string | undefined = undefined
+
+  // Se o registro criado já vier verificado (ou se o backend tratar como verificado)
+  if (created.verified) {
+    verificationOutcome = 'already_verified'
+  } else {
+    try {
+      await pb.collection('users').requestVerification(created.email)
+    } catch (mailErr: any) {
+      console.warn('Aviso: falha ao solicitar verificação de e-mail do PocketBase:', mailErr)
+      const errStatus = mailErr?.status || mailErr?.response?.status
+      const errMsg = (
+        mailErr?.data?.data?.email?.message ||
+        mailErr?.data?.message ||
+        mailErr?.message ||
+        ''
+      ).toLowerCase()
+
+      // Verificar se a falha indica que já está verificado
+      if (
+        errMsg.includes('already verified') ||
+        errMsg.includes('já verificado') ||
+        errMsg.includes('already_verified')
+      ) {
+        verificationOutcome = 'already_verified'
+      } else {
+        verificationOutcome = 'failed'
+        verificationMessage =
+          mailErr?.data?.data?.email?.message ||
+          mailErr?.data?.message ||
+          mailErr?.message ||
+          (errStatus ? `Status HTTP ${errStatus}` : undefined)
+      }
+    }
   }
 
-  return { record: created, emailVerificationSent }
+  return { record: created, verificationOutcome, verificationMessage }
 }
 
 /**
@@ -133,13 +170,69 @@ export async function atualizarPro(id: string, dados: AtualizarProPayload): Prom
 
 /**
  * Reenvia e-mail de convite / verificação para o Pro.
+ * Se o pro já possui e-mail verificado (ou se o parâmetro verified for true),
+ * envia requestPasswordReset (link de acesso/primeiro acesso).
+ * Caso não esteja verificado, tenta requestVerification; se falhar porque já está verificado,
+ * faz o fallback para requestPasswordReset.
+ * Só lança erro se ambas as tentativas falharem de fato, preservando a mensagem real do backend.
  */
-export async function reenviarConvitePro(email: string): Promise<void> {
-  // Solicita tanto a verificação quanto o reset de acesso para garantir que o Pro consiga entrar
+export async function reenviarConvitePro(
+  email: string,
+  verified?: boolean,
+): Promise<ReenviarConviteOutcome> {
+  const cleanEmail = email.trim()
+
+  if (verified) {
+    // Pro já com e-mail verificado: envia link de acesso / redefinição
+    try {
+      await pb.collection('users').requestPasswordReset(cleanEmail)
+      return {
+        type: 'access_link',
+        message: `Link de acesso enviado para ${cleanEmail}.`,
+      }
+    } catch (resetErr: any) {
+      const errMsg =
+        resetErr?.data?.data?.email?.message ||
+        resetErr?.data?.message ||
+        resetErr?.message ||
+        'Falha ao solicitar link de acesso.'
+      throw new Error(errMsg)
+    }
+  }
+
+  // Se não tem confirmação de verificado, tenta primeiro requestVerification
   try {
-    await pb.collection('users').requestVerification(email.trim())
-  } catch (err) {
-    // Se já verificado ou der erro, tenta link de redefinição de senha para criar primeiro acesso
-    await pb.collection('users').requestPasswordReset(email.trim())
+    await pb.collection('users').requestVerification(cleanEmail)
+    return {
+      type: 'verification_link',
+      message: `Link de ativação e verificação enviado novamente para ${cleanEmail}.`,
+    }
+  } catch (verifErr: any) {
+    const errMsg = (
+      verifErr?.data?.data?.email?.message ||
+      verifErr?.data?.message ||
+      verifErr?.message ||
+      ''
+    ).toLowerCase()
+
+    // Se falhou por já estar verificado ou erro similar, tenta link de acesso
+    try {
+      await pb.collection('users').requestPasswordReset(cleanEmail)
+      return {
+        type: 'access_link',
+        message: `Pro já verificado. Link de acesso enviado para ${cleanEmail}.`,
+      }
+    } catch (resetErr: any) {
+      // Ambas falharam de verdade: mostrar erro com mensagem real do backend
+      const finalMsg =
+        resetErr?.data?.data?.email?.message ||
+        resetErr?.data?.message ||
+        resetErr?.message ||
+        verifErr?.data?.data?.email?.message ||
+        verifErr?.data?.message ||
+        verifErr?.message ||
+        'Não foi possível reenviar o convite.'
+      throw new Error(finalMsg)
+    }
   }
 }
