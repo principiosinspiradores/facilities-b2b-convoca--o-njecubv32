@@ -322,3 +322,50 @@ export interface MensagemRecord extends RecordModel {
     conversa?: MensagemConversaRecord
   }
 }
+
+export type HistoricoAcaoTipo =
+  | 'reabertura_manual'
+  | 'convocacao_manual'
+  | 'reoferta_emergencial'
+  | 'falta_registrada'
+  | 'pro_fixo_recusou'
+
+export interface HistoricoEscalaRecord extends RecordModel {
+  escala: string
+  usuario: string
+  acao: HistoricoAcaoTipo
+  descricao?: string
+  detalhes?: Record<string, unknown>
+  created: string
+  updated: string
+  expand?: {
+    escala?: EscalaRecord & { expand?: { posto?: PostoRecord } }
+    usuario?: UserRecord
+  }
+}
+
+export type TipoAlertaCobertura =
+  | 'posto_descoberto' // "Posto descoberto — sem ninguém" (vermelho): escala de hoje/amanhã sem pro aceito e nenhuma reoferta em andamento
+  | 'falta_pendente' // "Falta confirmada, cobertura pendente" (vermelho/amarelo): pro faltou, reoferta disparada, mas ninguém aceitou ainda
+  | 'reoferta_esgotada' // "Reoferta esgotada" (vermelho): passou por todos os elegíveis e ninguém aceitou — turno perdido
+  | 'recusa_fixa' // "Recusa do pro fixo" (amarelo): posto com profissional fixa designada em que ela recusou a convocação
+
+export interface ItemAlertaCobertura {
+  id: string // id da escala ou identificador único
+  escala: EscalaRecord
+  posto: PostoRecord
+  tipoAlerta: TipoAlertaCobertura
+  tituloAlerta: string
+  corBadge: 'vermelho' | 'amarelo'
+  gravidade: 'alta' | 'media'
+  tempoAbertoFormatado: string
+  tempoAbertoMinutos: number
+  proFalta?: UserRecord
+  proFixo?: UserRecord
+  convocacoesAtivas: ConvocacaoRecord[]
+  convocacoesRecusadas: ConvocacaoRecord[]
+  elegiveisRestantes: number
+  situacaoAtual: string
+  dataInicioTurno: Date
+  isProximas24h: boolean
+}

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T18:58:45.092Z",
+  "generatedAt": "2026-10-03T19:15:04.213Z",
   "collections": [
     {
       "name": "users",
@@ -1286,6 +1286,77 @@
         "CREATE INDEX idx_mensagens_conversa ON mensagens_mensagens (conversa)",
         "CREATE INDEX idx_mensagens_remetente ON mensagens_mensagens (remetente)",
         "CREATE INDEX idx_mensagens_created ON mensagens_mensagens (created DESC)"
+      ]
+    },
+    {
+      "name": "historico_escalas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
+        "update": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "escala",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "escalas"
+        },
+        {
+          "name": "usuario",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "acao",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "reabertura_manual",
+            "convocacao_manual",
+            "reoferta_emergencial",
+            "falta_registrada",
+            "pro_fixo_recusou"
+          ]
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "detalhes",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_historico_escalas_escala ON historico_escalas (escala)",
+        "CREATE INDEX idx_historico_escalas_usuario ON historico_escalas (usuario)",
+        "CREATE INDEX idx_historico_escalas_created ON historico_escalas (created DESC)"
       ]
     }
   ]
