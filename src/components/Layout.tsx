@@ -48,6 +48,7 @@ export default function Layout() {
     navItems.push(
       { to: '/convocacoes', label: 'Minhas Convocações', icon: Inbox },
       { to: '/minhas-escalas', label: 'Meus Postos / Escalas', icon: Calendar },
+      { to: '/ponto-pro', label: 'Bater Ponto Digital', icon: Clock },
       { to: '/meus-repasses', label: 'Meus Repasses (Escrow)', icon: DollarSign },
       { to: '/minha-conta-pix', label: 'Minha Conta Pix', icon: QrCode },
     )
@@ -57,6 +58,8 @@ export default function Layout() {
       { to: '/postos', label: 'Postos de Trabalho', icon: Building2 },
       { to: '/escalas', label: 'Escalas & Convocações', icon: Calendar },
       { to: '/cobertura', label: 'Painel de Cobertura', icon: Activity },
+      { to: '/conferencia-ponto', label: 'Espelho de Pontos', icon: Clock },
+      { to: '/relatorio-custos', label: 'Custo por Posto', icon: DollarSign },
     )
   } else if (role === 'admin') {
     navItems.push(
@@ -65,6 +68,8 @@ export default function Layout() {
       { to: '/postos', label: 'Postos de Trabalho', icon: Building2 },
       { to: '/escalas', label: 'Escalas & Convocações', icon: Calendar },
       { to: '/cobertura', label: 'Painel de Cobertura', icon: Activity },
+      { to: '/conferencia-ponto', label: 'Espelho de Pontos', icon: Clock },
+      { to: '/relatorio-custos', label: 'Custo por Posto', icon: DollarSign },
       { to: '/disputas', label: 'Disputas de Escrow', icon: ShieldAlert },
       { to: '/faturamento', label: 'Faturamento Global', icon: Receipt },
       { to: '/config', label: 'Níveis de Acesso & Config', icon: Sliders },

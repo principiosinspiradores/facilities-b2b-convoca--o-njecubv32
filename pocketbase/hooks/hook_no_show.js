@@ -164,6 +164,63 @@ onRecordUpdate((e) => {
         newConv.set('data_convocacao', now.toISOString())
         $app.save(newConv)
         convCreated++
+
+        // Disparar e-mail de aviso de falta com reoferta urgente
+        try {
+          const pEmail = p.email()
+          if (pEmail) {
+            let senderName = 'Facilities Pro'
+            let senderEmail = 'noreply@facilitiespro.com.br'
+            try {
+              const sList = $app.findRecordsByFilter('settings', 'id != ""', '-created', 1, 0)
+              if (sList && sList.length > 0) {
+                senderName = sList[0].getString('nome_empresa') || senderName
+                const empEmail = sList[0].getString('empresa_pix_chave')
+                if (empEmail && empEmail.indexOf('@') > 0) {
+                  senderEmail = empEmail
+                }
+              }
+            } catch (_) {}
+
+            const postoNome = posto ? posto.getString('nome') : 'Posto'
+            const dataEscala = escala ? escala.getString('data').slice(0, 10) : ''
+            const turnoInicio = escala ? escala.getString('turno_inicio') : ''
+            const turnoFim = escala ? escala.getString('turno_fim') : ''
+
+            const html = `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <div style="background-color: #dc2626; color: #ffffff; padding: 16px; border-radius: 6px; text-align: center;">
+                  <h2 style="margin: 0; font-size: 20px;">${senderName}</h2>
+                  <p style="margin: 4px 0 0 0; font-size: 13px;">Ocorrência de Falta & Reoferta Urgente</p>
+                </div>
+                <div style="padding: 20px 0; color: #334155; font-size: 14px; line-height: 1.6;">
+                  <p>Olá, <strong>${p.getString('name') || 'Profissional'}</strong>!</p>
+                  <p>Houve uma ausência de profissional no posto abaixo e uma vaga emergencial foi aberta para substituição imediata:</p>
+                  <div style="background-color: #fef2f2; border-left: 4px solid #dc2626; padding: 12px; margin: 16px 0;">
+                    <p style="margin: 0;"><strong>Posto:</strong> ${postoNome}</p>
+                    <p style="margin: 4px 0 0 0;"><strong>Data:</strong> ${dataEscala}</p>
+                    <p style="margin: 4px 0 0 0;"><strong>Horário:</strong> ${turnoInicio} às ${turnoFim}</p>
+                    <p style="margin: 4px 0 0 0;"><strong>Remuneração Turno:</strong> R$ ${proValor.toFixed(2)} (${regra})</p>
+                  </div>
+                  <p style="font-size: 13px;">Acesse seu painel imediatamente para aceitar este turno de cobertura.</p>
+                </div>
+                <div style="border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 11px; color: #94a3b8; text-align: center;">
+                  Enviado automaticamente por ${senderName}.
+                </div>
+              </div>
+            `
+
+            const mailer = new MailerMessage({
+              from: { address: senderEmail, name: senderName },
+              to: [{ address: pEmail }],
+              subject: `[${senderName}] Falta / Vaga Emergencial de Cobertura - ${postoNome}`,
+              html: html,
+            })
+            $app.newMailClient().send(mailer)
+          }
+        } catch (mErr) {
+          console.log('Erro ao enviar e-mail de reoferta em no-show:', mErr)
+        }
       }
 
       // Atualiza escala para 'convocada'

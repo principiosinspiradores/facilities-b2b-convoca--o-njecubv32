@@ -24,12 +24,15 @@ import ConvocacoesPage from '@/pages/pro/Convocacoes'
 import MinhasEscalasPage from '@/pages/pro/MinhasEscalas'
 import MeusRepassesPage from '@/pages/pro/MeusRepasses'
 import MinhaContaPixPage from '@/pages/pro/MinhaContaPix'
+import PontoProPage from '@/pages/pro/PontoPro'
 
 // Empresa Pages
 import PostosPage from '@/pages/empresa/Postos'
 import EscalasPage from '@/pages/empresa/Escalas'
 import CoberturaPage from '@/pages/empresa/Cobertura'
 import FaturamentoPage from '@/pages/empresa/Faturamento'
+import ConferenciaPontoPage from '@/pages/empresa/ConferenciaPonto'
+import RelatorioCustosPage from '@/pages/empresa/RelatorioCustos'
 
 // Admin Pages
 import GateProsPage from '@/pages/admin/GatePros'
@@ -73,6 +76,16 @@ const App = () => (
                   <RequireAuth>
                     <RequireRole allowedRoles={['pro', 'admin']}>
                       <MinhasEscalasPage />
+                    </RequireRole>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/ponto-pro"
+                element={
+                  <RequireAuth>
+                    <RequireRole allowedRoles={['pro', 'admin']}>
+                      <PontoProPage />
                     </RequireRole>
                   </RequireAuth>
                 }
@@ -135,6 +148,26 @@ const App = () => (
                   <RequireAuth>
                     <RequireRole allowedRoles={['empresa', 'admin']}>
                       <CoberturaPage />
+                    </RequireRole>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/conferencia-ponto"
+                element={
+                  <RequireAuth>
+                    <RequireRole allowedRoles={['empresa', 'admin']}>
+                      <ConferenciaPontoPage />
+                    </RequireRole>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/relatorio-custos"
+                element={
+                  <RequireAuth>
+                    <RequireRole allowedRoles={['empresa', 'admin']}>
+                      <RelatorioCustosPage />
                     </RequireRole>
                   </RequireAuth>
                 }

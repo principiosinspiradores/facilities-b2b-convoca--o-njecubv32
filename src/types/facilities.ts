@@ -50,10 +50,38 @@ export interface PostoRecord {
   pro_fixo?: string
   tipo_remuneracao_fixa?: TipoRemuneracaoFixa
   valor_remuneracao_fixa?: number
+  raio_geocerca_m?: number
+  latitude?: number
+  longitude?: number
   created: string
   updated: string
   expand?: {
     pro_fixo?: UserRecord
+  }
+}
+
+export type PontoTipo = 'chegada' | 'saida'
+export type PontoValidacaoStatus = 'valido' | 'alerta' | 'contestado' | 'aprovado_manual'
+
+export interface PontoRecord {
+  id: string
+  escala: string
+  pro: string
+  tipo: PontoTipo
+  timestamp_real: string
+  latitude?: number
+  longitude?: number
+  dentro_raio?: boolean
+  distancia_metros?: number
+  foto?: string
+  ocorrencia?: string
+  status_validacao?: PontoValidacaoStatus
+  observacao_gestao?: string
+  created: string
+  updated: string
+  expand?: {
+    escala?: EscalaRecord & { expand?: { posto?: PostoRecord } }
+    pro?: UserRecord
   }
 }
 

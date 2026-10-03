@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/hooks/use-toast'
-import { Calendar, Clock, MapPin, AlertCircle, Ban } from 'lucide-react'
+import { Calendar, Clock, MapPin, AlertCircle, Ban, CheckCircle2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 export default function MinhasEscalasPage() {
   const { user } = useAuth()
@@ -173,16 +174,27 @@ export default function MinhasEscalasPage() {
                     </div>
 
                     {conv.status === 'aceita' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                        disabled={cancelingId === conv.id}
-                        onClick={() => handleCancelarTurno(conv)}
-                      >
-                        <Ban className="w-3.5 h-3.5 mr-1" />
-                        Cancelar presença
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Link to="/ponto-pro">
+                          <Button
+                            size="sm"
+                            className="text-xs bg-teal-700 hover:bg-teal-800 text-white font-medium"
+                          >
+                            <Clock className="w-3.5 h-3.5 mr-1" />
+                            Bater Ponto
+                          </Button>
+                        </Link>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                          disabled={cancelingId === conv.id}
+                          onClick={() => handleCancelarTurno(conv)}
+                        >
+                          <Ban className="w-3.5 h-3.5 mr-1" />
+                          Cancelar presença
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </CardContent>

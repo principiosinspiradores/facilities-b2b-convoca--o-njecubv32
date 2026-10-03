@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T17:31:12.139Z",
+  "generatedAt": "2026-10-03T17:58:40.058Z",
   "collections": [
     {
       "name": "users",
@@ -180,6 +180,12 @@
         },
         {
           "name": "valor_remuneracao_fixa",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "raio_geocerca_m",
           "type": "number",
           "required": false,
           "system": false
@@ -919,6 +925,114 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_conta_pix_pro ON conta_pix (pro)"]
+    },
+    {
+      "name": "pontos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || pro = @request.auth.id)",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "escala",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "escalas"
+        },
+        {
+          "name": "pro",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["chegada", "saida"]
+        },
+        {
+          "name": "timestamp_real",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "latitude",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "longitude",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dentro_raio",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "distancia_metros",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "foto",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ocorrencia",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_validacao",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["valido", "alerta", "contestado", "aprovado_manual"]
+        },
+        {
+          "name": "observacao_gestao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_pontos_escala ON pontos (escala)",
+        "CREATE INDEX idx_pontos_pro ON pontos (pro)",
+        "CREATE INDEX idx_pontos_timestamp ON pontos (timestamp_real)"
+      ]
     }
   ]
 }

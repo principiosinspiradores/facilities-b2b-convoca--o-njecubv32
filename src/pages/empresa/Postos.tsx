@@ -35,6 +35,7 @@ import {
   Search,
   DollarSign,
   Briefcase,
+  Navigation,
 } from 'lucide-react'
 
 export default function PostosPage() {
@@ -60,6 +61,7 @@ export default function PostosPage() {
   const [proFixoId, setProFixoId] = useState<string>('nenhum')
   const [tipoRemuneracaoFixa, setTipoRemuneracaoFixa] = useState<TipoRemuneracaoFixa>('mensal')
   const [valorRemuneracaoFixa, setValorRemuneracaoFixa] = useState<number>(2200)
+  const [raioGeocercaM, setRaioGeocercaM] = useState<number>(150)
   const [buscaPro, setBuscaPro] = useState('')
 
   // Endereço
@@ -112,6 +114,7 @@ export default function PostosPage() {
     setProFixoId('nenhum')
     setTipoRemuneracaoFixa('mensal')
     setValorRemuneracaoFixa(2200)
+    setRaioGeocercaM(150)
     setBuscaPro('')
     setLogradouro('')
     setNumero('')
@@ -141,6 +144,7 @@ export default function PostosPage() {
           ? 25
           : 2200,
     )
+    setRaioGeocercaM(posto.raio_geocerca_m || 150)
     setBuscaPro('')
 
     const end = (posto.endereco as any) || {}
@@ -179,6 +183,7 @@ export default function PostosPage() {
         pro_fixo: hasProFixo ? proFixoId : null,
         tipo_remuneracao_fixa: hasProFixo ? tipoRemuneracaoFixa : null,
         valor_remuneracao_fixa: hasProFixo ? Number(valorRemuneracaoFixa) : null,
+        raio_geocerca_m: Number(raioGeocercaM) || 150,
         endereco: {
           logradouro: logradouro.trim(),
           numero: numero.trim(),
@@ -280,6 +285,12 @@ export default function PostosPage() {
                     <Clock className="w-4 h-4 text-teal-600 shrink-0" />
                     <span>
                       Carga Horária Padrão: <strong>{p.carga_horaria}h / turno</strong>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-slate-600 text-xs">
+                    <Navigation className="w-4 h-4 text-teal-600 shrink-0" />
+                    <span>
+                      Cerca Digital: <strong>{p.raio_geocerca_m || 150}m de raio</strong>
                     </span>
                   </div>
                   <div className="flex items-start gap-2 text-slate-500 text-xs">
@@ -455,17 +466,35 @@ export default function PostosPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Fim da Vigência
-                </label>
-                <Input
-                  type="date"
-                  value={vigenciaFim}
-                  onChange={(e) => setVigenciaFim(e.target.value)}
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Fim da Vigência
+                  </label>
+                  <Input
+                    type="date"
+                    value={vigenciaFim}
+                    onChange={(e) => setVigenciaFim(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Raio da Cerca Digital (metros) *
+                  </label>
+                  <Input
+                    type="number"
+                    value={raioGeocercaM}
+                    onChange={(e) => setRaioGeocercaM(Number(e.target.value))}
+                    min={10}
+                    max={5000}
+                    placeholder="150"
+                    required
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Distância máxima tolerada para validação de presença no ponto (padrão: 150m).
+                  </p>
+                </div>
               </div>
-
               <div className="pt-2 border-t border-slate-100">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
                   Endereço da Unidade

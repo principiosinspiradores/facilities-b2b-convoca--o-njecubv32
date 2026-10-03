@@ -45,13 +45,16 @@ export default function EscalasPage() {
   const [convocacoes, setConvocacoes] = useState<ConvocacaoRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  // Modal Nova Escala: modo "unico" ou "periodo"
+  // Modal Nova Escala: modo "unico", "periodo" ou "recorrente"
   const [modalNovaEscala, setModalNovaEscala] = useState(false)
-  const [tipoAgendamento, setTipoAgendamento] = useState<'unico' | 'periodo'>('unico')
+  const [tipoAgendamento, setTipoAgendamento] = useState<'unico' | 'periodo' | 'recorrente'>(
+    'unico',
+  )
   const [selectedPostoId, setSelectedPostoId] = useState('')
   const [dataEscala, setDataEscala] = useState('')
   const [dataInicio, setDataInicio] = useState('')
   const [dataFim, setDataFim] = useState('')
+  const [diasSemanaSelecionados, setDiasSemanaSelecionados] = useState<number[]>([1, 3, 5]) // Seg, Qua, Sex padrão
   const [turnoInicio, setTurnoInicio] = useState('07:00')
   const [turnoFim, setTurnoFim] = useState('15:00')
   const [valorDiaria, setValorDiaria] = useState(180)
@@ -158,8 +161,21 @@ export default function EscalasPage() {
     }
   }, [selectedPosto])
 
-  // Calcular lista de dias do período (inclusive)
-  const getDatasDoPeriodo = (inicio: string, fim: string): string[] => {
+  // Toggle dia da semana (0: Domingo, 1: Segunda, ..., 6: Sábado)
+  const toggleDiaSemana = (dia: number) => {
+    if (diasSemanaSelecionados.includes(dia)) {
+      if (diasSemanaSelecionados.length === 1) {
+        toast({ title: 'Selecione pelo menos um dia da semana', variant: 'destructive' })
+        return
+      }
+      setDiasSemanaSelecionados(diasSemanaSelecionados.filter((d) => d !== dia))
+    } else {
+      setDiasSemanaSelecionados([...diasSemanaSelecionados, dia].sort())
+    }
+  }
+
+  // Calcular lista de dias do período (inclusive), aplicando filtro de dias da semana caso modo recorrente
+  const getDatasDoPeriodo = (inicio: string, fim: string, diasPermitidos?: number[]): string[] => {
     const list: string[] = []
     if (!inicio || !fim) return list
 
@@ -172,10 +188,13 @@ export default function EscalasPage() {
     if (cur.getTime() > end.getTime()) return list
 
     while (cur.getTime() <= end.getTime()) {
-      const y = cur.getUTCFullYear()
-      const m = String(cur.getUTCMonth() + 1).padStart(2, '0')
-      const d = String(cur.getUTCDate()).padStart(2, '0')
-      list.push(`${y}-${m}-${d}`)
+      const diaSemana = cur.getUTCDay() // 0=Dom, 1=Seg...
+      if (!diasPermitidos || diasPermitidos.includes(diaSemana)) {
+        const y = cur.getUTCFullYear()
+        const m = String(cur.getUTCMonth() + 1).padStart(2, '0')
+        const d = String(cur.getUTCDate()).padStart(2, '0')
+        list.push(`${y}-${m}-${d}`)
+      }
       cur = new Date(cur.getTime() + 24 * 60 * 60 * 1000)
     }
     return list
@@ -197,16 +216,27 @@ export default function EscalasPage() {
       // Cria diretamente escala de um dia
       executarCriacaoEscalas([dataEscala])
     } else {
-      // Período
+      // Período contínuo ou Recorrência personalizada por dias da semana
       if (!dataInicio || !dataFim) {
         toast({ title: 'Preencha as datas de início e término', variant: 'destructive' })
         return
       }
-      const datas = getDatasDoPeriodo(dataInicio, dataFim)
+
+      if (tipoAgendamento === 'recorrente' && diasSemanaSelecionados.length === 0) {
+        toast({ title: 'Selecione pelo menos um dia da semana', variant: 'destructive' })
+        return
+      }
+
+      const diasFiltro = tipoAgendamento === 'recorrente' ? diasSemanaSelecionados : undefined
+      const datas = getDatasDoPeriodo(dataInicio, dataFim, diasFiltro)
+
       if (datas.length === 0) {
         toast({
-          title: 'Período inválido',
-          description: 'A data final deve ser igual ou posterior à data inicial.',
+          title: 'Nenhuma escala gerada no período',
+          description:
+            tipoAgendamento === 'recorrente'
+              ? 'Nenhum dos dias selecionados da semana ocorre no intervalo informado.'
+              : 'A data final deve ser igual ou posterior à data inicial.',
           variant: 'destructive',
         })
         return
@@ -680,41 +710,53 @@ export default function EscalasPage() {
                   <label className="text-xs font-semibold text-slate-700 block mb-1.5">
                     Modo de Agendamento *
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => setTipoAgendamento('unico')}
-                      className={`p-3 rounded-lg border text-left text-xs font-medium flex items-center gap-2 transition-all ${
+                      className={`p-2.5 rounded-lg border text-left text-xs font-medium flex flex-col gap-1 transition-all ${
                         tipoAgendamento === 'unico'
                           ? 'border-teal-600 bg-teal-50 text-teal-900 font-bold ring-1 ring-teal-600'
                           : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                       }`}
                     >
-                      <Calendar className="w-4 h-4 text-teal-700" />
-                      <div>
-                        <div>Dia Único</div>
-                        <div className="text-[10px] text-slate-400 font-normal">
-                          Uma escala pontual
-                        </div>
+                      <div className="flex items-center gap-1.5">
+                        <Calendar className="w-4 h-4 text-teal-700" />
+                        <span>Dia Único</span>
                       </div>
+                      <div className="text-[10px] text-slate-400 font-normal">Turno pontual</div>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setTipoAgendamento('periodo')}
-                      className={`p-3 rounded-lg border text-left text-xs font-medium flex items-center gap-2 transition-all ${
+                      className={`p-2.5 rounded-lg border text-left text-xs font-medium flex flex-col gap-1 transition-all ${
                         tipoAgendamento === 'periodo'
                           ? 'border-teal-600 bg-teal-50 text-teal-900 font-bold ring-1 ring-teal-600'
                           : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                       }`}
                     >
-                      <CalendarRange className="w-4 h-4 text-teal-700" />
-                      <div>
-                        <div>Por Período (Vários Dias)</div>
-                        <div className="text-[10px] text-slate-400 font-normal">
-                          Ex: 05/10 à 20/10
-                        </div>
+                      <div className="flex items-center gap-1.5">
+                        <CalendarRange className="w-4 h-4 text-teal-700" />
+                        <span>Por Período</span>
                       </div>
+                      <div className="text-[10px] text-slate-400 font-normal">Todos os dias</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTipoAgendamento('recorrente')}
+                      className={`p-2.5 rounded-lg border text-left text-xs font-medium flex flex-col gap-1 transition-all ${
+                        tipoAgendamento === 'recorrente'
+                          ? 'border-teal-600 bg-teal-50 text-teal-900 font-bold ring-1 ring-teal-600'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-4 h-4 text-teal-700" />
+                        <span>Recorrência</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-normal">Dias da semana</div>
                     </button>
                   </div>
                 </div>
@@ -810,6 +852,73 @@ export default function EscalasPage() {
                   </div>
                 )}
 
+                {/* Seleção de Dias da Semana para Recorrência Personalizada */}
+                {tipoAgendamento === 'recorrente' && (
+                  <div className="space-y-3 bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-semibold text-slate-700 block mb-1">
+                          Data Inicial *
+                        </label>
+                        <Input
+                          type="date"
+                          value={dataInicio}
+                          onChange={(e) => setDataInicio(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-700 block mb-1">
+                          Data Final *
+                        </label>
+                        <Input
+                          type="date"
+                          value={dataFim}
+                          onChange={(e) => setDataFim(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                        Dias da Semana de Atendimento *
+                      </label>
+                      <div className="grid grid-cols-7 gap-1">
+                        {[
+                          { id: 1, label: 'Seg' },
+                          { id: 2, label: 'Ter' },
+                          { id: 3, label: 'Qua' },
+                          { id: 4, label: 'Qui' },
+                          { id: 5, label: 'Sex' },
+                          { id: 6, label: 'Sáb' },
+                          { id: 0, label: 'Dom' },
+                        ].map((d) => {
+                          const isSel = diasSemanaSelecionados.includes(d.id)
+                          return (
+                            <button
+                              key={d.id}
+                              type="button"
+                              onClick={() => toggleDiaSemana(d.id)}
+                              className={`py-2 text-center rounded text-xs font-semibold transition-all ${
+                                isSel
+                                  ? 'bg-teal-700 text-white shadow-xs'
+                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {d.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-2">
+                        O sistema gerará escalas <strong>somente</strong> nos dias da semana
+                        selecionados dentro do intervalo de datas.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Horários do Turno */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -866,9 +975,9 @@ export default function EscalasPage() {
                   className="bg-teal-700 hover:bg-teal-800 text-white"
                   disabled={isCreatingEscala || !selectedPostoId}
                 >
-                  {tipoAgendamento === 'periodo' ? (
+                  {tipoAgendamento === 'periodo' || tipoAgendamento === 'recorrente' ? (
                     <>
-                      Revisar Período <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                      Revisar Programação <ArrowRight className="w-3.5 h-3.5 ml-1" />
                     </>
                   ) : (
                     'Salvar Escala'
@@ -889,15 +998,26 @@ export default function EscalasPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 text-xs text-teal-900 space-y-1">
-                <div className="font-bold text-sm">
+              <div className="bg-teal-50 border border-teal-200 rounded-lg p-3.5 text-xs text-teal-900 space-y-1.5">
+                <div className="font-bold text-sm text-teal-900">
                   Serão criadas {previasPeriodo.length} escalas de {formatDateBR(dataInicio)} a{' '}
                   {formatDateBR(dataFim)}
+                  {tipoAgendamento === 'recorrente' && ' nos dias selecionados'}
                 </div>
                 <div className="text-slate-600">
                   Posto: <strong>{selectedPosto?.nome}</strong> ({selectedPosto?.carga_horaria}
                   h/turno, {turnoInicio} às {turnoFim})
                 </div>
+                {tipoAgendamento === 'recorrente' && (
+                  <div className="text-slate-700 font-medium">
+                    Dias da semana selecionados:{' '}
+                    <strong>
+                      {diasSemanaSelecionados
+                        .map((d) => ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][d])
+                        .join(', ')}
+                    </strong>
+                  </div>
+                )}
                 {selectedPosto?.pro_fixo && (
                   <div className="text-teal-800 font-semibold pt-1">
                     ✓ Prioridade direta: As convocações serão disparadas primeiro para a
