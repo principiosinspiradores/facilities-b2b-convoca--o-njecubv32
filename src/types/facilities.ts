@@ -23,8 +23,21 @@ export interface UserRecord {
   updated: string
 }
 
-export type PostoFuncao = 'porteiro' | 'limpeza' | 'zeladoria' | 'outro'
+export type PostoFuncao = string
 export type PostoStatus = 'ativo' | 'inativo'
+
+export interface FuncaoRecord {
+  id: string
+  nome: string
+  descricao?: string
+  ativo: boolean
+  criada_por?: string
+  created: string
+  updated: string
+  expand?: {
+    criada_por?: UserRecord
+  }
+}
 
 export interface Endereco {
   logradouro: string

@@ -26,12 +26,13 @@ import {
 
 import { UserAccessManagement } from './components/UserAccessManagement'
 import { PaymentConfigSection } from './components/PaymentConfigSection'
+import { FuncoesConfigSection } from './components/FuncoesConfigSection'
 
 export default function ConfigPage() {
   const { settings, refreshSettings } = useSettings()
-  const [activeTab, setActiveTab] = useState<'whitelabel' | 'usuarios' | 'pagamentos' | 'regras'>(
-    'whitelabel',
-  )
+  const [activeTab, setActiveTab] = useState<
+    'whitelabel' | 'usuarios' | 'pagamentos' | 'regras' | 'funcoes'
+  >('whitelabel')
   const [isSaving, setIsSaving] = useState(false)
 
   // 1. White Label
@@ -211,7 +212,7 @@ export default function ConfigPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-6">
-        <TabsList className="bg-slate-200/80 p-1 rounded-lg grid grid-cols-2 sm:grid-cols-4 gap-1">
+        <TabsList className="bg-slate-200/80 p-1 rounded-lg grid grid-cols-2 sm:grid-cols-5 gap-1">
           <TabsTrigger
             value="whitelabel"
             className="text-xs font-semibold flex items-center gap-1.5"
@@ -222,6 +223,10 @@ export default function ConfigPage() {
           <TabsTrigger value="usuarios" className="text-xs font-semibold flex items-center gap-1.5">
             <Users className="w-4 h-4" />
             Níveis de Acesso
+          </TabsTrigger>
+          <TabsTrigger value="funcoes" className="text-xs font-semibold flex items-center gap-1.5">
+            <Building className="w-4 h-4" />
+            Funções
           </TabsTrigger>
           <TabsTrigger
             value="pagamentos"
@@ -391,6 +396,11 @@ export default function ConfigPage() {
           {/* ABA 2: NÍVEIS DE ACESSO */}
           <TabsContent value="usuarios" className="space-y-6 m-0">
             <UserAccessManagement />
+          </TabsContent>
+
+          {/* ABA FUNÇÕES: CATÁLOGO DE FUNÇÕES DE POSTO */}
+          <TabsContent value="funcoes" className="space-y-6 m-0">
+            <FuncoesConfigSection />
           </TabsContent>
 
           {/* ABA 3: CONFIGURAÇÃO DE PAGAMENTO AUTOMÁTICO */}

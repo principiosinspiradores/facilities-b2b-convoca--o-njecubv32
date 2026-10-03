@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/contexts/AuthContext'
-import { PostoRecord, PostoFuncao, UserRecord, TipoRemuneracaoFixa } from '@/types/facilities'
+import {
+  PostoRecord,
+  PostoFuncao,
+  UserRecord,
+  TipoRemuneracaoFixa,
+  FuncaoRecord,
+} from '@/types/facilities'
+import { listarFuncoes, criarFuncao } from '@/services/funcoes'
 import { formatDateBR, formatCurrencyBRL } from '@/lib/formatters'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -44,6 +51,7 @@ export default function PostosPage() {
   const isAdmin = role === 'admin'
   const [postos, setPostos] = useState<PostoRecord[]>([])
   const [pros, setPros] = useState<UserRecord[]>([])
+  const [funcoesCatalogo, setFuncoesCatalogo] = useState<FuncaoRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   // Modal Novo / Editar
@@ -53,7 +61,7 @@ export default function PostosPage() {
 
   // Form states
   const [nome, setNome] = useState('')
-  const [funcao, setFuncao] = useState<PostoFuncao>('porteiro')
+  const [funcao, setFuncao] = useState<PostoFuncao>('Porteiro')
   const [cargaHoraria, setCargaHoraria] = useState(8)
   const [status, setStatus] = useState<'ativo' | 'inativo'>('ativo')
   const [vigenciaInicio, setVigenciaInicio] = useState('')
@@ -75,10 +83,16 @@ export default function PostosPage() {
   const [uf, setUf] = useState('SP')
   const [cep, setCep] = useState('')
 
+  // Estado para busca e criação rápida de função inline no cadastro
+  const [buscaFuncao, setBuscaFuncao] = useState('')
+  const [mostrandoNovaFuncaoInline, setMostrandoNovaFuncaoInline] = useState(false)
+  const [nomeNovaFuncaoInline, setNomeNovaFuncaoInline] = useState('')
+  const [isCriandoFuncaoInline, setIsCriandoFuncaoInline] = useState(false)
+
   const loadPostos = async () => {
     setIsLoading(true)
     try {
-      const [postosRes, prosRes] = await Promise.all([
+      const [postosRes, prosRes, funcoesRes] = await Promise.all([
         pb.collection('postos').getFullList<PostoRecord>({
           sort: '-created',
           expand: 'pro_fixo',
@@ -87,9 +101,11 @@ export default function PostosPage() {
           filter: 'role = "pro"',
           sort: 'name',
         }),
+        listarFuncoes(false),
       ])
       setPostos(postosRes)
       setPros(prosRes)
+      setFuncoesCatalogo(funcoesRes)
     } catch (err) {
       console.error(err)
       toast({
@@ -108,7 +124,9 @@ export default function PostosPage() {
   const openNewModal = () => {
     setEditingPosto(null)
     setNome('')
-    setFuncao('porteiro')
+    // Seleciona a primeira função ativa ou Porteiro
+    const primeiraAtiva = funcoesCatalogo.find((f) => f.ativo)?.nome || 'Porteiro'
+    setFuncao(primeiraAtiva)
     setCargaHoraria(8)
     setStatus('ativo')
     setVigenciaInicio('2025-01-01')
@@ -125,13 +143,16 @@ export default function PostosPage() {
     setCidade('São Paulo')
     setUf('SP')
     setCep('')
+    setBuscaFuncao('')
+    setMostrandoNovaFuncaoInline(false)
+    setNomeNovaFuncaoInline('')
     setModalOpen(true)
   }
 
   const openEditModal = (posto: PostoRecord) => {
     setEditingPosto(posto)
     setNome(posto.nome)
-    setFuncao(posto.funcao)
+    setFuncao(posto.funcao || 'Porteiro')
     setCargaHoraria(posto.carga_horaria || 8)
     setStatus(posto.status)
     setVigenciaInicio((posto.vigencia_inicio || '').slice(0, 10))
@@ -158,7 +179,60 @@ export default function PostosPage() {
     setUf(end.uf || 'SP')
     setCep(end.cep || '')
 
+    setBuscaFuncao('')
+    setMostrandoNovaFuncaoInline(false)
+    setNomeNovaFuncaoInline('')
     setModalOpen(true)
+  }
+
+  const handleCriarFuncaoRapida = async () => {
+    const nomeLimpo = nomeNovaFuncaoInline.trim()
+    if (!nomeLimpo) {
+      toast({
+        title: 'Nome obrigatório',
+        description: 'Digite o nome da nova função.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // Verificar se já existe (case-insensitive)
+    const existente = funcoesCatalogo.find((f) => f.nome.toLowerCase() === nomeLimpo.toLowerCase())
+    if (existente) {
+      setFuncao(existente.nome)
+      setMostrandoNovaFuncaoInline(false)
+      setNomeNovaFuncaoInline('')
+      toast({
+        title: 'Função já existente',
+        description: `A função "${existente.nome}" foi selecionada automaticamente.`,
+      })
+      return
+    }
+
+    setIsCriandoFuncaoInline(true)
+    try {
+      const nova = await criarFuncao({
+        nome: nomeLimpo,
+        ativo: true,
+      })
+      setFuncoesCatalogo((prev) => [...prev, nova])
+      setFuncao(nova.nome)
+      setMostrandoNovaFuncaoInline(false)
+      setNomeNovaFuncaoInline('')
+      toast({
+        title: 'Nova função criada!',
+        description: `"${nova.nome}" foi cadastrada no catálogo e selecionada para este posto.`,
+      })
+    } catch (err: any) {
+      console.error(err)
+      toast({
+        title: 'Erro ao criar função',
+        description: err?.data?.data?.nome?.message || 'Não foi possível cadastrar a nova função.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsCriandoFuncaoInline(false)
+    }
   }
 
   const handleSave = async (e: React.FormEvent) => {
@@ -424,17 +498,105 @@ export default function PostosPage() {
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
                     Função *
                   </label>
-                  <Select value={funcao} onValueChange={(v) => setFuncao(v as PostoFuncao)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="porteiro">Porteiro</SelectItem>
-                      <SelectItem value="limpeza">Limpeza</SelectItem>
-                      <SelectItem value="zeladoria">Zeladoria</SelectItem>
-                      <SelectItem value="outro">Outro</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {!mostrandoNovaFuncaoInline ? (
+                    <div className="space-y-1.5">
+                      <Select
+                        value={funcao}
+                        onValueChange={(v) => {
+                          if (v === '__nova_funcao__') {
+                            setMostrandoNovaFuncaoInline(true)
+                          } else {
+                            setFuncao(v)
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder="Selecione a função..." />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {/* Opção rápida de criar nova função */}
+                          <SelectItem
+                            value="__nova_funcao__"
+                            className="font-bold text-teal-700 hover:text-teal-800 focus:text-teal-800 bg-teal-50/60 cursor-pointer border-b mb-1"
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <Plus className="w-3.5 h-3.5" />+ Cadastrar Nova Função...
+                            </span>
+                          </SelectItem>
+
+                          {/* Se a função atual não estiver no catálogo (ex: histórica ou inativa), mantê-la visível */}
+                          {funcao && !funcoesCatalogo.some((f) => f.nome === funcao) && (
+                            <SelectItem value={funcao} className="text-slate-700 italic">
+                              {funcao} (atual)
+                            </SelectItem>
+                          )}
+
+                          {/* Listar funções ativas e também as inativas se for a já selecionada */}
+                          {funcoesCatalogo
+                            .filter((f) => f.ativo || f.nome === funcao)
+                            .map((f) => (
+                              <SelectItem key={f.id} value={f.nome}>
+                                {f.nome} {!f.ativo ? '(inativa)' : ''}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Catálogo gerenciável</span>
+                        <button
+                          type="button"
+                          onClick={() => setMostrandoNovaFuncaoInline(true)}
+                          className="text-teal-700 hover:underline flex items-center gap-0.5"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Nova função
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-2.5 bg-teal-50/70 border border-teal-200 rounded-lg space-y-2">
+                      <div className="text-[11px] font-bold text-teal-900 flex items-center justify-between">
+                        <span>Nova Função no Catálogo</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMostrandoNovaFuncaoInline(false)
+                            setNomeNovaFuncaoInline('')
+                          }}
+                          className="text-slate-400 hover:text-slate-600 text-xs font-normal"
+                        >
+                          Voltar à lista
+                        </button>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <Input
+                          value={nomeNovaFuncaoInline}
+                          onChange={(e) => setNomeNovaFuncaoInline(e.target.value)}
+                          placeholder="Ex: Jardineiro, Ronda..."
+                          className="bg-white text-xs h-8 flex-1"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              handleCriarFuncaoRapida()
+                            }
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleCriarFuncaoRapida}
+                          disabled={isCriandoFuncaoInline || !nomeNovaFuncaoInline.trim()}
+                          className="bg-teal-700 hover:bg-teal-800 text-white h-8 px-3 text-xs shrink-0"
+                        >
+                          {isCriandoFuncaoInline ? 'Criando...' : 'Adicionar'}
+                        </Button>
+                      </div>
+                      <p className="text-[10px] text-slate-500">
+                        A função será salva no catálogo global e selecionada neste posto.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 

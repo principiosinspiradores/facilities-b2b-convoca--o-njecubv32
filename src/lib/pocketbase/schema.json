@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T18:23:04.513Z",
+  "generatedAt": "2026-10-03T18:41:03.009Z",
   "collections": [
     {
       "name": "users",
@@ -107,13 +107,6 @@
           "system": false
         },
         {
-          "name": "funcao",
-          "type": "select",
-          "required": true,
-          "system": false,
-          "selectValues": ["porteiro", "limpeza", "zeladoria", "outro"]
-        },
-        {
           "name": "endereco",
           "type": "json",
           "required": false,
@@ -188,6 +181,12 @@
           "name": "raio_geocerca_m",
           "type": "number",
           "required": false,
+          "system": false
+        },
+        {
+          "name": "funcao",
+          "type": "text",
+          "required": true,
           "system": false
         }
       ],
@@ -1033,6 +1032,59 @@
         "CREATE INDEX idx_pontos_pro ON pontos (pro)",
         "CREATE INDEX idx_pontos_timestamp ON pontos (timestamp_real)"
       ]
+    },
+    {
+      "name": "funcoes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
+        "update": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "criada_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE UNIQUE INDEX idx_funcoes_nome ON funcoes (nome)"]
     }
   ]
 }
