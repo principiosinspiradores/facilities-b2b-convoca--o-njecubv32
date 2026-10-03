@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
-import { PricingRuleRecord, HolidayRecord, PostoRecord } from '@/types/facilities'
+import { PricingRuleRecord, HolidayRecord, HolidayTipo, PostoRecord } from '@/types/facilities'
 import { formatCurrencyBRL, formatDateBR } from '@/lib/formatters'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -38,6 +38,7 @@ import {
   UserCheck,
   Tag,
   AlertTriangle,
+  DownloadCloud,
 } from 'lucide-react'
 
 const TIPO_EXCECAO_LABELS: Record<string, string> = {
@@ -84,9 +85,14 @@ export default function MotorPrecosPage() {
   const [editingFeriadoId, setEditingFeriadoId] = useState<string | null>(null)
   const [feriadoData, setFeriadoData] = useState('')
   const [feriadoNome, setFeriadoNome] = useState('')
-  const [feriadoTipo, setFeriadoTipo] = useState<'nacional' | 'municipal'>('nacional')
+  const [feriadoTipo, setFeriadoTipo] = useState<HolidayTipo>('nacional')
   const [feriadoCidade, setFeriadoCidade] = useState('')
   const [feriadoUf, setFeriadoUf] = useState('SP')
+
+  // Importação BrasilAPI
+  const [modalImportarOpen, setModalImportarOpen] = useState(false)
+  const [anoImportacao, setAnoImportacao] = useState(new Date().getFullYear().toString())
+  const [isImporting, setIsImporting] = useState(false)
 
   const loadAll = async () => {
     setIsLoading(true)
@@ -293,14 +299,52 @@ export default function MotorPrecosPage() {
     }
   }
 
+  // Lista de localidades extraídas dos postos cadastrados
+  const postosLocalidades = React.useMemo(() => {
+    const list: Array<{ cidade: string; uf: string }> = []
+    const seen = new Set<string>()
+
+    for (const p of postos) {
+      const cid = (p.endereco?.cidade || '').trim()
+      const uf = (p.endereco?.uf || '').trim().toUpperCase()
+      if (cid && uf) {
+        const key = `${cid}__${uf}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          list.push({ cidade: cid, uf })
+        }
+      }
+    }
+    return list
+  }, [postos])
+
+  const postosUfs = React.useMemo(() => {
+    const ufs = new Set<string>()
+    for (const p of postos) {
+      const uf = (p.endereco?.uf || '').trim().toUpperCase()
+      if (uf) ufs.add(uf)
+    }
+    return Array.from(ufs).sort()
+  }, [postos])
+
   // Abertura de Modal Feriado para Criação ou Edição
   const handleOpenCreateFeriado = () => {
     setEditingFeriadoId(null)
     setFeriadoData(new Date().toISOString().slice(0, 10))
     setFeriadoNome('')
     setFeriadoTipo('nacional')
-    setFeriadoCidade('')
-    setFeriadoUf('SP')
+
+    // Pré-preenchimento automático se houver apenas uma cidade/UF nos postos
+    if (postosLocalidades.length === 1) {
+      setFeriadoCidade(postosLocalidades[0].cidade)
+      setFeriadoUf(postosLocalidades[0].uf)
+    } else if (postosUfs.length === 1) {
+      setFeriadoCidade('')
+      setFeriadoUf(postosUfs[0])
+    } else {
+      setFeriadoCidade('')
+      setFeriadoUf('SP')
+    }
     setModalFeriadoOpen(true)
   }
 
@@ -312,6 +356,117 @@ export default function MotorPrecosPage() {
     setFeriadoCidade(holiday.cidade || '')
     setFeriadoUf(holiday.uf || 'SP')
     setModalFeriadoOpen(true)
+  }
+
+  // Troca de tipo no modal com auto-preenchimento
+  const handleTipoFeriadoChange = (novoTipo: HolidayTipo) => {
+    setFeriadoTipo(novoTipo)
+    if (novoTipo === 'estadual') {
+      if (!feriadoUf && postosUfs.length > 0) {
+        setFeriadoUf(postosUfs[0])
+      }
+    } else if (novoTipo === 'municipal') {
+      if (postosLocalidades.length === 1 && !feriadoCidade) {
+        setFeriadoCidade(postosLocalidades[0].cidade)
+        setFeriadoUf(postosLocalidades[0].uf)
+      } else if (!feriadoUf && postosUfs.length > 0) {
+        setFeriadoUf(postosUfs[0])
+      }
+    }
+  }
+
+  // Importar Feriados Nacionais via BrasilAPI
+  const handleImportarFeriadosNacionais = async () => {
+    const anoNum = parseInt(anoImportacao, 10)
+    if (isNaN(anoNum) || anoNum < 1900 || anoNum > 2199) {
+      toast({
+        title: 'Ano inválido',
+        description: 'Informe um ano válido entre 1900 e 2199.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsImporting(true)
+    try {
+      const response = await fetch(`https://brasilapi.com.br/api/feriados/v1/${anoNum}`)
+      if (!response.ok) {
+        throw new Error(`BrasilAPI retornou status ${response.status}`)
+      }
+      const data: Array<{ date: string; name: string; type?: string }> = await response.json()
+
+      if (!Array.isArray(data) || data.length === 0) {
+        toast({
+          title: 'Nenhum feriado retornado',
+          description: `A BrasilAPI não retornou feriados para o ano ${anoNum}.`,
+          variant: 'destructive',
+        })
+        setIsImporting(false)
+        return
+      }
+
+      // Buscar feriados existentes no ano para evitar duplicidade por nome + data
+      const existingYearHolidays = await pb.collection('holidays').getFullList<HolidayRecord>({
+        filter: `data ~ "${anoNum}"`,
+      })
+
+      const isDuplicate = (hDate: string, hName: string) => {
+        const normName = hName.trim().toLowerCase()
+        return existingYearHolidays.some((ex) => {
+          const exDate = (ex.data || '').slice(0, 10)
+          const exNormName = (ex.nome || '').trim().toLowerCase()
+          return exDate === hDate && exNormName === normName
+        })
+      }
+
+      let criados = 0
+      let ignorados = 0
+
+      for (const item of data) {
+        const itemDate = (item.date || '').slice(0, 10)
+        const itemName = (item.name || '').trim()
+        if (!itemDate || !itemName) continue
+
+        if (isDuplicate(itemDate, itemName)) {
+          ignorados++
+          continue
+        }
+
+        await pb.collection('holidays').create({
+          data: `${itemDate} 00:00:00.000Z`,
+          nome: itemName,
+          tipo: 'nacional',
+          cidade: null,
+          uf: null,
+        })
+        criados++
+        // Atualiza a lista em memória local para não duplicar se a própria API trouxer repetições
+        existingYearHolidays.push({
+          id: 'temp',
+          data: `${itemDate} 00:00:00.000Z`,
+          nome: itemName,
+          tipo: 'nacional',
+          created: '',
+          updated: '',
+        })
+      }
+
+      toast({
+        title: 'Importação concluída!',
+        description: `${criados} feriado(s) nacional(is) importado(s) para ${anoNum}. ${ignorados} já existiam e foram mantidos.`,
+      })
+      setModalImportarOpen(false)
+      loadAll()
+    } catch (err) {
+      console.error(err)
+      toast({
+        title: 'Falha na importação',
+        description: 'Não foi possível buscar os feriados na BrasilAPI. Verifique sua conexão.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsImporting(false)
+    }
   }
 
   // Salvar Feriado (Criar ou Atualizar)
@@ -335,14 +490,27 @@ export default function MotorPrecosPage() {
       return
     }
 
+    if (feriadoTipo === 'estadual' && !feriadoUf.trim()) {
+      toast({
+        title: 'UF obrigatória',
+        description: 'Para feriado estadual, informe a UF do estado.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsSubmitting(true)
     try {
+      const cleanDate = feriadoData.slice(0, 10)
       const payload: Record<string, unknown> = {
-        data: new Date(feriadoData).toISOString(),
+        data: `${cleanDate} 00:00:00.000Z`,
         nome: feriadoNome.trim(),
         tipo: feriadoTipo,
         cidade: feriadoTipo === 'municipal' ? feriadoCidade.trim() : null,
-        uf: feriadoTipo === 'municipal' ? feriadoUf.trim().toUpperCase() : null,
+        uf:
+          feriadoTipo === 'municipal' || feriadoTipo === 'estadual'
+            ? feriadoUf.trim().toUpperCase()
+            : null,
       }
 
       if (editingFeriadoId) {
@@ -579,7 +747,7 @@ export default function MotorPrecosPage() {
             2. Exceções por Posto ({excecoes.length})
           </TabsTrigger>
           <TabsTrigger value="feriados" className="text-sm font-semibold">
-            3. Feriados Nacionais & Municipais ({holidays.length})
+            3. Feriados Nacionais, Estaduais & Municipais ({holidays.length})
           </TabsTrigger>
         </TabsList>
 
@@ -772,16 +940,26 @@ export default function MotorPrecosPage() {
         <TabsContent value="feriados" className="space-y-4 pt-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-sm text-slate-500">
-              Feriados nacionais e municipais confrontados com a data do turno e a localidade do
-              posto.
+              Feriados nacionais, estaduais e municipais confrontados com a data do turno e a
+              localidade do posto.
             </div>
-            <Button
-              onClick={handleOpenCreateFeriado}
-              className="bg-teal-700 hover:bg-teal-800 text-white text-xs shrink-0"
-            >
-              <Plus className="w-4 h-4 mr-1.5" />
-              Cadastrar Feriado
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setModalImportarOpen(true)}
+                className="border-slate-300 text-slate-700 hover:bg-slate-50 text-xs shrink-0"
+              >
+                <DownloadCloud className="w-4 h-4 mr-1.5 text-teal-700" />
+                Importar Feriados Nacionais
+              </Button>
+              <Button
+                onClick={handleOpenCreateFeriado}
+                className="bg-teal-700 hover:bg-teal-800 text-white text-xs shrink-0"
+              >
+                <Plus className="w-4 h-4 mr-1.5" />
+                Cadastrar Feriado
+              </Button>
+            </div>
           </div>
 
           <Card className="border border-slate-200 bg-white">
@@ -821,16 +999,24 @@ export default function MotorPrecosPage() {
                               className={
                                 h.tipo === 'nacional'
                                   ? 'bg-blue-50 text-blue-800 border-blue-200'
-                                  : 'bg-purple-50 text-purple-800 border-purple-200'
+                                  : h.tipo === 'estadual'
+                                    ? 'bg-purple-50 text-purple-800 border-purple-200'
+                                    : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                               }
                             >
-                              {h.tipo === 'nacional' ? 'Nacional' : 'Municipal'}
+                              {h.tipo === 'nacional'
+                                ? 'Nacional'
+                                : h.tipo === 'estadual'
+                                  ? 'Estadual'
+                                  : 'Municipal'}
                             </Badge>
                           </td>
-                          <td className="py-3 text-xs text-slate-500">
-                            {h.tipo === 'municipal'
-                              ? `${h.cidade || '—'}/${h.uf || '—'}`
-                              : 'Brasil (Nacional)'}
+                          <td className="py-3 text-xs text-slate-600 font-medium">
+                            {h.tipo === 'estadual'
+                              ? `UF: ${h.uf || '—'}`
+                              : h.tipo === 'municipal'
+                                ? `${h.cidade || '—'}/${h.uf || '—'}`
+                                : 'Brasil (Nacional)'}
                           </td>
                           <td className="py-3 text-right">
                             <div className="flex items-center justify-end gap-1">
@@ -1081,6 +1267,66 @@ export default function MotorPrecosPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Modal Importar Feriados Nacionais (BrasilAPI) */}
+      <Dialog open={modalImportarOpen} onOpenChange={setModalImportarOpen}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DownloadCloud className="w-5 h-5 text-teal-700" />
+              Importar Feriados Nacionais
+            </DialogTitle>
+            <DialogDescription>
+              Busca na BrasilAPI oficial os feriados nacionais do ano selecionado e cadastra os que
+              ainda não existirem no sistema (sem duplicar).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                Ano Desejado *
+              </label>
+              <Input
+                type="number"
+                min={1900}
+                max={2199}
+                value={anoImportacao}
+                onChange={(e) => setAnoImportacao(e.target.value)}
+                placeholder="2026"
+              />
+              <span className="text-[11px] text-slate-500 mt-1 block">
+                Fonte: BrasilAPI (pública, sem necessidade de chave). Feriados estaduais e
+                municipais permanecem com cadastro manual.
+              </span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isImporting}
+              onClick={() => setModalImportarOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={isImporting}
+              onClick={handleImportarFeriadosNacionais}
+              className="bg-teal-700 hover:bg-teal-800 text-white"
+            >
+              {isImporting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  Importando da BrasilAPI...
+                </>
+              ) : (
+                'Importar Agora'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Modal Feriado (Criação e Edição) */}
       <Dialog open={modalFeriadoOpen} onOpenChange={setModalFeriadoOpen}>
         <DialogContent className="sm:max-w-[480px]">
@@ -1117,17 +1363,76 @@ export default function MotorPrecosPage() {
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-700 block mb-1">Tipo *</label>
-                  <Select value={feriadoTipo} onValueChange={(v) => setFeriadoTipo(v as any)}>
+                  <Select
+                    value={feriadoTipo}
+                    onValueChange={(v) => handleTipoFeriadoChange(v as HolidayTipo)}
+                  >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="nacional">Nacional</SelectItem>
+                      <SelectItem value="estadual">Estadual</SelectItem>
                       <SelectItem value="municipal">Municipal</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
+
+              {/* Sugestões rápidas a partir dos postos cadastrados */}
+              {(feriadoTipo === 'municipal' || feriadoTipo === 'estadual') &&
+                (postosLocalidades.length > 0 || postosUfs.length > 0) && (
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80 space-y-1.5">
+                    <span className="text-[11px] font-semibold text-slate-600 block">
+                      Localidades encontradas nos postos cadastrados:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {feriadoTipo === 'municipal'
+                        ? postosLocalidades.map((loc) => (
+                            <button
+                              key={`${loc.cidade}-${loc.uf}`}
+                              type="button"
+                              onClick={() => {
+                                setFeriadoCidade(loc.cidade)
+                                setFeriadoUf(loc.uf)
+                              }}
+                              className="text-[11px] px-2 py-0.5 rounded bg-white border border-slate-300 hover:border-teal-500 hover:text-teal-700 text-slate-700 transition-colors shadow-2xs"
+                            >
+                              {loc.cidade}/{loc.uf}
+                            </button>
+                          ))
+                        : postosUfs.map((uf) => (
+                            <button
+                              key={uf}
+                              type="button"
+                              onClick={() => setFeriadoUf(uf)}
+                              className="text-[11px] px-2.5 py-0.5 rounded bg-white border border-slate-300 hover:border-purple-500 hover:text-purple-700 text-slate-700 transition-colors shadow-2xs font-semibold"
+                            >
+                              UF: {uf}
+                            </button>
+                          ))}
+                    </div>
+                  </div>
+                )}
+
+              {feriadoTipo === 'estadual' && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    UF do Estado *
+                  </label>
+                  <Input
+                    value={feriadoUf}
+                    onChange={(e) => setFeriadoUf(e.target.value.toUpperCase())}
+                    placeholder="SP"
+                    maxLength={2}
+                    required
+                  />
+                  <span className="text-[11px] text-slate-400 mt-1 block">
+                    Aplica para todos os postos localizados nesta Unidade Federativa.
+                  </span>
+                </div>
+              )}
+
               {feriadoTipo === 'municipal' && (
                 <div className="grid grid-cols-3 gap-3">
                   <div className="col-span-2">

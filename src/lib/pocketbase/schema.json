@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T21:51:11.388Z",
+  "generatedAt": "2026-10-03T22:00:57.382Z",
   "collections": [
     {
       "name": "users",
@@ -491,7 +491,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["nacional", "municipal"]
+          "selectValues": ["nacional", "estadual", "municipal"]
         },
         {
           "name": "cidade",

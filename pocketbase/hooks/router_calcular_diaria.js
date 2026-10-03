@@ -177,9 +177,18 @@ routerAdd('GET', '/backend/v1/calcular-diaria/{escalaId}/{proId}', (e) => {
   if (!valorExcecao) {
     try {
       // Buscar feriados na data
-      const endPosto = posto.get('endereco') || {}
-      const cidadePosto = endPosto.cidade || ''
-      const ufPosto = endPosto.uf || ''
+      let endPosto = {}
+      try {
+        const rawEnd = posto.get('endereco')
+        if (typeof rawEnd === 'string' && rawEnd.trim()) {
+          endPosto = JSON.parse(rawEnd)
+        } else if (rawEnd && typeof rawEnd === 'object') {
+          endPosto = rawEnd
+        }
+      } catch (_) {}
+
+      const cidadePosto = (endPosto.cidade || '').trim()
+      const ufPosto = (endPosto.uf || '').trim()
 
       const holidays = $app.findRecordsByFilter(
         'holidays',
@@ -199,9 +208,16 @@ routerAdd('GET', '/backend/v1/calcular-diaria/{escalaId}/{proId}', (e) => {
           isHoliday = true
           holidayName = h.getString('nome')
           break
+        } else if (hTipo === 'estadual') {
+          const hUf = (h.getString('uf') || '').trim()
+          if (hUf && ufPosto && hUf.toUpperCase() === ufPosto.toUpperCase()) {
+            isHoliday = true
+            holidayName = h.getString('nome')
+            break
+          }
         } else if (hTipo === 'municipal') {
-          const hCidade = h.getString('cidade')
-          const hUf = h.getString('uf')
+          const hCidade = (h.getString('cidade') || '').trim()
+          const hUf = (h.getString('uf') || '').trim()
           if (
             hCidade &&
             cidadePosto &&

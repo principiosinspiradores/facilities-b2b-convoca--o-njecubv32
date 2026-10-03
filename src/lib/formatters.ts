@@ -13,13 +13,21 @@ export function formatCurrencyBRL(value?: number | null): string {
 export function formatDateBR(dateStr?: string | null): string {
   if (!dateStr) return '—'
   try {
-    const clean = dateStr.split('T')[0] || dateStr.slice(0, 10)
+    const clean = String(dateStr).trim().slice(0, 10)
     const parts = clean.split('-')
-    if (parts.length === 3) {
+    if (
+      parts.length === 3 &&
+      parts[0].length === 4 &&
+      parts[1].length === 2 &&
+      parts[2].length === 2
+    ) {
       return `${parts[2]}/${parts[1]}/${parts[0]}`
     }
     const d = new Date(dateStr)
-    return d.toLocaleDateString('pt-BR')
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('pt-BR')
+    }
+    return dateStr
   } catch {
     return dateStr
   }

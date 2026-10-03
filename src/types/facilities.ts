@@ -199,11 +199,13 @@ export interface PricingRuleRecord {
   }
 }
 
+export type HolidayTipo = 'nacional' | 'estadual' | 'municipal'
+
 export interface HolidayRecord {
   id: string
   data: string
   nome: string
-  tipo: 'nacional' | 'municipal'
+  tipo: HolidayTipo
   cidade?: string
   uf?: string
   created: string

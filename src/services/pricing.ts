@@ -200,13 +200,17 @@ export async function estimarDiariaParaData(
     const holidays = await pb.collection('holidays').getFullList({
       filter: `data ~ "${dataStr.slice(0, 10)}"`,
     })
+    const uf = (ufPosto || '').trim().toUpperCase()
     for (const h of holidays) {
-      if (
-        h.tipo === 'nacional' ||
-        (h.tipo === 'municipal' &&
-          cidadePosto &&
-          h.cidade?.toLowerCase() === cidadePosto.toLowerCase())
-      ) {
+      const isNational = h.tipo === 'nacional'
+      const isState = h.tipo === 'estadual' && h.uf && uf && h.uf.toUpperCase() === uf
+      const isMunicipal =
+        h.tipo === 'municipal' &&
+        cidadePosto &&
+        h.cidade?.toLowerCase() === cidadePosto.toLowerCase() &&
+        (!h.uf || !uf || h.uf.toUpperCase() === uf)
+
+      if (isNational || isState || isMunicipal) {
         const feriadoRules = await pb.collection('pricing_rules').getFullList({
           filter: `tipo = "feriado" && posto = "${postoId}"`,
         })
