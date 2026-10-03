@@ -266,24 +266,42 @@ export default function ConvocacoesPage() {
                   {/* Top: Posto e Função */}
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100 text-xs font-semibold mb-1 uppercase tracking-wide">
-                        {posto?.funcao || 'Operacional'}
-                      </Badge>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100 text-xs font-semibold uppercase tracking-wide">
+                          {posto?.funcao || 'Operacional'}
+                        </Badge>
+                        {posto?.pro_fixo && posto.pro_fixo === user?.id && (
+                          <Badge className="bg-teal-700 text-white text-[10px] uppercase font-bold">
+                            Seu Posto Fixo
+                          </Badge>
+                        )}
+                      </div>
                       <h3 className="text-lg font-bold text-slate-900 group-hover:text-teal-700 transition-colors">
                         {posto?.nome || 'Posto de Trabalho'}
                       </h3>
                     </div>
 
                     <div className="text-right shrink-0">
-                      <div className="text-2xl font-black text-teal-700 tabular-nums">
-                        {formatCurrencyBRL(conv.valor_diaria)}
-                      </div>
-                      <div
-                        className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded inline-block mt-0.5 max-w-[190px] truncate"
-                        title={conv.regra_aplicada || 'tabela base'}
-                      >
-                        {conv.regra_aplicada || 'tabela base'}
-                      </div>
+                      {posto?.pro_fixo === user?.id && posto.tipo_remuneracao_fixa === 'mensal' ? (
+                        <div>
+                          <div className="text-lg font-black text-teal-800">Fixo Mensal</div>
+                          <div className="text-[11px] font-semibold text-slate-600">
+                            {formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}/mês
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="text-2xl font-black text-teal-700 tabular-nums">
+                            {formatCurrencyBRL(conv.valor_diaria)}
+                          </div>
+                          <div
+                            className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded inline-block mt-0.5 max-w-[190px] truncate"
+                            title={conv.regra_aplicada || 'tabela base'}
+                          >
+                            {conv.regra_aplicada || 'tabela base'}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 

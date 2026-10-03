@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { EscalaRecord, PostoRecord, UserRecord, ConvocacaoRecord } from '@/types/facilities'
 import { formatDateBR, formatCurrencyBRL } from '@/lib/formatters'
+import { estimarDiariaParaData } from '@/services/pricing'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,7 +23,20 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { toast } from '@/hooks/use-toast'
-import { Calendar, Plus, Users, Send, CheckCircle2, AlertTriangle, Clock } from 'lucide-react'
+import {
+  Calendar,
+  Plus,
+  Users,
+  Send,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  UserCheck,
+  CalendarRange,
+  ArrowRight,
+  ShieldCheck,
+  Info,
+} from 'lucide-react'
 
 export default function EscalasPage() {
   const [escalas, setEscalas] = useState<EscalaRecord[]>([])
@@ -31,14 +45,22 @@ export default function EscalasPage() {
   const [convocacoes, setConvocacoes] = useState<ConvocacaoRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  // Modal Nova Escala
+  // Modal Nova Escala: modo "unico" ou "periodo"
   const [modalNovaEscala, setModalNovaEscala] = useState(false)
+  const [tipoAgendamento, setTipoAgendamento] = useState<'unico' | 'periodo'>('unico')
   const [selectedPostoId, setSelectedPostoId] = useState('')
   const [dataEscala, setDataEscala] = useState('')
+  const [dataInicio, setDataInicio] = useState('')
+  const [dataFim, setDataFim] = useState('')
   const [turnoInicio, setTurnoInicio] = useState('07:00')
   const [turnoFim, setTurnoFim] = useState('15:00')
   const [valorDiaria, setValorDiaria] = useState(180)
   const [isCreatingEscala, setIsCreatingEscala] = useState(false)
+  const [modoRevisaoPeriodo, setModoRevisaoPeriodo] = useState(false)
+  const [previasPeriodo, setPreviasPeriodo] = useState<
+    Array<{ dataStr: string; valor: number; regra: string }>
+  >([])
+  const [calculandoPrevias, setCalculandoPrevias] = useState(false)
 
   // Modal Convocar Pros
   const [modalConvocar, setModalConvocar] = useState(false)
@@ -52,11 +74,12 @@ export default function EscalasPage() {
       const [escalasRes, postosRes, prosRes, convocacoesRes] = await Promise.all([
         pb.collection('escalas').getFullList<EscalaRecord>({
           sort: '-data',
-          expand: 'posto',
+          expand: 'posto,posto.pro_fixo',
         }),
         pb.collection('postos').getFullList<PostoRecord>({
           filter: 'status = "ativo"',
           sort: 'nome',
+          expand: 'pro_fixo',
         }),
         pb.collection('users').getFullList<UserRecord>({
           filter: 'role = "pro"',
@@ -101,38 +124,246 @@ export default function EscalasPage() {
     }
   }, [])
 
-  const handleCreateEscala = async (e: React.FormEvent) => {
+  const selectedPosto = useMemo(() => {
+    return postos.find((p) => p.id === selectedPostoId)
+  }, [postos, selectedPostoId])
+
+  // Quando seleciona o posto, ajustar horário padrão de acordo com carga horária
+  useEffect(() => {
+    if (selectedPosto) {
+      const ch = selectedPosto.carga_horaria || 8
+      if (ch === 12) {
+        setTurnoInicio('07:00')
+        setTurnoFim('19:00')
+      } else if (ch === 6) {
+        setTurnoInicio('07:00')
+        setTurnoFim('13:00')
+      } else if (ch === 4) {
+        setTurnoInicio('08:00')
+        setTurnoFim('12:00')
+      } else {
+        setTurnoInicio('07:00')
+        setTurnoFim('15:00')
+      }
+
+      // Se posto tem pro fixo mensal, valor de diária padrão é 0
+      if (selectedPosto.pro_fixo && selectedPosto.tipo_remuneracao_fixa === 'mensal') {
+        setValorDiaria(0)
+      } else if (selectedPosto.pro_fixo && selectedPosto.tipo_remuneracao_fixa === 'por_hora') {
+        const vh = selectedPosto.valor_remuneracao_fixa || 25
+        setValorDiaria(vh * ch)
+      } else {
+        setValorDiaria(ch <= 4 ? 130 : ch <= 6 ? 160 : 180)
+      }
+    }
+  }, [selectedPosto])
+
+  // Calcular lista de dias do período (inclusive)
+  const getDatasDoPeriodo = (inicio: string, fim: string): string[] => {
+    const list: string[] = []
+    if (!inicio || !fim) return list
+
+    const [anoI, mesI, diaI] = inicio.split('-').map(Number)
+    const [anoF, mesF, diaF] = fim.split('-').map(Number)
+
+    let cur = new Date(Date.UTC(anoI, mesI - 1, diaI, 12, 0, 0))
+    const end = new Date(Date.UTC(anoF, mesF - 1, diaF, 12, 0, 0))
+
+    if (cur.getTime() > end.getTime()) return list
+
+    while (cur.getTime() <= end.getTime()) {
+      const y = cur.getUTCFullYear()
+      const m = String(cur.getUTCMonth() + 1).padStart(2, '0')
+      const d = String(cur.getUTCDate()).padStart(2, '0')
+      list.push(`${y}-${m}-${d}`)
+      cur = new Date(cur.getTime() + 24 * 60 * 60 * 1000)
+    }
+    return list
+  }
+
+  // Preparar resumo do período
+  const handleRevisarPeriodo = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedPostoId || !dataEscala) {
-      toast({
-        title: 'Preencha os campos obrigatórios',
-        variant: 'destructive',
-      })
+    if (!selectedPostoId) {
+      toast({ title: 'Selecione o posto', variant: 'destructive' })
       return
     }
 
-    setIsCreatingEscala(true)
-    try {
-      await pb.collection('escalas').create({
-        posto: selectedPostoId,
-        data: new Date(dataEscala).toISOString(),
-        turno_inicio: turnoInicio,
-        turno_fim: turnoFim,
-        status: 'aberta',
-        multa_aplicada: false,
-        valor_diaria: Number(valorDiaria),
-      })
+    if (tipoAgendamento === 'unico') {
+      if (!dataEscala) {
+        toast({ title: 'Informe a data do turno', variant: 'destructive' })
+        return
+      }
+      // Cria diretamente escala de um dia
+      executarCriacaoEscalas([dataEscala])
+    } else {
+      // Período
+      if (!dataInicio || !dataFim) {
+        toast({ title: 'Preencha as datas de início e término', variant: 'destructive' })
+        return
+      }
+      const datas = getDatasDoPeriodo(dataInicio, dataFim)
+      if (datas.length === 0) {
+        toast({
+          title: 'Período inválido',
+          description: 'A data final deve ser igual ou posterior à data inicial.',
+          variant: 'destructive',
+        })
+        return
+      }
+      if (datas.length > 90) {
+        toast({
+          title: 'Período muito extenso',
+          description: 'Crie escalas de no máximo 90 dias por vez.',
+          variant: 'destructive',
+        })
+        return
+      }
 
-      toast({
-        title: 'Escala aberta com sucesso!',
-        description: 'Agora selecione os profissionais elegíveis para convocação nominal.',
-      })
+      setCalculandoPrevias(true)
+      setModoRevisaoPeriodo(true)
+      try {
+        const postoObj = postos.find((p) => p.id === selectedPostoId)
+        const carga = postoObj?.carga_horaria || 8
+        const end = (postoObj?.endereco as any) || {}
+
+        const prevs = await Promise.all(
+          datas.map(async (d) => {
+            // Se o posto tem profissional fixa
+            if (postoObj?.pro_fixo) {
+              if (postoObj.tipo_remuneracao_fixa === 'mensal') {
+                return {
+                  dataStr: d,
+                  valor: 0,
+                  regra: `fixa mensal (R$ ${(postoObj.valor_remuneracao_fixa || 0).toFixed(2)}/mês)`,
+                }
+              } else {
+                const total = carga * (postoObj.valor_remuneracao_fixa || 25)
+                return {
+                  dataStr: d,
+                  valor: total,
+                  regra: `fixa por hora (R$ ${(postoObj.valor_remuneracao_fixa || 25).toFixed(2)}/h × ${carga}h)`,
+                }
+              }
+            }
+
+            // Freelancer: cálculo pelo motor de 3 camadas por dia
+            const calc = await estimarDiariaParaData(
+              postoObj?.id || '',
+              d,
+              carga,
+              end.cidade,
+              end.uf,
+            )
+            return {
+              dataStr: d,
+              valor: calc.valor,
+              regra: calc.regra,
+            }
+          }),
+        )
+
+        setPreviasPeriodo(prevs)
+      } catch (err) {
+        console.error('Erro ao calcular prévias:', err)
+      } finally {
+        setCalculandoPrevias(false)
+      }
+    }
+  }
+
+  // Executa criação em lote (ou de uma) escala e dispara convocação nominal se posto tem fixa
+  const executarCriacaoEscalas = async (datasParaCriar: string[]) => {
+    if (!selectedPostoId || datasParaCriar.length === 0) return
+
+    setIsCreatingEscala(true)
+    const postoObj = postos.find((p) => p.id === selectedPostoId)
+    const carga = postoObj?.carga_horaria || 8
+    const end = (postoObj?.endereco as any) || {}
+    const proFixoId = postoObj?.pro_fixo
+    const proFixoObj = pros.find((p) => p.id === proFixoId)
+
+    let criadas = 0
+    let convsDisparadas = 0
+
+    try {
+      const nowIso = new Date().toISOString()
+
+      for (const d of datasParaCriar) {
+        // 1. Determina valor da diária para esta data
+        let vDiaria = valorDiaria
+        let regraCalculada = 'tabela base'
+
+        if (proFixoId) {
+          if (postoObj.tipo_remuneracao_fixa === 'mensal') {
+            vDiaria = 0
+            regraCalculada = `profissional fixa (mensal: R$ ${(postoObj.valor_remuneracao_fixa || 0).toFixed(2)})`
+          } else {
+            const vHora = postoObj.valor_remuneracao_fixa || 25
+            vDiaria = vHora * carga
+            regraCalculada = `profissional fixa (R$ ${vHora.toFixed(2)}/h × ${carga}h)`
+          }
+        } else {
+          // Motor de 3 camadas para freelancers
+          const c = await estimarDiariaParaData(postoObj?.id || '', d, carga, end.cidade, end.uf)
+          vDiaria = c.valor
+          regraCalculada = c.regra
+        }
+
+        // Criar registro na coleção 'escalas'
+        // Formatar para início do dia ISO UTC
+        const isoDate = new Date(`${d}T12:00:00Z`).toISOString()
+
+        const novaEscala = await pb.collection('escalas').create<EscalaRecord>({
+          posto: selectedPostoId,
+          data: isoDate,
+          turno_inicio: turnoInicio,
+          turno_fim: turnoFim,
+          status: proFixoId ? 'convocada' : 'aberta',
+          multa_aplicada: false,
+          valor_diaria: vDiaria,
+        })
+        criadas++
+
+        // 2. Se o posto tem pro fixa, a convocação vai DIRETA e PRIORITÁRIA para ela
+        if (proFixoId && proFixoObj) {
+          await pb.collection('convocacoes').create({
+            escala: novaEscala.id,
+            pro: proFixoId,
+            status: 'pendente',
+            valor_diaria: vDiaria,
+            regra_aplicada: regraCalculada,
+            data_convocacao: nowIso,
+          })
+          convsDisparadas++
+        }
+      }
+
+      if (datasParaCriar.length === 1) {
+        toast({
+          title: 'Escala criada com sucesso!',
+          description: proFixoId
+            ? `Convocação nominal prioritária disparada diretamente para ${proFixoObj?.name || 'a fixa do posto'}.`
+            : 'Escala aberta. Agora você pode convocar profissionais elegíveis.',
+        })
+      } else {
+        toast({
+          title: `Lote criado com sucesso! (${criadas} escalas)`,
+          description: proFixoId
+            ? `${convsDisparadas} convocações prioritárias enviadas para ${proFixoObj?.name || 'a profissional fixa'}.`
+            : `${criadas} escalas geradas com cálculo diário via motor de 3 camadas.`,
+        })
+      }
+
       setModalNovaEscala(false)
+      setModoRevisaoPeriodo(false)
+      setPreviasPeriodo([])
       loadData()
     } catch (err) {
       console.error(err)
       toast({
-        title: 'Erro ao criar escala',
+        title: 'Erro ao criar escala(s)',
+        description: 'Verifique os dados e tente novamente.',
         variant: 'destructive',
       })
     } finally {
@@ -262,12 +493,22 @@ export default function EscalasPage() {
             if (escala.status === 'falta') badgeVariant = 'bg-red-100 text-red-800'
             if (escala.status === 'convocada') badgeVariant = 'bg-amber-100 text-amber-800'
 
+            const isPostoComFixa = !!posto?.pro_fixo
+            const proFixoData = posto?.expand?.pro_fixo
+
             return (
-              <Card key={escala.id} className="border border-slate-200 bg-white">
+              <Card
+                key={escala.id}
+                className={`border bg-white transition-shadow hover:shadow-sm ${
+                  isPostoComFixa
+                    ? 'border-l-4 border-l-teal-600 border-slate-200'
+                    : 'border-slate-200'
+                }`}
+              >
                 <CardContent className="p-5">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Badge
                           variant="outline"
                           className="bg-teal-50 text-teal-800 border-teal-200 text-xs font-semibold"
@@ -279,6 +520,18 @@ export default function EscalasPage() {
                         </Badge>
                         {escala.multa_aplicada && (
                           <Badge className="bg-red-600 text-white text-xs">Multa Aplicada</Badge>
+                        )}
+
+                        {/* Indicação visual de Posto com Pro Fixa */}
+                        {isPostoComFixa && (
+                          <Badge className="bg-teal-700 text-white text-xs font-medium flex items-center gap-1">
+                            <UserCheck className="w-3 h-3" />
+                            Posto c/ Profissional Fixa: {proFixoData?.name || 'Fixa vinculada'} (
+                            {posto?.tipo_remuneracao_fixa === 'por_hora'
+                              ? `Por Hora - ${formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}/h`
+                              : `Mensalista - ${formatCurrencyBRL(posto?.valor_remuneracao_fixa || 0)}/mês`}
+                            )
+                          </Badge>
                         )}
                       </div>
 
@@ -293,10 +546,22 @@ export default function EscalasPage() {
                         </span>
                         <span className="flex items-center gap-1 font-medium text-slate-700">
                           <Clock className="w-3.5 h-3.5 text-teal-600" />
-                          {escala.turno_inicio} às {escala.turno_fim}
+                          {escala.turno_inicio} às {escala.turno_fim} ({posto?.carga_horaria || 8}h)
                         </span>
                         <span>
-                          Diária: <strong>{formatCurrencyBRL(escala.valor_diaria)}</strong>
+                          {posto?.tipo_remuneracao_fixa === 'mensal' && isPostoComFixa ? (
+                            <strong className="text-teal-700">
+                              Salário Mensal ({formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}
+                              /mês)
+                            </strong>
+                          ) : (
+                            <>
+                              Remuneração Turno:{' '}
+                              <strong className="text-slate-800">
+                                {formatCurrencyBRL(escala.valor_diaria)}
+                              </strong>
+                            </>
+                          )}
                         </span>
                       </div>
                     </div>
@@ -310,6 +575,11 @@ export default function EscalasPage() {
                           </div>
                           <div className="font-semibold text-slate-900">
                             {aceito.expand?.pro?.name || 'Profissional'}
+                            {isPostoComFixa && aceito.pro === posto?.pro_fixo && (
+                              <span className="ml-1 text-[10px] text-teal-700 font-bold">
+                                (Fixa)
+                              </span>
+                            )}
                           </div>
                         </div>
                       ) : (
@@ -327,33 +597,51 @@ export default function EscalasPage() {
                   {/* Lista de convocados */}
                   {convsDestaEscala.length > 0 && (
                     <div className="mt-4 pt-3 border-t border-slate-100">
-                      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                        Histórico de Convocações Deste Turno
+                      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                        <span>Histórico de Convocações Deste Turno</span>
+                        {isPostoComFixa && (
+                          <span className="text-[11px] text-teal-700 font-normal">
+                            Prioridade da fixa: se recusar/faltar, reoferta automaticamente para
+                            freelancers.
+                          </span>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {convsDestaEscala.map((c) => (
-                          <div
-                            key={c.id}
-                            className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded text-xs text-slate-700"
-                          >
-                            <span className="font-semibold">{c.expand?.pro?.name || 'Pro'}</span>
-                            <span className="text-slate-400">
-                              ({formatCurrencyBRL(c.valor_diaria)})
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className={
-                                c.status === 'aceita'
-                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                                  : c.status === 'recusada'
-                                    ? 'bg-rose-100 text-rose-800 border-rose-200'
-                                    : 'bg-amber-100 text-amber-800 border-amber-200'
-                              }
+                        {convsDestaEscala.map((c) => {
+                          const isProFixoDestePosto = isPostoComFixa && c.pro === posto?.pro_fixo
+                          return (
+                            <div
+                              key={c.id}
+                              className={`flex items-center gap-2 border px-2.5 py-1 rounded text-xs ${
+                                isProFixoDestePosto
+                                  ? 'bg-teal-50 border-teal-300 text-teal-900'
+                                  : 'bg-slate-50 border-slate-200 text-slate-700'
+                              }`}
                             >
-                              {c.status}
-                            </Badge>
-                          </div>
-                        ))}
+                              <span className="font-semibold">
+                                {c.expand?.pro?.name || 'Pro'}
+                                {isProFixoDestePosto && ' (Fixa do Posto)'}
+                              </span>
+                              <span className="text-slate-500">
+                                {c.valor_diaria && c.valor_diaria > 0
+                                  ? `(${formatCurrencyBRL(c.valor_diaria)})`
+                                  : '(Fixo Mensal)'}
+                              </span>
+                              <Badge
+                                variant="outline"
+                                className={
+                                  c.status === 'aceita'
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                    : c.status === 'recusada'
+                                      ? 'bg-rose-100 text-rose-800 border-rose-200'
+                                      : 'bg-amber-100 text-amber-800 border-amber-200'
+                                }
+                              >
+                                {c.status}
+                              </Badge>
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                   )}
@@ -364,99 +652,322 @@ export default function EscalasPage() {
         </div>
       )}
 
-      {/* Modal Nova Escala */}
-      <Dialog open={modalNovaEscala} onOpenChange={setModalNovaEscala}>
-        <DialogContent>
-          <form onSubmit={handleCreateEscala}>
-            <DialogHeader>
-              <DialogTitle>Gerar Nova Escala de Trabalho</DialogTitle>
-              <DialogDescription>
-                Selecione o posto contratante, o dia do turno e o horário de cobertura.
-              </DialogDescription>
-            </DialogHeader>
+      {/* Modal Nova Escala (Dia único OU Período de vários dias com resumo) */}
+      <Dialog
+        open={modalNovaEscala}
+        onOpenChange={(open) => {
+          setModalNovaEscala(open)
+          if (!open) {
+            setModoRevisaoPeriodo(false)
+            setPreviasPeriodo([])
+          }
+        }}
+      >
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          {!modoRevisaoPeriodo ? (
+            <form onSubmit={handleRevisarPeriodo}>
+              <DialogHeader>
+                <DialogTitle>Gerar Nova Escala de Trabalho</DialogTitle>
+                <DialogDescription>
+                  Abra turnos pontuais ou crie uma programação por período completo com cálculo
+                  automático de diárias.
+                </DialogDescription>
+              </DialogHeader>
 
-            <div className="space-y-4 py-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Posto de Trabalho *
-                </label>
-                <Select value={selectedPostoId} onValueChange={setSelectedPostoId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o posto..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {postos.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.nome} ({p.funcao} - {p.carga_horaria}h)
-                      </SelectItem>
+              <div className="space-y-4 py-4">
+                {/* Seletor de Tipo: Um dia ou Intervalo de datas */}
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                    Modo de Agendamento *
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTipoAgendamento('unico')}
+                      className={`p-3 rounded-lg border text-left text-xs font-medium flex items-center gap-2 transition-all ${
+                        tipoAgendamento === 'unico'
+                          ? 'border-teal-600 bg-teal-50 text-teal-900 font-bold ring-1 ring-teal-600'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Calendar className="w-4 h-4 text-teal-700" />
+                      <div>
+                        <div>Dia Único</div>
+                        <div className="text-[10px] text-slate-400 font-normal">
+                          Uma escala pontual
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTipoAgendamento('periodo')}
+                      className={`p-3 rounded-lg border text-left text-xs font-medium flex items-center gap-2 transition-all ${
+                        tipoAgendamento === 'periodo'
+                          ? 'border-teal-600 bg-teal-50 text-teal-900 font-bold ring-1 ring-teal-600'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <CalendarRange className="w-4 h-4 text-teal-700" />
+                      <div>
+                        <div>Por Período (Vários Dias)</div>
+                        <div className="text-[10px] text-slate-400 font-normal">
+                          Ex: 05/10 à 20/10
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Posto de Trabalho */}
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Posto de Trabalho *
+                  </label>
+                  <Select value={selectedPostoId} onValueChange={setSelectedPostoId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o posto..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {postos.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.nome} ({p.funcao} - {p.carga_horaria}h)
+                          {p.pro_fixo ? ' [Profissional Fixa]' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Aviso se posto tem profissional fixa */}
+                {selectedPosto?.pro_fixo && (
+                  <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 text-xs text-teal-900 space-y-1">
+                    <div className="font-bold flex items-center gap-1.5 text-teal-800">
+                      <UserCheck className="w-4 h-4 text-teal-700" />
+                      Posto com Profissional Fixa Vinculada
+                    </div>
+                    <p className="text-[11px] text-slate-600">
+                      Profissional:{' '}
+                      <strong>
+                        {selectedPosto.expand?.pro_fixo?.name || 'Profissional designada'}
+                      </strong>
+                      . A convocação será enviada primeiro a ela. Se recusar ou faltar, o turno é
+                      reofertado automaticamente aos freelancers com pagamento pelo motor de diária.
+                    </p>
+                    <div className="text-[11px] font-semibold text-teal-800 pt-1">
+                      Remuneração da Fixa:{' '}
+                      {selectedPosto.tipo_remuneracao_fixa === 'por_hora'
+                        ? `${formatCurrencyBRL(selectedPosto.valor_remuneracao_fixa || 0)}/hora (Total turno: ${formatCurrencyBRL(
+                            (selectedPosto.valor_remuneracao_fixa || 0) *
+                              (selectedPosto.carga_horaria || 8),
+                          )})`
+                        : `${formatCurrencyBRL(selectedPosto.valor_remuneracao_fixa || 0)}/mês contratado (fora do escrow por diária)`}
+                    </div>
+                  </div>
+                )}
+
+                {/* Seleção de Datas: Única vs Período */}
+                {tipoAgendamento === 'unico' ? (
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Data do Turno *
+                    </label>
+                    <Input
+                      type="date"
+                      value={dataEscala}
+                      onChange={(e) => setDataEscala(e.target.value)}
+                      required
+                    />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        Data Inicial *
+                      </label>
+                      <Input
+                        type="date"
+                        value={dataInicio}
+                        onChange={(e) => setDataInicio(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        Data Final *
+                      </label>
+                      <Input
+                        type="date"
+                        value={dataFim}
+                        onChange={(e) => setDataFim(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="col-span-2 text-[11px] text-slate-500">
+                      O sistema criará automaticamente uma escala para cada dia deste intervalo,
+                      respeitando o horário e carga horária do turno.
+                    </div>
+                  </div>
+                )}
+
+                {/* Horários do Turno */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Início do Turno *
+                    </label>
+                    <Input
+                      type="time"
+                      value={turnoInicio}
+                      onChange={(e) => setTurnoInicio(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Término do Turno *
+                    </label>
+                    <Input
+                      type="time"
+                      value={turnoFim}
+                      onChange={(e) => setTurnoFim(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Valor base da diária (ou fixo do posto) */}
+                {(!selectedPosto?.pro_fixo ||
+                  selectedPosto.tipo_remuneracao_fixa === 'por_hora') && (
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Valor da Diária Base (R$)
+                    </label>
+                    <Input
+                      type="number"
+                      value={valorDiaria}
+                      onChange={(e) => setValorDiaria(Number(e.target.value))}
+                      required
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Para períodos, fins de semana e feriados terão o valor ajustado
+                      automaticamente pelo motor de regras em 3 camadas.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setModalNovaEscala(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-teal-700 hover:bg-teal-800 text-white"
+                  disabled={isCreatingEscala || !selectedPostoId}
+                >
+                  {tipoAgendamento === 'periodo' ? (
+                    <>
+                      Revisar Período <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                    </>
+                  ) : (
+                    'Salvar Escala'
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          ) : (
+            /* Modo Revisão do Período antes de Confirmar */
+            <div className="space-y-4">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-teal-800">
+                  <ShieldCheck className="w-5 h-5 text-teal-600" />
+                  Resumo da Criação por Período
+                </DialogTitle>
+                <DialogDescription>
+                  Revise o lote de escalas que será gerado e os valores calculados por dia.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 text-xs text-teal-900 space-y-1">
+                <div className="font-bold text-sm">
+                  Serão criadas {previasPeriodo.length} escalas de {formatDateBR(dataInicio)} a{' '}
+                  {formatDateBR(dataFim)}
+                </div>
+                <div className="text-slate-600">
+                  Posto: <strong>{selectedPosto?.nome}</strong> ({selectedPosto?.carga_horaria}
+                  h/turno, {turnoInicio} às {turnoFim})
+                </div>
+                {selectedPosto?.pro_fixo && (
+                  <div className="text-teal-800 font-semibold pt-1">
+                    ✓ Prioridade direta: As convocações serão disparadas primeiro para a
+                    profissional fixa ({selectedPosto.expand?.pro_fixo?.name}). Se ela recusar ou
+                    faltar, o turno é reofertado aos freelancers.
+                  </div>
+                )}
+              </div>
+
+              {calculandoPrevias ? (
+                <div className="py-8 text-center text-xs text-slate-500">
+                  <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                  Calculando motor de diária para cada dia do período...
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
+                    Detalhamento Dia a Dia ({previasPeriodo.length} turnos)
+                  </label>
+                  <div className="max-h-56 overflow-y-auto space-y-1.5 border border-slate-200 rounded-lg p-2 bg-slate-50">
+                    {previasPeriodo.map((p, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between bg-white p-2 rounded border border-slate-100 text-xs"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-800">
+                            {formatDateBR(p.dataStr)}
+                          </span>
+                          <span className="text-[11px] text-slate-400">
+                            ({turnoInicio} às {turnoFim})
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-bold text-teal-700">
+                            {selectedPosto?.tipo_remuneracao_fixa === 'mensal' &&
+                            selectedPosto.pro_fixo
+                              ? 'Fixo Mensal'
+                              : formatCurrencyBRL(p.valor)}
+                          </span>
+                          <span className="text-[10px] text-slate-400 block">{p.regra}</span>
+                        </div>
+                      </div>
                     ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Data do Turno *
-                </label>
-                <Input
-                  type="date"
-                  value={dataEscala}
-                  onChange={(e) => setDataEscala(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Início do Turno *
-                  </label>
-                  <Input
-                    type="time"
-                    value={turnoInicio}
-                    onChange={(e) => setTurnoInicio(e.target.value)}
-                    required
-                  />
+                  </div>
                 </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Término do Turno *
-                  </label>
-                  <Input
-                    type="time"
-                    value={turnoFim}
-                    onChange={(e) => setTurnoFim(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
+              )}
 
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Valor da Diária Base (R$)
-                </label>
-                <Input
-                  type="number"
-                  value={valorDiaria}
-                  onChange={(e) => setValorDiaria(Number(e.target.value))}
-                  required
-                />
-              </div>
+              <DialogFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setModoRevisaoPeriodo(false)}
+                  disabled={isCreatingEscala}
+                >
+                  Voltar e Ajustar
+                </Button>
+                <Button
+                  type="button"
+                  className="bg-teal-700 hover:bg-teal-800 text-white font-medium"
+                  disabled={isCreatingEscala || calculandoPrevias}
+                  onClick={() => executarCriacaoEscalas(previasPeriodo.map((p) => p.dataStr))}
+                >
+                  {isCreatingEscala
+                    ? 'Gerando escalas...'
+                    : `Confirmar e Criar ${previasPeriodo.length} Escalas`}
+                </Button>
+              </DialogFooter>
             </div>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setModalNovaEscala(false)}>
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                className="bg-teal-700 hover:bg-teal-800 text-white"
-                disabled={isCreatingEscala}
-              >
-                {isCreatingEscala ? 'Gerando...' : 'Salvar Escala'}
-              </Button>
-            </DialogFooter>
-          </form>
+          )}
         </DialogContent>
       </Dialog>
 

@@ -6,7 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/hooks/use-toast'
-import { CheckCircle2, AlertTriangle, RefreshCw, XCircle, Users, Activity } from 'lucide-react'
+import {
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  XCircle,
+  Users,
+  Activity,
+  UserCheck,
+} from 'lucide-react'
 
 export default function CoberturaPage() {
   const [escalas, setEscalas] = useState<EscalaRecord[]>([])
@@ -20,7 +28,7 @@ export default function CoberturaPage() {
       const [escList, convList] = await Promise.all([
         pb.collection('escalas').getFullList<EscalaRecord>({
           sort: '-data',
-          expand: 'posto',
+          expand: 'posto,posto.pro_fixo',
         }),
         pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
           sort: '-created',
@@ -242,30 +250,58 @@ export default function CoberturaPage() {
                     const aceito = convs.find((c) => c.status === 'aceita')
                     const falta = convs.find((c) => c.status === 'falta')
 
+                    const isPostoComFixa = !!posto?.pro_fixo
+                    const proFixoData = posto?.expand?.pro_fixo
+
                     return (
                       <tr key={esc.id} className="hover:bg-slate-50/80">
                         <td className="py-3.5">
-                          <div className="font-semibold text-slate-900">{posto?.nome}</div>
-                          <div className="text-xs text-slate-500 uppercase font-medium">
-                            {posto?.funcao}
+                          <div className="font-semibold text-slate-900 flex items-center gap-2">
+                            <span>{posto?.nome}</span>
+                            {isPostoComFixa && (
+                              <Badge className="bg-teal-100 text-teal-800 border-teal-300 text-[10px] font-medium flex items-center gap-1">
+                                <UserCheck className="w-2.5 h-2.5" />
+                                Posto com Fixa
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-500 uppercase font-medium flex items-center gap-2 mt-0.5">
+                            <span>{posto?.funcao}</span>
+                            {isPostoComFixa && (
+                              <span className="text-[11px] text-teal-700 font-normal lowercase">
+                                • fixa: <strong>{proFixoData?.name || 'Designada'}</strong> (
+                                {posto?.tipo_remuneracao_fixa === 'por_hora'
+                                  ? `${formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}/h`
+                                  : `${formatCurrencyBRL(posto?.valor_remuneracao_fixa || 0)}/mês`}
+                                )
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="py-3.5">
                           <div className="text-slate-800 font-medium">{formatDateBR(esc.data)}</div>
                           <div className="text-xs text-slate-500">
-                            {esc.turno_inicio} às {esc.turno_fim}
+                            {esc.turno_inicio} às {esc.turno_fim} ({posto?.carga_horaria || 8}h)
                           </div>
                         </td>
                         <td className="py-3.5">
                           {aceito ? (
                             <span className="font-semibold text-emerald-800 flex items-center gap-1.5">
                               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                              {aceito.expand?.pro?.name || 'Profissional'}
+                              <span>{aceito.expand?.pro?.name || 'Profissional'}</span>
+                              {isPostoComFixa && aceito.pro === posto?.pro_fixo && (
+                                <Badge className="bg-teal-50 text-teal-800 border-teal-200 text-[10px] px-1 py-0">
+                                  Fixa
+                                </Badge>
+                              )}
                             </span>
                           ) : falta ? (
                             <span className="font-semibold text-rose-800 flex items-center gap-1.5">
                               <XCircle className="w-4 h-4 text-rose-600" />
-                              {falta.expand?.pro?.name || 'Profissional'} (Faltou)
+                              <span>{falta.expand?.pro?.name || 'Profissional'} (Faltou)</span>
+                              {isPostoComFixa && falta.pro === posto?.pro_fixo && (
+                                <span className="text-[10px] text-rose-600 font-bold">(Fixa)</span>
+                              )}
                             </span>
                           ) : (
                             <span className="text-slate-400 text-xs italic">
@@ -287,7 +323,7 @@ export default function CoberturaPage() {
                           )}
                           {!aceito && esc.status !== 'falta' && (
                             <Badge className="bg-amber-100 text-amber-800 border-amber-200">
-                              Desguarnecido
+                              {isPostoComFixa ? 'Aguardando Fixa' : 'Desguarnecido'}
                             </Badge>
                           )}
                         </td>

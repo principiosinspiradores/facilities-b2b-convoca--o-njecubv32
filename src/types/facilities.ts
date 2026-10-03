@@ -35,6 +35,8 @@ export interface Endereco {
   cep: string
 }
 
+export type TipoRemuneracaoFixa = 'mensal' | 'por_hora'
+
 export interface PostoRecord {
   id: string
   nome: string
@@ -45,8 +47,14 @@ export interface PostoRecord {
   vigencia_fim?: string
   requisitos?: string
   status: PostoStatus
+  pro_fixo?: string
+  tipo_remuneracao_fixa?: TipoRemuneracaoFixa
+  valor_remuneracao_fixa?: number
   created: string
   updated: string
+  expand?: {
+    pro_fixo?: UserRecord
+  }
 }
 
 export type EscalaStatus =

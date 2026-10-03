@@ -25,6 +25,46 @@ routerAdd('GET', '/backend/v1/calcular-diaria/{escalaId}/{proId}', (e) => {
   }
 
   const cargaHoraria = posto.getInt('carga_horaria') || 8
+
+  // REGRA ESPECIAL: PROFISSIONAL FIXA POR POSTO
+  // A profissional fixa NÃO usa o motor de diária. O valor dela é diferente:
+  // Fixo mensal (contratada) -> valor 0 na diária (ou contratado mensal) e não entra em escrow diário
+  // Por hora trabalhada -> cargaHoraria * valor da hora
+  const proFixoId = posto.getString('pro_fixo')
+  if (proFixoId && proFixoId === proId) {
+    const tipoRemun = posto.getString('tipo_remuneracao_fixa') || 'mensal'
+    const valorRemun = posto.getFloat('valor_remuneracao_fixa') || 0
+
+    if (tipoRemun === 'mensal') {
+      return e.json(200, {
+        valor: 0,
+        valor_mensal: valorRemun,
+        tipo_remuneracao: 'mensal',
+        is_fixa: true,
+        regra_aplicada:
+          'profissional fixa (mensalista contratada: R$ ' + valorRemun.toFixed(2) + '/mês)',
+      })
+    } else {
+      // por_hora
+      const valorTotalTurno = cargaHoraria * valorRemun
+      return e.json(200, {
+        valor: valorTotalTurno,
+        valor_hora: valorRemun,
+        tipo_remuneracao: 'por_hora',
+        is_fixa: true,
+        regra_aplicada:
+          'profissional fixa (R$ ' +
+          valorRemun.toFixed(2) +
+          '/h × ' +
+          cargaHoraria +
+          'h = R$ ' +
+          valorTotalTurno.toFixed(2) +
+          ')',
+      })
+    }
+  }
+
+  // FREELANCERS SEGUEM O MOTOR DE 3 CAMADAS
   const escalaData =
     (escala.getString('data') || '').split('T')[0] || (escala.getString('data') || '').slice(0, 10)
 
@@ -216,5 +256,6 @@ routerAdd('GET', '/backend/v1/calcular-diaria/{escalaId}/{proId}', (e) => {
   return e.json(200, {
     valor: valorFinal,
     regra_aplicada: regraFinal,
+    is_fixa: false,
   })
 })

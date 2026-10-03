@@ -28,6 +28,10 @@ export function getLogoUrl(settings: SettingsRecord | null | undefined): string 
 export interface DiariaCalculadaResponse {
   valor: number
   regra_aplicada: string
+  is_fixa?: boolean
+  tipo_remuneracao?: 'mensal' | 'por_hora'
+  valor_mensal?: number
+  valor_hora?: number
 }
 
 export async function calcularDiariaEngine(
@@ -53,12 +57,38 @@ export async function calcularDiariaEngine(
   try {
     const escala = await pb.collection('escalas').getOne(escalaId, { expand: 'posto' })
     const pro = await pb.collection('users').getOne(proId)
-    const carga = (escala as any)?.expand?.posto?.carga_horaria || 8
+    const posto = (escala as any)?.expand?.posto
+    const carga = posto?.carga_horaria || 8
+
+    // Regra fixa
+    if (posto?.pro_fixo && posto.pro_fixo === proId) {
+      const tipo = posto.tipo_remuneracao_fixa || 'mensal'
+      const val = Number(posto.valor_remuneracao_fixa || 0)
+      if (tipo === 'mensal') {
+        return {
+          valor: 0,
+          valor_mensal: val,
+          is_fixa: true,
+          tipo_remuneracao: 'mensal',
+          regra_aplicada: `profissional fixa (mensalista contratada: R$ ${val.toFixed(2)}/mês)`,
+        }
+      } else {
+        const total = carga * val
+        return {
+          valor: total,
+          valor_hora: val,
+          is_fixa: true,
+          tipo_remuneracao: 'por_hora',
+          regra_aplicada: `profissional fixa (R$ ${val.toFixed(2)}/h × ${carga}h = R$ ${total.toFixed(2)})`,
+        }
+      }
+    }
 
     if (pro.status === 'teste') {
       return {
         valor: pro.ajuda_custo || 50,
         regra_aplicada: 'ajuda de custo (teste)',
+        is_fixa: false,
       }
     }
 
@@ -66,6 +96,7 @@ export async function calcularDiariaEngine(
       return {
         valor: pro.valor_negociado,
         regra_aplicada: 'valor negociado',
+        is_fixa: false,
       }
     }
 
@@ -73,11 +104,129 @@ export async function calcularDiariaEngine(
     return {
       valor: valorBase,
       regra_aplicada: `tabela base (${carga}h)`,
+      is_fixa: false,
     }
   } catch {
     return {
       valor: 180,
       regra_aplicada: 'tabela base (8h)',
+      is_fixa: false,
+    }
+  }
+}
+
+/**
+ * Calcula a diária de freelancer em determinado posto e data considerando regras base,
+ * fim de semana e feriados (para cálculo dinâmico em lote)
+ */
+export async function estimarDiariaParaData(
+  postoId: string,
+  dataStr: string, // YYYY-MM-DD
+  cargaHoraria: number,
+  cidadePosto?: string,
+  ufPosto?: string,
+): Promise<{ valor: number; regra: string }> {
+  try {
+    const parts = dataStr.slice(0, 10).split('-')
+    const dt = new Date(
+      Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)),
+    )
+    const dayOfWeek = dt.getUTCDay()
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+
+    let valorBase = cargaHoraria <= 4 ? 130 : cargaHoraria <= 6 ? 160 : 180
+    let regraBase = `tabela base (${cargaHoraria}h)`
+
+    const baseRules = await pb.collection('pricing_rules').getFullList({
+      filter: `tipo = "base"`,
+      sort: 'faixa_horas',
+    })
+    if (baseRules.length > 0) {
+      let chosen = baseRules[0]
+      for (const r of baseRules) {
+        if (r.faixa_horas === cargaHoraria) {
+          chosen = r
+          break
+        }
+        if (r.faixa_horas && r.faixa_horas < cargaHoraria) {
+          chosen = r
+        }
+      }
+      valorBase = chosen.valor
+      regraBase = `tabela base (${chosen.faixa_horas}h)`
+    }
+
+    // Treinamento no posto
+    const treinoRules = await pb.collection('pricing_rules').getFullList({
+      filter: `tipo = "treinamento" && posto = "${postoId}"`,
+      sort: '-created',
+    })
+    for (const tr of treinoRules) {
+      if (tr.vigencia_inicio) {
+        const startStr = tr.vigencia_inicio.slice(0, 10).split('-')
+        const stDate = new Date(
+          Date.UTC(
+            parseInt(startStr[0], 10),
+            parseInt(startStr[1], 10) - 1,
+            parseInt(startStr[2], 10),
+          ),
+        )
+        const diffMs = dt.getTime() - stDate.getTime()
+        const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+        const diasTotais = tr.dias || 10
+        if (diffDias >= 0 && diffDias < diasTotais) {
+          return {
+            valor: tr.valor,
+            regra: `treinamento (${diasTotais - diffDias} dias rest.)`,
+          }
+        }
+      }
+    }
+
+    // Fim de semana
+    if (isWeekend) {
+      const fdsRules = await pb.collection('pricing_rules').getFullList({
+        filter: `tipo = "fim_semana" && posto = "${postoId}"`,
+      })
+      if (fdsRules.length > 0) {
+        return {
+          valor: fdsRules[0].valor,
+          regra: 'fim de semana',
+        }
+      }
+    }
+
+    // Feriados
+    const holidays = await pb.collection('holidays').getFullList({
+      filter: `data ~ "${dataStr.slice(0, 10)}"`,
+    })
+    for (const h of holidays) {
+      if (
+        h.tipo === 'nacional' ||
+        (h.tipo === 'municipal' &&
+          cidadePosto &&
+          h.cidade?.toLowerCase() === cidadePosto.toLowerCase())
+      ) {
+        const feriadoRules = await pb.collection('pricing_rules').getFullList({
+          filter: `tipo = "feriado" && posto = "${postoId}"`,
+        })
+        const val = feriadoRules.length > 0 ? feriadoRules[0].valor : valorBase
+        return {
+          valor: val,
+          regra: `feriado (${h.nome})`,
+        }
+      }
+    }
+
+    return {
+      valor: valorBase,
+      regra: regraBase,
+    }
+  } catch (err) {
+    console.warn('Erro ao estimar diária por data:', err)
+    return {
+      valor: 180,
+      regra: `tabela base (${cargaHoraria}h)`,
     }
   }
 }

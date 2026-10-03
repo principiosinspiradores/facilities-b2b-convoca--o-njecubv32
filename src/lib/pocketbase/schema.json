@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T16:27:52.536Z",
+  "generatedAt": "2026-10-03T17:31:12.139Z",
   "collections": [
     {
       "name": "users",
@@ -163,11 +163,32 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "pro_fixo",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "tipo_remuneracao_fixa",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["mensal", "por_hora"]
+        },
+        {
+          "name": "valor_remuneracao_fixa",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE INDEX idx_postos_status ON postos (status)",
-        "CREATE INDEX idx_postos_funcao ON postos (funcao)"
+        "CREATE INDEX idx_postos_funcao ON postos (funcao)",
+        "CREATE INDEX `idx_postos_pro_fixo` ON `postos` (pro_fixo)"
       ]
     },
     {

@@ -13,15 +13,55 @@ onRecordUpdate((e) => {
     const valorDiaria = record.getFloat('valor_diaria') || 0
 
     // 1. Atualizar status da escala para 'aceita'
+    let escala
+    let posto
     try {
-      const escala = $app.findRecordById('escalas', escalaId)
+      escala = $app.findRecordById('escalas', escalaId)
       escala.set('status', 'aceita')
       $app.save(escala)
+
+      posto = $app.findRecordById('postos', escala.getString('posto'))
     } catch (err) {
       console.log('Erro ao atualizar escala para aceita:', err)
     }
 
-    // 2. Buscar settings para período de garantia
+    // 2. Se a profissional for fixa do posto com remuneração MENSAL:
+    // O valor dela NÃO entra no escrow por diária (é salário mensal contratado fora do escrow diário)
+    let isFixaMensal = false
+    if (posto) {
+      const proFixoId = posto.getString('pro_fixo')
+      const tipoRemun = posto.getString('tipo_remuneracao_fixa')
+      if (proFixoId && proFixoId === proId && tipoRemun === 'mensal') {
+        isFixaMensal = true
+      }
+    }
+
+    // 3. Cancelar outras convocações pendentes para esta mesma escala
+    // "Se o pro fixo aceitar, os demais pros elegíveis não recebem a convocação daquele dia."
+    try {
+      const outrasConvs = $app.findRecordsByFilter(
+        'convocacoes',
+        "escala = '" + escalaId + "' && id != '" + record.id + "' && status = 'pendente'",
+        '-created',
+        50,
+        0,
+      )
+      for (let i = 0; i < outrasConvs.length; i++) {
+        const c = outrasConvs[i]
+        c.set('status', 'cancelada')
+        $app.save(c)
+      }
+    } catch (err) {
+      console.log('Erro ao cancelar outras convocações da mesma escala:', err)
+    }
+
+    // Se for fixa mensal, não gera payout em escrow de diária
+    if (isFixaMensal) {
+      console.log('Pro fixa mensal aceitou escala. Escrow por diária omitido conforme regra.')
+      return
+    }
+
+    // 4. Buscar settings para período de garantia (Freelancers ou Fixa por Hora)
     let guaranteeDays = 7
     let provider = 'mercadopago'
     try {
@@ -32,7 +72,7 @@ onRecordUpdate((e) => {
       }
     } catch (_) {}
 
-    // 3. Criar ou atualizar payout status=retido (escrow contábil)
+    // 5. Criar ou atualizar payout status=retido (escrow contábil)
     let payoutRecord
     try {
       const payoutsCol = $app.findCollectionByNameOrId('payouts')
@@ -53,7 +93,7 @@ onRecordUpdate((e) => {
 
       $app.save(payoutRecord)
 
-      // 4. Log em payment_events
+      // 6. Log em payment_events
       const eventsCol = $app.findCollectionByNameOrId('payment_events')
       const event = new Record(eventsCol)
       event.set('payout', payoutRecord.id)

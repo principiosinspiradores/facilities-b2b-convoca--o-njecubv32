@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
-import { PostoRecord, PostoFuncao } from '@/types/facilities'
-import { formatDateBR } from '@/lib/formatters'
+import { PostoRecord, PostoFuncao, UserRecord, TipoRemuneracaoFixa } from '@/types/facilities'
+import { formatDateBR, formatCurrencyBRL } from '@/lib/formatters'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,10 +23,23 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { toast } from '@/hooks/use-toast'
-import { Building2, Plus, MapPin, Clock, Edit2, CheckCircle2, XCircle } from 'lucide-react'
+import {
+  Building2,
+  Plus,
+  MapPin,
+  Clock,
+  Edit2,
+  CheckCircle2,
+  XCircle,
+  UserCheck,
+  Search,
+  DollarSign,
+  Briefcase,
+} from 'lucide-react'
 
 export default function PostosPage() {
   const [postos, setPostos] = useState<PostoRecord[]>([])
+  const [pros, setPros] = useState<UserRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   // Modal Novo / Editar
@@ -43,6 +56,12 @@ export default function PostosPage() {
   const [vigenciaFim, setVigenciaFim] = useState('')
   const [requisitos, setRequisitos] = useState('')
 
+  // Profissional Fixa por Posto
+  const [proFixoId, setProFixoId] = useState<string>('nenhum')
+  const [tipoRemuneracaoFixa, setTipoRemuneracaoFixa] = useState<TipoRemuneracaoFixa>('mensal')
+  const [valorRemuneracaoFixa, setValorRemuneracaoFixa] = useState<number>(2200)
+  const [buscaPro, setBuscaPro] = useState('')
+
   // Endereço
   const [logradouro, setLogradouro] = useState('')
   const [numero, setNumero] = useState('')
@@ -54,14 +73,22 @@ export default function PostosPage() {
   const loadPostos = async () => {
     setIsLoading(true)
     try {
-      const records = await pb.collection('postos').getFullList<PostoRecord>({
-        sort: '-created',
-      })
-      setPostos(records)
+      const [postosRes, prosRes] = await Promise.all([
+        pb.collection('postos').getFullList<PostoRecord>({
+          sort: '-created',
+          expand: 'pro_fixo',
+        }),
+        pb.collection('users').getFullList<UserRecord>({
+          filter: 'role = "pro"',
+          sort: 'name',
+        }),
+      ])
+      setPostos(postosRes)
+      setPros(prosRes)
     } catch (err) {
       console.error(err)
       toast({
-        title: 'Erro ao carregar postos',
+        title: 'Erro ao carregar dados dos postos',
         variant: 'destructive',
       })
     } finally {
@@ -82,6 +109,10 @@ export default function PostosPage() {
     setVigenciaInicio('2025-01-01')
     setVigenciaFim('2026-12-31')
     setRequisitos('')
+    setProFixoId('nenhum')
+    setTipoRemuneracaoFixa('mensal')
+    setValorRemuneracaoFixa(2200)
+    setBuscaPro('')
     setLogradouro('')
     setNumero('')
     setBairro('')
@@ -100,6 +131,17 @@ export default function PostosPage() {
     setVigenciaInicio((posto.vigencia_inicio || '').slice(0, 10))
     setVigenciaFim((posto.vigencia_fim || '').slice(0, 10))
     setRequisitos(posto.requisitos || '')
+
+    setProFixoId(posto.pro_fixo || 'nenhum')
+    setTipoRemuneracaoFixa(posto.tipo_remuneracao_fixa || 'mensal')
+    setValorRemuneracaoFixa(
+      posto.valor_remuneracao_fixa !== undefined
+        ? posto.valor_remuneracao_fixa
+        : posto.tipo_remuneracao_fixa === 'por_hora'
+          ? 25
+          : 2200,
+    )
+    setBuscaPro('')
 
     const end = (posto.endereco as any) || {}
     setLogradouro(end.logradouro || '')
@@ -125,7 +167,8 @@ export default function PostosPage() {
 
     setIsSaving(true)
     try {
-      const payload = {
+      const hasProFixo = proFixoId && proFixoId !== 'nenhum'
+      const payload: Record<string, any> = {
         nome: nome.trim(),
         funcao,
         carga_horaria: Number(cargaHoraria),
@@ -133,6 +176,9 @@ export default function PostosPage() {
         vigencia_inicio: vigenciaInicio ? new Date(vigenciaInicio).toISOString() : null,
         vigencia_fim: vigenciaFim ? new Date(vigenciaFim).toISOString() : null,
         requisitos: requisitos.trim(),
+        pro_fixo: hasProFixo ? proFixoId : null,
+        tipo_remuneracao_fixa: hasProFixo ? tipoRemuneracaoFixa : null,
+        valor_remuneracao_fixa: hasProFixo ? Number(valorRemuneracaoFixa) : null,
         endereco: {
           logradouro: logradouro.trim(),
           numero: numero.trim(),
@@ -236,7 +282,6 @@ export default function PostosPage() {
                       Carga Horária Padrão: <strong>{p.carga_horaria}h / turno</strong>
                     </span>
                   </div>
-
                   <div className="flex items-start gap-2 text-slate-500 text-xs">
                     <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
                     <span>
@@ -245,13 +290,65 @@ export default function PostosPage() {
                         : 'Endereço não informado'}
                     </span>
                   </div>
-
                   {p.requisitos && (
                     <div className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded border border-slate-100 line-clamp-2">
                       <strong>Requisitos:</strong> {p.requisitos}
                     </div>
                   )}
-
+                  {/* Seção Profissional Fixa */}
+                  <div className="pt-2 border-t border-slate-100">
+                    {p.pro_fixo ? (
+                      <div className="bg-teal-50/70 border border-teal-200 rounded-lg p-2.5 text-xs text-teal-950 space-y-1">
+                        <div className="flex items-center justify-between font-semibold">
+                          <span className="flex items-center gap-1.5 text-teal-800">
+                            <UserCheck className="w-4 h-4 text-teal-600" />
+                            Profissional Fixa Designada
+                          </span>
+                          <Badge className="bg-teal-600 text-white text-[10px] uppercase">
+                            {p.tipo_remuneracao_fixa === 'por_hora' ? 'Por Hora' : 'Mensalista'}
+                          </Badge>
+                        </div>
+                        <div className="font-bold text-slate-900">
+                          {p.expand?.pro_fixo?.name ||
+                            p.expand?.pro_fixo?.email ||
+                            'Profissional vinculada'}
+                        </div>
+                        <div className="text-[11px] text-slate-600">
+                          {p.tipo_remuneracao_fixa === 'por_hora' ? (
+                            <span>
+                              Remuneração:{' '}
+                              <strong>
+                                {formatCurrencyBRL(p.valor_remuneracao_fixa || 0)}/hora
+                              </strong>{' '}
+                              (
+                              {formatCurrencyBRL(
+                                (p.valor_remuneracao_fixa || 0) * (p.carga_horaria || 8),
+                              )}
+                              /turno de {p.carga_horaria}h)
+                            </span>
+                          ) : (
+                            <span>
+                              Salário Mensal:{' '}
+                              <strong>
+                                {formatCurrencyBRL(p.valor_remuneracao_fixa || 0)}/mês
+                              </strong>{' '}
+                              (fora de diárias)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-500">
+                        <span className="flex items-center gap-1.5">
+                          <Briefcase className="w-3.5 h-3.5 text-slate-400" />
+                          Sem profissional fixa (convocações freelancers)
+                        </span>
+                        <Badge variant="outline" className="text-[10px] text-slate-500">
+                          Motor 3 Camadas
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
                   <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
                     <span className="text-[11px] text-slate-400">
                       Vigência: {formatDateBR(p.vigencia_inicio)} até {formatDateBR(p.vigencia_fim)}
@@ -265,7 +362,7 @@ export default function PostosPage() {
                       <Edit2 className="w-3.5 h-3.5 mr-1" />
                       Editar
                     </Button>
-                  </div>
+                  </div>{' '}
                 </CardContent>
               </Card>
             )
@@ -433,6 +530,121 @@ export default function PostosPage() {
                     placeholder="01310-100"
                   />
                 </div>
+              </div>
+
+              {/* Configuração de Profissional Fixa por Posto */}
+              <div className="pt-3 border-t border-slate-200 space-y-3 bg-slate-50/70 p-3.5 rounded-lg border">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-teal-700" />
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                      Profissional Fixa do Posto
+                    </h4>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Se este posto possui profissional fixa contratada, ela terá prioridade absoluta
+                    na convocação direta e sua remuneração segue o modelo contratado (fora do motor
+                    de diária).
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                      <Input
+                        value={buscaPro}
+                        onChange={(e) => setBuscaPro(e.target.value)}
+                        placeholder="Buscar profissional por nome ou e-mail..."
+                        className="pl-8 text-xs h-8"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Selecione a Profissional Fixa
+                    </label>
+                    <Select value={proFixoId} onValueChange={setProFixoId}>
+                      <SelectTrigger className="text-xs bg-white">
+                        <SelectValue placeholder="Selecione um profissional..." />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-56">
+                        <SelectItem value="nenhum">
+                          Nenhum (usar somente freelancers com motor)
+                        </SelectItem>
+                        {pros
+                          .filter((p) => {
+                            if (!buscaPro.trim()) return true
+                            const query = buscaPro.toLowerCase()
+                            return (
+                              (p.name && p.name.toLowerCase().includes(query)) ||
+                              (p.email && p.email.toLowerCase().includes(query))
+                            )
+                          })
+                          .map((p) => (
+                            <SelectItem key={p.id} value={p.id} className="text-xs">
+                              {p.name || p.email} ({p.status})
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {proFixoId && proFixoId !== 'nenhum' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        Tipo de Remuneração da Fixa *
+                      </label>
+                      <Select
+                        value={tipoRemuneracaoFixa}
+                        onValueChange={(v) => {
+                          const val = v as TipoRemuneracaoFixa
+                          setTipoRemuneracaoFixa(val)
+                          if (val === 'mensal' && valorRemuneracaoFixa < 100) {
+                            setValorRemuneracaoFixa(2200)
+                          } else if (val === 'por_hora' && valorRemuneracaoFixa > 200) {
+                            setValorRemuneracaoFixa(25)
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="text-xs bg-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="mensal">Mensal (Salário Contratado Fixo)</SelectItem>
+                          <SelectItem value="por_hora">Por Hora Trabalhada</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        {tipoRemuneracaoFixa === 'mensal'
+                          ? 'Valor Mensal Contratado (R$) *'
+                          : 'Valor da Hora (R$/h) *'}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={valorRemuneracaoFixa}
+                        onChange={(e) => setValorRemuneracaoFixa(Number(e.target.value))}
+                        className="bg-white text-xs"
+                        required={proFixoId !== 'nenhum'}
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        {tipoRemuneracaoFixa === 'mensal'
+                          ? 'Não gera cobrança de diária no escrow por escala.'
+                          : `Total por turno (${cargaHoraria}h): ${formatCurrencyBRL(
+                              Number(valorRemuneracaoFixa) * Number(cargaHoraria),
+                            )}`}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
