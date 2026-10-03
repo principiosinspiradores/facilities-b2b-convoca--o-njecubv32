@@ -23,7 +23,34 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { toast } from '@/hooks/use-toast'
-import { Calculator, Plus, Trash2, Edit3, Calendar, MapPin, Clock } from 'lucide-react'
+import {
+  Calculator,
+  Plus,
+  Trash2,
+  Edit2,
+  Calendar,
+  Clock,
+  Layers,
+  ArrowRight,
+  Info,
+  Loader2,
+  Building2,
+  UserCheck,
+  Tag,
+  AlertTriangle,
+} from 'lucide-react'
+
+const TIPO_EXCECAO_LABELS: Record<string, string> = {
+  treinamento: 'Treinamento',
+  fim_semana: 'Fim de Semana',
+  feriado: 'Feriado',
+}
+
+const TIPO_EXCECAO_BADGES: Record<string, string> = {
+  treinamento: 'bg-amber-50 text-amber-800 border-amber-200',
+  fim_semana: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+  feriado: 'bg-rose-50 text-rose-800 border-rose-200',
+}
 
 export default function MotorPrecosPage() {
   const [activeTab, setActiveTab] = useState<'base' | 'excecoes' | 'feriados'>('base')
@@ -32,14 +59,17 @@ export default function MotorPrecosPage() {
   const [holidays, setHolidays] = useState<HolidayRecord[]>([])
   const [postos, setPostos] = useState<PostoRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Modal Regra Base
   const [modalBaseOpen, setModalBaseOpen] = useState(false)
+  const [editingBaseId, setEditingBaseId] = useState<string | null>(null)
   const [faixaHoras, setFaixaHoras] = useState(8)
   const [valorBase, setValorBase] = useState(180)
 
   // Modal Exceção de Posto
   const [modalExcecaoOpen, setModalExcecaoOpen] = useState(false)
+  const [editingExcecaoId, setEditingExcecaoId] = useState<string | null>(null)
   const [tipoExcecao, setTipoExcecao] = useState<'treinamento' | 'fim_semana' | 'feriado'>(
     'treinamento',
   )
@@ -51,6 +81,7 @@ export default function MotorPrecosPage() {
 
   // Modal Feriado
   const [modalFeriadoOpen, setModalFeriadoOpen] = useState(false)
+  const [editingFeriadoId, setEditingFeriadoId] = useState<string | null>(null)
   const [feriadoData, setFeriadoData] = useState('')
   const [feriadoNome, setFeriadoNome] = useState('')
   const [feriadoTipo, setFeriadoTipo] = useState<'nacional' | 'municipal'>('nacional')
@@ -90,92 +121,284 @@ export default function MotorPrecosPage() {
     loadAll()
   }, [])
 
-  // Salvar Regra Base
+  // Abertura de Modal Base para Criação ou Edição
+  const handleOpenCreateBase = () => {
+    setEditingBaseId(null)
+    setFaixaHoras(8)
+    setValorBase(180)
+    setModalBaseOpen(true)
+  }
+
+  const handleOpenEditBase = (rule: PricingRuleRecord) => {
+    setEditingBaseId(rule.id)
+    setFaixaHoras(rule.faixa_horas || 8)
+    setValorBase(rule.valor)
+    setModalBaseOpen(true)
+  }
+
+  // Salvar Regra Base (Criar ou Atualizar)
   const handleSaveBase = async (e: React.FormEvent) => {
     e.preventDefault()
-    try {
-      await pb.collection('pricing_rules').create({
-        tipo: 'base',
-        faixa_horas: Number(faixaHoras),
-        valor: Number(valorBase),
+    const horasNum = Number(faixaHoras)
+    const valorNum = Number(valorBase)
+
+    if (horasNum <= 0 || isNaN(horasNum)) {
+      toast({
+        title: 'Carga horária inválida',
+        description: 'Informe uma carga horária válida maior que zero.',
+        variant: 'destructive',
       })
-      toast({ title: 'Faixa de horas criada!' })
+      return
+    }
+
+    if (valorNum <= 0 || isNaN(valorNum)) {
+      toast({
+        title: 'Valor inválido',
+        description: 'Informe um valor maior que zero.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // Validação: impedir duas faixas com a mesma carga horária
+    const duplicada = rules.find(
+      (r) => r.tipo === 'base' && r.id !== editingBaseId && Number(r.faixa_horas) === horasNum,
+    )
+
+    if (duplicada) {
+      toast({
+        title: 'Carga horária já cadastrada',
+        description: `Já existe uma faixa de ${horasNum}h (${formatCurrencyBRL(duplicada.valor)}). Edite a existente ou use outra carga horária.`,
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      if (editingBaseId) {
+        await pb.collection('pricing_rules').update(editingBaseId, {
+          faixa_horas: horasNum,
+          valor: valorNum,
+        })
+        toast({
+          title: 'Faixa de horas atualizada!',
+          description: `Faixa de ${horasNum}h alterada para ${formatCurrencyBRL(valorNum)}.`,
+        })
+      } else {
+        await pb.collection('pricing_rules').create({
+          tipo: 'base',
+          faixa_horas: horasNum,
+          valor: valorNum,
+        })
+        toast({
+          title: 'Faixa de horas criada!',
+          description: `Nova faixa de ${horasNum}h com diária de ${formatCurrencyBRL(valorNum)}.`,
+        })
+      }
       setModalBaseOpen(false)
       loadAll()
     } catch (err) {
       console.error(err)
-      toast({ title: 'Erro ao salvar', variant: 'destructive' })
+      toast({
+        title: 'Erro ao salvar faixa de horas',
+        description: 'Não foi possível salvar o registro.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
-  // Salvar Exceção
+  // Abertura de Modal Exceção para Criação ou Edição
+  const handleOpenCreateExcecao = () => {
+    setEditingExcecaoId(null)
+    setTipoExcecao('treinamento')
+    setPostoId(postos[0]?.id || '')
+    setValorExcecao(130)
+    setDiasTreinamento(10)
+    setVigenciaInicio(new Date().toISOString().slice(0, 10))
+    setVigenciaFim(new Date(new Date().getFullYear(), 11, 31).toISOString().slice(0, 10))
+    setModalExcecaoOpen(true)
+  }
+
+  const handleOpenEditExcecao = (exc: PricingRuleRecord) => {
+    setEditingExcecaoId(exc.id)
+    setTipoExcecao((exc.tipo as 'treinamento' | 'fim_semana' | 'feriado') || 'treinamento')
+    setPostoId(exc.posto || '')
+    setValorExcecao(exc.valor)
+    setDiasTreinamento(exc.dias || 10)
+    setVigenciaInicio(exc.vigencia_inicio ? exc.vigencia_inicio.slice(0, 10) : '')
+    setVigenciaFim(exc.vigencia_fim ? exc.vigencia_fim.slice(0, 10) : '')
+    setModalExcecaoOpen(true)
+  }
+
+  // Salvar Exceção (Criar ou Atualizar)
   const handleSaveExcecao = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!postoId) {
-      toast({ title: 'Selecione o posto', variant: 'destructive' })
+      toast({
+        title: 'Selecione o posto',
+        description: 'É necessário vincular a exceção a um posto de trabalho.',
+        variant: 'destructive',
+      })
       return
     }
+
+    const valorNum = Number(valorExcecao)
+    if (valorNum <= 0 || isNaN(valorNum)) {
+      toast({
+        title: 'Valor inválido',
+        description: 'Informe um valor maior que zero para a diária da exceção.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsSubmitting(true)
     try {
-      await pb.collection('pricing_rules').create({
+      const payload: Record<string, unknown> = {
         tipo: tipoExcecao,
         posto: postoId,
-        valor: Number(valorExcecao),
-        dias: tipoExcecao === 'treinamento' ? Number(diasTreinamento) : null,
+        valor: valorNum,
+        dias: tipoExcecao === 'treinamento' ? Number(diasTreinamento) || 10 : null,
         vigencia_inicio: vigenciaInicio ? new Date(vigenciaInicio).toISOString() : null,
         vigencia_fim: vigenciaFim ? new Date(vigenciaFim).toISOString() : null,
-      })
-      toast({ title: 'Exceção vinculada ao posto!' })
+      }
+
+      if (editingExcecaoId) {
+        await pb.collection('pricing_rules').update(editingExcecaoId, payload)
+        toast({
+          title: 'Exceção atualizada!',
+          description: `Regra de ${TIPO_EXCECAO_LABELS[tipoExcecao] || tipoExcecao} atualizada com sucesso.`,
+        })
+      } else {
+        await pb.collection('pricing_rules').create(payload)
+        toast({
+          title: 'Exceção vinculada ao posto!',
+          description: `Regra de ${TIPO_EXCECAO_LABELS[tipoExcecao] || tipoExcecao} cadastrada com sucesso.`,
+        })
+      }
       setModalExcecaoOpen(false)
       loadAll()
     } catch (err) {
       console.error(err)
-      toast({ title: 'Erro ao salvar exceção', variant: 'destructive' })
+      toast({
+        title: 'Erro ao salvar exceção',
+        description: 'Não foi possível salvar o registro de exceção.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
-  // Salvar Feriado
+  // Abertura de Modal Feriado para Criação ou Edição
+  const handleOpenCreateFeriado = () => {
+    setEditingFeriadoId(null)
+    setFeriadoData(new Date().toISOString().slice(0, 10))
+    setFeriadoNome('')
+    setFeriadoTipo('nacional')
+    setFeriadoCidade('')
+    setFeriadoUf('SP')
+    setModalFeriadoOpen(true)
+  }
+
+  const handleOpenEditFeriado = (holiday: HolidayRecord) => {
+    setEditingFeriadoId(holiday.id)
+    setFeriadoData(holiday.data ? holiday.data.slice(0, 10) : '')
+    setFeriadoNome(holiday.nome || '')
+    setFeriadoTipo(holiday.tipo || 'nacional')
+    setFeriadoCidade(holiday.cidade || '')
+    setFeriadoUf(holiday.uf || 'SP')
+    setModalFeriadoOpen(true)
+  }
+
+  // Salvar Feriado (Criar ou Atualizar)
   const handleSaveFeriado = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!feriadoData || !feriadoNome) {
-      toast({ title: 'Preencha os campos obrigatórios', variant: 'destructive' })
+    if (!feriadoData || !feriadoNome.trim()) {
+      toast({
+        title: 'Preencha os campos obrigatórios',
+        description: 'Data e nome do feriado são obrigatórios.',
+        variant: 'destructive',
+      })
       return
     }
+
+    if (feriadoTipo === 'municipal' && (!feriadoCidade.trim() || !feriadoUf.trim())) {
+      toast({
+        title: 'Cidade e UF obrigatórios',
+        description: 'Para feriado municipal, informe cidade e UF.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsSubmitting(true)
     try {
-      await pb.collection('holidays').create({
+      const payload: Record<string, unknown> = {
         data: new Date(feriadoData).toISOString(),
         nome: feriadoNome.trim(),
         tipo: feriadoTipo,
         cidade: feriadoTipo === 'municipal' ? feriadoCidade.trim() : null,
-        uf: feriadoTipo === 'municipal' ? feriadoUf.trim() : null,
-      })
-      toast({ title: 'Feriado cadastrado com sucesso!' })
+        uf: feriadoTipo === 'municipal' ? feriadoUf.trim().toUpperCase() : null,
+      }
+
+      if (editingFeriadoId) {
+        await pb.collection('holidays').update(editingFeriadoId, payload)
+        toast({
+          title: 'Feriado atualizado!',
+          description: `Feriado "${feriadoNome.trim()}" atualizado com sucesso.`,
+        })
+      } else {
+        await pb.collection('holidays').create(payload)
+        toast({
+          title: 'Feriado cadastrado!',
+          description: `Feriado "${feriadoNome.trim()}" cadastrado com sucesso.`,
+        })
+      }
       setModalFeriadoOpen(false)
       loadAll()
     } catch (err) {
       console.error(err)
-      toast({ title: 'Erro ao cadastrar feriado', variant: 'destructive' })
+      toast({
+        title: 'Erro ao salvar feriado',
+        description: 'Não foi possível salvar o registro de feriado.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
-  const handleDeleteRule = async (id: string) => {
-    if (!window.confirm('Excluir esta regra de preço?')) return
+  const handleDeleteRule = async (id: string, label: string) => {
+    if (!window.confirm(`Tem certeza que deseja excluir esta regra (${label})?`)) return
     try {
       await pb.collection('pricing_rules').delete(id)
-      toast({ title: 'Regra removida' })
+      toast({ title: 'Regra removida com sucesso' })
       loadAll()
     } catch (err) {
       console.error(err)
+      toast({
+        title: 'Erro ao excluir regra',
+        variant: 'destructive',
+      })
     }
   }
 
-  const handleDeleteHoliday = async (id: string) => {
-    if (!window.confirm('Excluir este feriado?')) return
+  const handleDeleteHoliday = async (id: string, nome: string) => {
+    if (!window.confirm(`Tem certeza que deseja excluir o feriado "${nome}"?`)) return
     try {
       await pb.collection('holidays').delete(id)
-      toast({ title: 'Feriado removido' })
+      toast({ title: 'Feriado removido com sucesso' })
       loadAll()
     } catch (err) {
       console.error(err)
+      toast({
+        title: 'Erro ao excluir feriado',
+        variant: 'destructive',
+      })
     }
   }
 
@@ -184,144 +407,377 @@ export default function MotorPrecosPage() {
 
   return (
     <div className="space-y-6">
+      {/* Título da tela */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Calculator className="w-6 h-6 text-teal-700" />
-            Motor de Cálculo de Diárias (3 Camadas)
+            Motor de Cálculo de Diárias
           </h1>
           <p className="text-slate-500 text-sm mt-1">
             Gerencie as tabelas base por carga horária, exceções por posto vigentes (treinamento,
-            fins de semana) e calendário de feriados.
+            fins de semana, feriados) e o calendário de feriados.
           </p>
+        </div>
+        <div className="flex items-center gap-2 self-start md:self-auto">
+          <Badge
+            variant="outline"
+            className="bg-teal-50 text-teal-800 border-teal-200 text-xs px-3 py-1 font-semibold"
+          >
+            Modo Edição Ativo (Admin)
+          </Badge>
         </div>
       </div>
 
+      {/* 4. Painel explicativo da ordem de prioridade do motor */}
+      <Card className="border-teal-200 bg-gradient-to-br from-teal-50/70 via-white to-slate-50 shadow-sm overflow-hidden">
+        <CardHeader className="pb-3 border-b border-teal-100/60 bg-teal-50/40">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-teal-700 text-white shadow-sm">
+                <Layers className="w-4 h-4" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-bold text-teal-950">
+                  Ordem de Decisão do Motor de Precificação
+                </CardTitle>
+                <CardDescription className="text-xs text-teal-800/80">
+                  Como as 5 camadas disputam o valor final da diária para cada convocação
+                </CardDescription>
+              </div>
+            </div>
+            <Badge
+              variant="outline"
+              className="border-teal-300 text-teal-800 bg-white text-[11px] self-start sm:self-auto font-medium"
+            >
+              Hierarquia de Sobreposição
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-2.5">
+            {/* Camada 1 */}
+            <div className="p-3 rounded-lg bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between relative">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-900 text-white">
+                  1º Prioridade
+                </span>
+                <Building2 className="w-4 h-4 text-slate-500" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 leading-tight">
+                  Pro Fixo do Posto
+                </h4>
+                <p className="text-[11px] text-slate-600 mt-1">
+                  Mensal contratada ou por hora trabalhada. Não passa pelo motor de freelance.
+                </p>
+              </div>
+              <div className="mt-2.5 pt-2 border-t border-slate-100 text-[10px] text-slate-500 font-medium">
+                Configurado em: <strong className="text-slate-700">Cadastro do Posto</strong>
+              </div>
+            </div>
+
+            {/* Camada 2 */}
+            <div className="p-3 rounded-lg bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-800 text-white">
+                  2º Prioridade
+                </span>
+                <UserCheck className="w-4 h-4 text-teal-600" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 leading-tight">Pro em Teste</h4>
+                <p className="text-[11px] text-slate-600 mt-1">
+                  Profissional com status em teste recebe ajuda de custo fixa configurada.
+                </p>
+              </div>
+              <div className="mt-2.5 pt-2 border-t border-slate-100 text-[10px] text-slate-500 font-medium">
+                Configurado em: <strong className="text-slate-700">Gate de Pros (Pro)</strong>
+              </div>
+            </div>
+
+            {/* Camada 3 */}
+            <div className="p-3 rounded-lg bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-700 text-white">
+                  3º Prioridade
+                </span>
+                <Tag className="w-4 h-4 text-teal-600" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 leading-tight">Valor Negociado</h4>
+                <p className="text-[11px] text-slate-600 mt-1">
+                  Tarifa acordada individualmente com o profissional. Sobrepõe as camadas do posto.
+                </p>
+              </div>
+              <div className="mt-2.5 pt-2 border-t border-slate-100 text-[10px] text-slate-500 font-medium">
+                Configurado em:{' '}
+                <strong className="text-slate-700">Gate de Pros (Precificação)</strong>
+              </div>
+            </div>
+
+            {/* Camada 4 */}
+            <div className="p-3 rounded-lg bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-600 text-white">
+                  4º Prioridade
+                </span>
+                <AlertTriangle className="w-4 h-4 text-teal-600" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 leading-tight">Exceção do Posto</h4>
+                <p className="text-[11px] text-slate-600 mt-1">
+                  Treinamento probatório, adicional de fim de semana ou adicional de feriado.
+                </p>
+              </div>
+              <div className="mt-2.5 pt-2 border-t border-slate-100 text-[10px] text-slate-500 font-medium">
+                Configurado em: <strong className="text-slate-700">Nesta Tela (Aba 2)</strong>
+              </div>
+            </div>
+
+            {/* Camada 5 */}
+            <div className="p-3 rounded-lg bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-600 text-white">
+                  5º Base
+                </span>
+                <Clock className="w-4 h-4 text-slate-600" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 leading-tight">
+                  Tabela Base de Horas
+                </h4>
+                <p className="text-[11px] text-slate-600 mt-1">
+                  Faixa exata da carga horária do turno ou fallback inferior mais próximo.
+                </p>
+              </div>
+              <div className="mt-2.5 pt-2 border-t border-slate-100 text-[10px] text-slate-500 font-medium">
+                Configurado em: <strong className="text-slate-700">Nesta Tela (Aba 1)</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2 bg-teal-100/50 text-teal-950 p-2.5 rounded-lg text-xs border border-teal-200/60">
+            <Info className="w-4 h-4 text-teal-700 shrink-0 mt-0.5" />
+            <div className="leading-relaxed">
+              <strong>Onde cada configuração vive:</strong> regras de posto (tabela base, exceções e
+              feriados) são gerenciadas nesta tela e no cadastro do posto. Os valores individuais de
+              cada profissional (ajuda de custo em período de teste e valor negociado) são
+              configurados no <strong>Gate de Pros (Precificação Admin)</strong>.
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Navegação por Abas */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
         <TabsList className="bg-slate-100 p-1 rounded-lg">
           <TabsTrigger value="base" className="text-sm font-semibold">
-            1. Tabela Base por Horas
+            1. Tabela Base por Horas ({baseRules.length})
           </TabsTrigger>
           <TabsTrigger value="excecoes" className="text-sm font-semibold">
-            2. Exceções por Posto (Vigências)
+            2. Exceções por Posto ({excecoes.length})
           </TabsTrigger>
           <TabsTrigger value="feriados" className="text-sm font-semibold">
-            3. Feriados Nacionais & Municipais
+            3. Feriados Nacionais & Municipais ({holidays.length})
           </TabsTrigger>
         </TabsList>
 
         {/* TAB 1: TABELA BASE */}
         <TabsContent value="base" className="space-y-4 pt-4">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-sm text-slate-500">
               Carga horária padrão definida no posto busca a faixa exata ou o fallback inferior mais
-              próximo.
+              próximo. Você pode <strong>editar</strong> o valor e as horas de cada faixa
+              diretamente.
             </div>
             <Button
-              onClick={() => setModalBaseOpen(true)}
-              className="bg-teal-700 hover:bg-teal-800 text-white text-xs"
+              onClick={handleOpenCreateBase}
+              className="bg-teal-700 hover:bg-teal-800 text-white text-xs shrink-0"
             >
               <Plus className="w-4 h-4 mr-1.5" />
               Adicionar Faixa de Horas
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {baseRules.map((r) => (
-              <Card key={r.id} className="border border-slate-200 bg-white">
-                <CardContent className="pt-5 flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-semibold text-slate-400 uppercase">
-                      Faixa de Carga
+          {isLoading ? (
+            <div className="flex items-center justify-center p-12 text-slate-400 gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-teal-700" />
+              Carregando faixas base...
+            </div>
+          ) : baseRules.length === 0 ? (
+            <Card className="border border-dashed border-slate-200 bg-white">
+              <CardContent className="pt-8 pb-8 text-center text-slate-500 text-sm">
+                Nenhuma faixa de horas cadastrada no momento. Clique em "Adicionar Faixa de Horas"
+                para criar a primeira.
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {baseRules.map((r) => (
+                <Card
+                  key={r.id}
+                  className="border border-slate-200 bg-white hover:border-teal-200 transition-colors"
+                >
+                  <CardContent className="pt-5 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                        Faixa de Carga
+                      </div>
+                      <div className="text-2xl font-black text-slate-900">
+                        {r.faixa_horas} Horas
+                      </div>
+                      <div className="text-xl font-bold text-teal-700 mt-1 tabular-nums">
+                        {formatCurrencyBRL(r.valor)}
+                      </div>
                     </div>
-                    <div className="text-2xl font-black text-slate-900">{r.faixa_horas} Horas</div>
-                    <div className="text-xl font-bold text-teal-700 mt-1 tabular-nums">
-                      {formatCurrencyBRL(r.valor)}
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Editar faixa"
+                        onClick={() => handleOpenEditBase(r)}
+                        className="text-slate-500 hover:text-teal-700 hover:bg-teal-50"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Excluir faixa"
+                        onClick={() =>
+                          handleDeleteRule(
+                            r.id,
+                            `${r.faixa_horas}h - ${formatCurrencyBRL(r.valor)}`,
+                          )
+                        }
+                        className="text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDeleteRule(r.id)}
-                    className="text-slate-400 hover:text-rose-600"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         {/* TAB 2: EXCEÇÕES POR POSTO */}
         <TabsContent value="excecoes" className="space-y-4 pt-4">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-sm text-slate-500">
-              Sobreposições de valor por posto: período probatório de treinamento, adicional de
-              final de semana ou feriado.
+              Sobreposições de valor vinculadas a postos de trabalho (treinamento probatório,
+              adicional de fim de semana ou feriado).
             </div>
             <Button
-              onClick={() => setModalExcecaoOpen(true)}
-              className="bg-teal-700 hover:bg-teal-800 text-white text-xs"
+              onClick={handleOpenCreateExcecao}
+              className="bg-teal-700 hover:bg-teal-800 text-white text-xs shrink-0"
             >
               <Plus className="w-4 h-4 mr-1.5" />
               Nova Exceção por Posto
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {excecoes.map((exc) => (
-              <Card key={exc.id} className="border border-slate-200 bg-white">
-                <CardHeader className="pb-3 flex flex-row items-start justify-between">
-                  <div>
-                    <Badge className="bg-teal-50 text-teal-800 border-teal-200 text-xs uppercase mb-1">
-                      {exc.tipo}
-                    </Badge>
-                    <CardTitle className="text-base font-bold text-slate-900">
-                      {exc.expand?.posto?.nome || 'Posto Específico'}
-                    </CardTitle>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDeleteRule(exc.id)}
-                    className="text-slate-400 hover:text-rose-600"
+          {isLoading ? (
+            <div className="flex items-center justify-center p-12 text-slate-400 gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-teal-700" />
+              Carregando exceções...
+            </div>
+          ) : excecoes.length === 0 ? (
+            <Card className="border border-dashed border-slate-200 bg-white">
+              <CardContent className="pt-8 pb-8 text-center text-slate-500 text-sm">
+                Nenhuma exceção por posto cadastrada. Clique em "Nova Exceção por Posto" para
+                configurar regras especiais de treinamento, fim de semana ou feriado.
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {excecoes.map((exc) => {
+                const tipoBadgeClass =
+                  TIPO_EXCECAO_BADGES[exc.tipo] || 'bg-slate-50 text-slate-800 border-slate-200'
+                const tipoLabel = TIPO_EXCECAO_LABELS[exc.tipo] || exc.tipo
+
+                return (
+                  <Card
+                    key={exc.id}
+                    className="border border-slate-200 bg-white hover:border-teal-200 transition-colors"
                   >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </CardHeader>
-                <CardContent className="text-xs space-y-2">
-                  <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded border border-slate-100">
-                    <span className="text-slate-500">Valor da Diária na Exceção:</span>
-                    <span className="text-base font-bold text-teal-800">
-                      {formatCurrencyBRL(exc.valor)}
-                    </span>
-                  </div>
-                  {exc.tipo === 'treinamento' && (
-                    <div className="text-slate-600">
-                      <strong>Duração:</strong> {exc.dias || 10} dias iniciais
-                    </div>
-                  )}
-                  <div className="text-slate-400 text-[11px]">
-                    Vigência: {formatDateBR(exc.vigencia_inicio)} até{' '}
-                    {formatDateBR(exc.vigencia_fim)}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    <CardHeader className="pb-3 flex flex-row items-start justify-between">
+                      <div>
+                        <Badge className={`${tipoBadgeClass} text-xs font-semibold mb-1`}>
+                          {tipoLabel}
+                        </Badge>
+                        <CardTitle className="text-base font-bold text-slate-900">
+                          {exc.expand?.posto?.nome || 'Posto não identificado'}
+                        </CardTitle>
+                        {exc.expand?.posto?.funcao && (
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Função: {exc.expand.posto.funcao}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Editar exceção"
+                          onClick={() => handleOpenEditExcecao(exc)}
+                          className="text-slate-500 hover:text-teal-700 hover:bg-teal-50"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Excluir exceção"
+                          onClick={() =>
+                            handleDeleteRule(
+                              exc.id,
+                              `${tipoLabel} - ${exc.expand?.posto?.nome || 'Posto'} (${formatCurrencyBRL(exc.valor)})`,
+                            )
+                          }
+                          className="text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="text-xs space-y-2">
+                      <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                        <span className="text-slate-500">Valor da Diária na Exceção:</span>
+                        <span className="text-base font-bold text-teal-800 tabular-nums">
+                          {formatCurrencyBRL(exc.valor)}
+                        </span>
+                      </div>
+                      {exc.tipo === 'treinamento' && (
+                        <div className="text-slate-600">
+                          <strong>Duração do treinamento:</strong> {exc.dias || 10} dias iniciais
+                        </div>
+                      )}
+                      <div className="text-slate-500 text-[11px]">
+                        <strong>Vigência:</strong>{' '}
+                        {exc.vigencia_inicio ? formatDateBR(exc.vigencia_inicio) : 'Indeterminada'}{' '}
+                        até {exc.vigencia_fim ? formatDateBR(exc.vigencia_fim) : 'Indeterminada'}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
         </TabsContent>
 
         {/* TAB 3: FERIADOS */}
         <TabsContent value="feriados" className="space-y-4 pt-4">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-sm text-slate-500">
-              Feriados nacionais e municipais para cálculo de adicional de diária baseado na
-              localidade do posto.
+              Feriados nacionais e municipais confrontados com a data do turno e a localidade do
+              posto.
             </div>
             <Button
-              onClick={() => setModalFeriadoOpen(true)}
-              className="bg-teal-700 hover:bg-teal-800 text-white text-xs"
+              onClick={handleOpenCreateFeriado}
+              className="bg-teal-700 hover:bg-teal-800 text-white text-xs shrink-0"
             >
               <Plus className="w-4 h-4 mr-1.5" />
               Cadastrar Feriado
@@ -330,67 +786,97 @@ export default function MotorPrecosPage() {
 
           <Card className="border border-slate-200 bg-white">
             <CardContent className="pt-4">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase">
-                      <th className="pb-3">Data</th>
-                      <th className="pb-3">Nome do Feriado</th>
-                      <th className="pb-3">Tipo</th>
-                      <th className="pb-3">Abrangência (Cidade/UF)</th>
-                      <th className="pb-3 text-right">Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {holidays.map((h) => (
-                      <tr key={h.id} className="hover:bg-slate-50">
-                        <td className="py-3 font-semibold text-slate-800">
-                          {formatDateBR(h.data)}
-                        </td>
-                        <td className="py-3 text-slate-900">{h.nome}</td>
-                        <td className="py-3">
-                          <Badge
-                            variant="outline"
-                            className={
-                              h.tipo === 'nacional'
-                                ? 'bg-blue-50 text-blue-800'
-                                : 'bg-purple-50 text-purple-800'
-                            }
-                          >
-                            {h.tipo}
-                          </Badge>
-                        </td>
-                        <td className="py-3 text-xs text-slate-500">
-                          {h.tipo === 'municipal' ? `${h.cidade}/${h.uf}` : 'Brasil (Nacional)'}
-                        </td>
-                        <td className="py-3 text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteHoliday(h.id)}
-                            className="text-slate-400 hover:text-rose-600"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </td>
+              {isLoading ? (
+                <div className="flex items-center justify-center p-12 text-slate-400 gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-teal-700" />
+                  Carregando feriados...
+                </div>
+              ) : holidays.length === 0 ? (
+                <div className="text-center py-8 text-slate-500 text-sm">
+                  Nenhum feriado cadastrado. Clique em "Cadastrar Feriado" para adicionar datas
+                  comemorativas.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase">
+                        <th className="pb-3">Data</th>
+                        <th className="pb-3">Nome do Feriado</th>
+                        <th className="pb-3">Tipo</th>
+                        <th className="pb-3">Abrangência (Cidade/UF)</th>
+                        <th className="pb-3 text-right">Ações</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {holidays.map((h) => (
+                        <tr key={h.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="py-3 font-semibold text-slate-800 tabular-nums">
+                            {formatDateBR(h.data)}
+                          </td>
+                          <td className="py-3 text-slate-900 font-medium">{h.nome}</td>
+                          <td className="py-3">
+                            <Badge
+                              variant="outline"
+                              className={
+                                h.tipo === 'nacional'
+                                  ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                  : 'bg-purple-50 text-purple-800 border-purple-200'
+                              }
+                            >
+                              {h.tipo === 'nacional' ? 'Nacional' : 'Municipal'}
+                            </Badge>
+                          </td>
+                          <td className="py-3 text-xs text-slate-500">
+                            {h.tipo === 'municipal'
+                              ? `${h.cidade || '—'}/${h.uf || '—'}`
+                              : 'Brasil (Nacional)'}
+                          </td>
+                          <td className="py-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Editar feriado"
+                                onClick={() => handleOpenEditFeriado(h)}
+                                className="text-slate-500 hover:text-teal-700 hover:bg-teal-50"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Excluir feriado"
+                                onClick={() => handleDeleteHoliday(h.id, h.nome)}
+                                className="text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
-      {/* Modal Base */}
+      {/* Modal Base (Criação e Edição) */}
       <Dialog open={modalBaseOpen} onOpenChange={setModalBaseOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[450px]">
           <form onSubmit={handleSaveBase}>
             <DialogHeader>
-              <DialogTitle>Nova Faixa de Horas (Tabela Base)</DialogTitle>
+              <DialogTitle>
+                {editingBaseId ? 'Editar Faixa de Horas' : 'Nova Faixa de Horas (Tabela Base)'}
+              </DialogTitle>
               <DialogDescription>
-                Define a diária padrão para turnos dessa carga horária.
+                {editingBaseId
+                  ? 'Atualize a carga horária ou o valor padrão desta faixa sem recriar o registro.'
+                  : 'Define a diária padrão para turnos dessa carga horária.'}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -406,6 +892,9 @@ export default function MotorPrecosPage() {
                   max={24}
                   required
                 />
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Ex: 4, 6, 8, 12 horas de jornada de trabalho.
+                </span>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
@@ -416,30 +905,56 @@ export default function MotorPrecosPage() {
                   value={valorBase}
                   onChange={(e) => setValorBase(Number(e.target.value))}
                   min={1}
+                  step="0.01"
                   required
                 />
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Valor base pago ao profissional por turno nesta carga horária.
+                </span>
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setModalBaseOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting}
+                onClick={() => setModalBaseOpen(false)}
+              >
                 Cancelar
               </Button>
-              <Button type="submit" className="bg-teal-700 hover:bg-teal-800 text-white">
-                Salvar Faixa
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="bg-teal-700 hover:bg-teal-800 text-white"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                    Salvando...
+                  </>
+                ) : editingBaseId ? (
+                  'Salvar Alterações'
+                ) : (
+                  'Salvar Faixa'
+                )}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Modal Exceção Posto */}
+      {/* Modal Exceção Posto (Criação e Edição) */}
       <Dialog open={modalExcecaoOpen} onOpenChange={setModalExcecaoOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[500px]">
           <form onSubmit={handleSaveExcecao}>
             <DialogHeader>
-              <DialogTitle>Nova Exceção de Preço por Posto</DialogTitle>
+              <DialogTitle>
+                {editingExcecaoId ? 'Editar Exceção de Preço' : 'Nova Exceção de Preço por Posto'}
+              </DialogTitle>
               <DialogDescription>
-                Vincule regras pontuais de treinamento ou turnos diferenciados.
+                {editingExcecaoId
+                  ? 'Atualize o posto, tipo, valor e período de vigência desta exceção.'
+                  : 'Vincule regras pontuais de treinamento ou turnos diferenciados a um posto.'}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -452,11 +967,17 @@ export default function MotorPrecosPage() {
                     <SelectValue placeholder="Selecione o posto..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {postos.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.nome} ({p.funcao})
+                    {postos.length === 0 ? (
+                      <SelectItem value="nenhum" disabled>
+                        Nenhum posto cadastrado
                       </SelectItem>
-                    ))}
+                    ) : (
+                      postos.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.nome} {p.funcao ? `(${p.funcao})` : ''}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -484,6 +1005,8 @@ export default function MotorPrecosPage() {
                     type="number"
                     value={valorExcecao}
                     onChange={(e) => setValorExcecao(Number(e.target.value))}
+                    min={1}
+                    step="0.01"
                     required
                   />
                 </div>
@@ -497,7 +1020,12 @@ export default function MotorPrecosPage() {
                     type="number"
                     value={diasTreinamento}
                     onChange={(e) => setDiasTreinamento(Number(e.target.value))}
+                    min={1}
+                    max={90}
                   />
+                  <span className="text-[11px] text-slate-400 mt-1 block">
+                    Quantidade de dias iniciais contados a partir da data de início.
+                  </span>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
@@ -524,25 +1052,45 @@ export default function MotorPrecosPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setModalExcecaoOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting}
+                onClick={() => setModalExcecaoOpen(false)}
+              >
                 Cancelar
               </Button>
-              <Button type="submit" className="bg-teal-700 hover:bg-teal-800 text-white">
-                Salvar Exceção
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="bg-teal-700 hover:bg-teal-800 text-white"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                    Salvando...
+                  </>
+                ) : editingExcecaoId ? (
+                  'Salvar Alterações'
+                ) : (
+                  'Salvar Exceção'
+                )}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Modal Feriado */}
+      {/* Modal Feriado (Criação e Edição) */}
       <Dialog open={modalFeriadoOpen} onOpenChange={setModalFeriadoOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[480px]">
           <form onSubmit={handleSaveFeriado}>
             <DialogHeader>
-              <DialogTitle>Cadastrar Feriado</DialogTitle>
+              <DialogTitle>{editingFeriadoId ? 'Editar Feriado' : 'Cadastrar Feriado'}</DialogTitle>
               <DialogDescription>
-                Feriados são confrontados com a data do turno e endereço do posto.
+                {editingFeriadoId
+                  ? 'Atualize o nome, data, tipo ou cidade/UF deste feriado.'
+                  : 'Feriados são confrontados com a data do turno e endereço do posto.'}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -597,7 +1145,7 @@ export default function MotorPrecosPage() {
                     <label className="text-xs font-semibold text-slate-700 block mb-1">UF *</label>
                     <Input
                       value={feriadoUf}
-                      onChange={(e) => setFeriadoUf(e.target.value)}
+                      onChange={(e) => setFeriadoUf(e.target.value.toUpperCase())}
                       placeholder="SP"
                       maxLength={2}
                       required
@@ -607,11 +1155,29 @@ export default function MotorPrecosPage() {
               )}
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setModalFeriadoOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting}
+                onClick={() => setModalFeriadoOpen(false)}
+              >
                 Cancelar
               </Button>
-              <Button type="submit" className="bg-teal-700 hover:bg-teal-800 text-white">
-                Salvar Feriado
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="bg-teal-700 hover:bg-teal-800 text-white"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                    Salvando...
+                  </>
+                ) : editingFeriadoId ? (
+                  'Salvar Alterações'
+                ) : (
+                  'Salvar Feriado'
+                )}
               </Button>
             </DialogFooter>
           </form>
