@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
+import { getLogoUrl } from '@/services/pricing'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import {
@@ -34,10 +35,11 @@ export default function Layout() {
     navigate('/login')
   }
 
-  // Cores dinâmicas white-label
+  // Cores dinâmicas white-label e Logo
   const corPrimaria = settings?.cor_primaria || '#0F766E'
   const corSecundaria = settings?.cor_secundaria || '#134E4A'
   const nomeEmpresa = settings?.nome_empresa || 'Facilities Pro'
+  const logoUrl = getLogoUrl(settings)
 
   // Itens de navegação por papel
   const navItems = []
@@ -88,12 +90,22 @@ export default function Layout() {
         <div>
           {/* Logo / Nome White Label */}
           <div className="p-5 border-b border-white/10 flex items-center gap-3">
-            <div
-              style={{ backgroundColor: corPrimaria }}
-              className="w-9 h-9 rounded-lg flex items-center justify-center font-black text-white text-base shadow"
-            >
-              {nomeEmpresa.slice(0, 2).toUpperCase()}
-            </div>
+            {logoUrl ? (
+              <div className="w-10 h-10 rounded-lg bg-white/10 p-1 flex items-center justify-center overflow-hidden shrink-0 border border-white/20">
+                <img
+                  src={logoUrl}
+                  alt={nomeEmpresa}
+                  className="w-full h-full object-contain rounded"
+                />
+              </div>
+            ) : (
+              <div
+                style={{ backgroundColor: corPrimaria }}
+                className="w-9 h-9 rounded-lg flex items-center justify-center font-black text-white text-base shadow shrink-0"
+              >
+                {nomeEmpresa.slice(0, 2).toUpperCase()}
+              </div>
+            )}
             <div className="overflow-hidden">
               <div
                 className="font-bold text-sm tracking-tight truncate text-white"
@@ -101,8 +113,8 @@ export default function Layout() {
               >
                 {nomeEmpresa}
               </div>
-              <div className="text-[10px] text-teal-200 uppercase tracking-widest font-semibold">
-                B2B Marketplace
+              <div className="text-[10px] text-teal-200 uppercase tracking-widest font-semibold truncate">
+                Facilities B2B
               </div>
             </div>
           </div>
@@ -171,16 +183,26 @@ export default function Layout() {
                 style={{ backgroundColor: corSecundaria }}
               >
                 <div className="p-5 border-b border-white/10 flex items-center gap-3">
-                  <div
-                    style={{ backgroundColor: corPrimaria }}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white text-sm"
-                  >
-                    {nomeEmpresa.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
+                  {logoUrl ? (
+                    <div className="w-9 h-9 rounded-lg bg-white/10 p-1 flex items-center justify-center overflow-hidden shrink-0 border border-white/20">
+                      <img
+                        src={logoUrl}
+                        alt={nomeEmpresa}
+                        className="w-full h-full object-contain rounded"
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      style={{ backgroundColor: corPrimaria }}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white text-sm shrink-0"
+                    >
+                      {nomeEmpresa.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="overflow-hidden">
                     <div className="font-bold text-sm text-white truncate">{nomeEmpresa}</div>
                     <div className="text-[10px] text-teal-200 uppercase font-semibold">
-                      Facilities
+                      Facilities B2B
                     </div>
                   </div>
                 </div>
@@ -218,8 +240,19 @@ export default function Layout() {
               </SheetContent>
             </Sheet>
 
-            {/* Nome da plataforma no mobile / status */}
-            <div className="lg:hidden font-bold text-sm text-slate-800">{nomeEmpresa}</div>
+            {/* Nome da plataforma no mobile / status e Logo no Header */}
+            <div className="flex items-center gap-2.5">
+              {logoUrl && (
+                <img
+                  src={logoUrl}
+                  alt={nomeEmpresa}
+                  className="h-8 w-auto max-w-[120px] object-contain rounded"
+                />
+              )}
+              <div className="lg:hidden font-bold text-sm text-slate-800 truncate">
+                {nomeEmpresa}
+              </div>
+            </div>
 
             <div className="hidden lg:block text-xs font-medium text-slate-500">
               Ambiente de Convocação e Escrow &bull;{' '}

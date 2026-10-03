@@ -20,6 +20,11 @@ export async function updateSettings(
   return await pb.collection('settings').update<SettingsRecord>(id, data)
 }
 
+export function getLogoUrl(settings: SettingsRecord | null | undefined): string | null {
+  if (!settings || !settings.id || !settings.logo) return null
+  return pb.files.getURL(settings, settings.logo)
+}
+
 export interface DiariaCalculadaResponse {
   valor: number
   regra_aplicada: string

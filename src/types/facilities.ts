@@ -196,7 +196,15 @@ export interface SettingsRecord {
   dispute_period_hours: number
   payout_provider: 'mercadopago' | 'pix_manual' | 'outro'
   multa_falta_pro: number
+  multa_cancelamento_pro?: number
+  carencia_cancelamento_empresa?: number
   multa_empresa_cancelamento: number
+  horas_bloqueio_cancelamento?: number
+  limite_reincidencia_suspensao?: number
+  empresa_pix_chave?: string
+  empresa_pix_tipo?: string
+  empresa_titular?: string
+  empresa_mp_client_id?: string
   created: string
   updated: string
 }
@@ -210,6 +218,12 @@ export interface ContaPixRecord {
   chave: string
   provedor_conta?: string
   conta_referencia?: string
+  liberada?: boolean
+  data_liberacao?: string
+  observacao_validacao?: string
   created: string
   updated: string
+  expand?: {
+    pro?: UserRecord
+  }
 }

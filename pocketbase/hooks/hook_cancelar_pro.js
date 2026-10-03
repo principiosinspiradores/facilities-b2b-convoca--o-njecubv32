@@ -13,6 +13,20 @@ onRecordUpdate((e) => {
 
     const now = new Date()
 
+    // 0. Ler parâmetros dinâmicos de settings (espelhando Profreela)
+    let horasBloqueio = 24
+    let limiteReincidencia = 2
+    let valorMultaCancelamento = 0
+    try {
+      const settingsList = $app.findRecordsByFilter('settings', 'id != ""', '-created', 1, 0)
+      if (settingsList && settingsList.length > 0) {
+        const s = settingsList[0]
+        horasBloqueio = s.getInt('horas_bloqueio_cancelamento') || 24
+        limiteReincidencia = s.getInt('limite_reincidencia_suspensao') || 2
+        valorMultaCancelamento = s.getFloat('multa_cancelamento_pro') || 0
+      }
+    } catch (_) {}
+
     // 1. Reabrir a escala (status 'aberta')
     try {
       const escala = $app.findRecordById('escalas', escalaId)
@@ -22,10 +36,10 @@ onRecordUpdate((e) => {
       console.log('Erro ao reabrir escala:', err)
     }
 
-    // 2. Bloqueio de 24h para o Pro + verificação de reincidência
+    // 2. Bloqueio dinâmico (horas_bloqueio) para o Pro + verificação de reincidência
     try {
       const pro = $app.findRecordById('users', proId)
-      const bloqDate = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+      const bloqDate = new Date(now.getTime() + horasBloqueio * 60 * 60 * 1000)
       pro.set('bloqueado_ate', bloqDate.toISOString())
 
       // Contar cancelamentos anteriores deste pro
@@ -33,12 +47,12 @@ onRecordUpdate((e) => {
         'convocacoes',
         "pro = '" + proId + "' && status = 'cancelada'",
         '-created',
-        10,
+        20,
         0,
       )
 
-      // Se tiver mais de 2 cancelamentos acumulados, suspende
-      if (cancelamentos && cancelamentos.length >= 2) {
+      // Se tiver atingido o limite configurável de reincidência, suspende
+      if (cancelamentos && cancelamentos.length >= limiteReincidencia) {
         pro.set('status', 'suspenso')
       }
 
@@ -47,7 +61,7 @@ onRecordUpdate((e) => {
       console.log('Erro ao aplicar bloqueio/suspensão ao pro:', err)
     }
 
-    // 3. Cancelar payout retido associado
+    // 3. Cancelar payout retido associado + registrar evento de multa se configurada
     try {
       const payouts = $app.findRecordsByFilter(
         'payouts',
@@ -65,12 +79,15 @@ onRecordUpdate((e) => {
         const ev = new Record(eventsCol)
         ev.set('payout', pay.id)
         ev.set('tipo', 'cancelamento_pro')
-        ev.set('valor', 0)
+        ev.set('valor', -valorMultaCancelamento)
         ev.set('data', now.toISOString())
         ev.set('metadata', {
           motivo: 'Cancelamento de turno previamente aceito pelo profissional',
           escala_id: escalaId,
           pro_id: proId,
+          multa_aplicada: valorMultaCancelamento,
+          horas_bloqueio: horasBloqueio,
+          limite_reincidencia: limiteReincidencia,
         })
         $app.save(ev)
       }

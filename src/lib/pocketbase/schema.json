@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T13:16:47.917Z",
+  "generatedAt": "2026-10-03T13:50:18.877Z",
   "collections": [
     {
       "name": "users",
@@ -769,6 +769,54 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "multa_cancelamento_pro",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "carencia_cancelamento_empresa",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "horas_bloqueio_cancelamento",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "limite_reincidencia_suspensao",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "empresa_pix_chave",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "empresa_pix_tipo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "empresa_titular",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "empresa_mp_client_id",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": []
@@ -829,6 +877,24 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "liberada",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_liberacao",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao_validacao",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_conta_pix_pro ON conta_pix (pro)"]
