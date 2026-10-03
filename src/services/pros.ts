@@ -22,6 +22,11 @@ export interface CriarProPayload {
   valor_negociado?: number
 }
 
+export interface CadastrarProResult {
+  record: UserRecord
+  emailVerificationSent: boolean
+}
+
 export interface AtualizarProPayload {
   name?: string
   email?: string
@@ -59,7 +64,7 @@ export async function listarPros(): Promise<UserRecord[]> {
  * Pode ser chamado por Admin ou Empresa (RH).
  * O Pro é criado com role='pro'. Dispara o hook de boas-vindas e verificação.
  */
-export async function cadastrarPro(dados: CriarProPayload): Promise<UserRecord> {
+export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarProResult> {
   const tempPassword = 'Pro@' + Math.random().toString(36).substring(2, 10) + '9#'
 
   const payload: Record<string, any> = {
@@ -91,14 +96,18 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<UserRecord> 
 
   const created = await pb.collection('users').create<UserRecord>(payload)
 
-  // Enviar convite de verificação/redefinição de acesso para o pro configurar sua senha
+  // O e-mail de boas-vindas com dados completos e botão de login é disparado
+  // de forma assíncrona pelo hook server-side hook_boas_vindas_pro.
+  // Aqui no frontend, solicitamos o token nativo de verificação do PocketBase em modo tolerante:
+  let emailVerificationSent = true
   try {
     await pb.collection('users').requestVerification(created.email)
   } catch (mailErr) {
-    console.log('Aviso ao solicitar verificação de e-mail (fluxo padrão):', mailErr)
+    console.warn('Aviso: falha não-bloqueante ao solicitar verificação de e-mail:', mailErr)
+    emailVerificationSent = false
   }
 
-  return created
+  return { record: created, emailVerificationSent }
 }
 
 /**

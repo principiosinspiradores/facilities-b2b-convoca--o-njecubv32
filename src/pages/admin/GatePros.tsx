@@ -334,7 +334,7 @@ export default function GateProsPage() {
 
     setIsCreating(true)
     try {
-      await cadastrarPro({
+      const res = await cadastrarPro({
         name: newName,
         email: newEmail,
         telefone: newTelefone,
@@ -358,17 +358,28 @@ export default function GateProsPage() {
           : {}),
       })
 
-      toast({
-        title: 'Profissional cadastrado com sucesso!',
-        description: `E-mail de boas-vindas e verificação enviado para ${newEmail.trim()}.`,
-      })
+      if (res.emailVerificationSent) {
+        toast({
+          title: 'Pro cadastrado com sucesso!',
+          description: `E-mail de boas-vindas e acesso enviado para ${newEmail.trim()}.`,
+        })
+      } else {
+        toast({
+          title: 'Pro cadastrado com sucesso!',
+          description: `Pro criado, mas o e-mail de boas-vindas não foi enviado — use Reenviar convite na tabela se necessário.`,
+        })
+      }
+
       setCreateModalOpen(false)
       loadData()
     } catch (err: any) {
       console.error(err)
       toast({
         title: 'Erro ao cadastrar profissional',
-        description: err?.message || 'Verifique se o e-mail já não está cadastrado na base.',
+        description:
+          err?.data?.data?.email?.message ||
+          err?.message ||
+          'Verifique se o e-mail já não está cadastrado na base.',
         variant: 'destructive',
       })
     } finally {
