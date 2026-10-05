@@ -22,6 +22,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { toast } from '@/hooks/use-toast'
+import { formatarCPF, validarCPF } from '@/lib/cpf'
 import {
   Users,
   Shield,
@@ -54,6 +55,7 @@ export function UserAccessManagement() {
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<UserRole>('pro')
   const [status, setStatus] = useState<UserStatus>('ativo')
+  const [cpfError, setCpfError] = useState('')
 
   const loadUsers = async () => {
     setIsLoading(true)
@@ -85,6 +87,7 @@ export function UserAccessManagement() {
     setPassword('')
     setRole('empresa')
     setStatus('ativo')
+    setCpfError('')
     setModalOpen(true)
   }
 
@@ -92,18 +95,79 @@ export function UserAccessManagement() {
     setEditingUser(user)
     setName(user.name || '')
     setEmail(user.email || '')
-    setCpf(user.cpf || '')
+    setCpf(user.cpf ? formatarCPF(user.cpf) : '')
     setPassword('')
     setRole(user.role || 'pro')
     setStatus(user.status || 'ativo')
+    setCpfError('')
     setModalOpen(true)
   }
+
+  const handleCpfChange = (val: string) => {
+    const formatted = formatarCPF(val)
+    setCpf(formatted)
+    // Limpa o erro se o usuário estiver digitando
+    if (cpfError) {
+      const digits = formatted.replace(/\D/g, '')
+      if (role === 'pro') {
+        if (digits.length === 11 && validarCPF(formatted)) {
+          setCpfError('')
+        }
+      } else {
+        if (!digits || (digits.length === 11 && validarCPF(formatted))) {
+          setCpfError('')
+        }
+      }
+    }
+  }
+
+  const handleRoleChange = (newRole: UserRole) => {
+    setRole(newRole)
+    if (cpfError) {
+      const digits = cpf.replace(/\D/g, '')
+      if (newRole !== 'pro' && !digits) {
+        setCpfError('')
+      }
+    }
+  }
+
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault()
+    setCpfError('')
+
     if (!name.trim() || !email.trim()) {
       toast({
         title: 'Preencha os campos obrigatórios',
+        description: 'Nome completo e e-mail são obrigatórios.',
         variant: 'destructive',
+        duration: 10000,
+      })
+      return
+    }
+
+    const cpfDigits = cpf.replace(/\D/g, '')
+
+    // Regra client-side de CPF:
+    // a. Se role === 'pro', CPF é obrigatório
+    if (role === 'pro' && !cpfDigits) {
+      setCpfError('CPF é obrigatório para profissionais parceiros.')
+      toast({
+        title: 'CPF obrigatório',
+        description: 'CPF é obrigatório para profissionais parceiros.',
+        variant: 'destructive',
+        duration: 10000,
+      })
+      return
+    }
+
+    // b. Se CPF foi preenchido (qualquer role) e for inválido, bloquear envio client-side
+    if (cpfDigits && !validarCPF(cpfDigits)) {
+      setCpfError('O CPF informado é inválido. Verifique os dígitos verificadores.')
+      toast({
+        title: 'CPF inválido',
+        description: 'O CPF informado é inválido. Verifique os dígitos verificadores.',
+        variant: 'destructive',
+        duration: 10000,
       })
       return
     }
@@ -116,7 +180,7 @@ export function UserAccessManagement() {
           name: name.trim(),
           role,
           status,
-          cpf: cpf ? cpf.replace(/\D/g, '') : undefined,
+          cpf: cpfDigits || undefined,
         }
         if (password.trim()) {
           payload.password = password.trim()
@@ -134,6 +198,7 @@ export function UserAccessManagement() {
             title: 'Senha inválida',
             description: 'A senha temporária deve conter no mínimo 8 caracteres.',
             variant: 'destructive',
+            duration: 10000,
           })
           setIsSaving(false)
           return
@@ -146,7 +211,7 @@ export function UserAccessManagement() {
           name: name.trim(),
           role,
           status,
-          cpf: cpf ? cpf.replace(/\D/g, '') : undefined,
+          cpf: cpfDigits || undefined,
           verified: true,
         })
         toast({
@@ -158,12 +223,101 @@ export function UserAccessManagement() {
       setModalOpen(false)
       loadUsers()
     } catch (err: any) {
-      console.error(err)
+      console.error('Erro ao salvar usuário:', err)
+
+      // 1. Extração estruturada de erros por campo (PocketBase: err.data.data ou err.response.data)
+      const fieldData = err?.data?.data || err?.response?.data || {}
+      const fieldLabels: Record<string, string> = {
+        cpf: 'CPF',
+        email: 'E-mail',
+        name: 'Nome',
+        role: 'Perfil',
+        status: 'Status',
+        password: 'Senha',
+        passwordConfirm: 'Confirmação de senha',
+      }
+
+      const fieldErrorParts: string[] = []
+      if (typeof fieldData === 'object' && fieldData !== null) {
+        for (const [field, detail] of Object.entries(fieldData)) {
+          let msg = ''
+          let code = ''
+          if (typeof detail === 'string') {
+            msg = detail
+          } else if (detail && typeof detail === 'object') {
+            msg = (detail as any).message || ''
+            code = (detail as any).code || ''
+          }
+
+          if (field === 'email') {
+            const isEmailDup =
+              code === 'validation_not_unique' ||
+              msg.toLowerCase().includes('unique') ||
+              msg.toLowerCase().includes('duplicat') ||
+              msg.toLowerCase().includes('exist') ||
+              msg.toLowerCase().includes('já')
+            if (isEmailDup) {
+              msg = 'Este e-mail já está cadastrado na plataforma.'
+            }
+          }
+
+          if (field === 'cpf') {
+            const isCpfDup =
+              code === 'validation_not_unique' ||
+              msg.toLowerCase().includes('unique') ||
+              msg.toLowerCase().includes('duplicat') ||
+              msg.toLowerCase().includes('exist') ||
+              msg.toLowerCase().includes('já')
+            if (isCpfDup) {
+              msg = 'CPF já cadastrado na plataforma.'
+            }
+            setCpfError(msg)
+          }
+
+          if (msg) {
+            const label = fieldLabels[field] || field
+            fieldErrorParts.push(`${label}: ${msg}`)
+          }
+        }
+      }
+
+      // 2. Mensagens gerais do backend (err.data.message, err.response.message ou err.message)
+      const generalMsg = (err?.data?.message || err?.response?.message || err?.message || '').trim()
+      const generalMsgLower = generalMsg.toLowerCase()
+
+      let errorDescription = ''
+
+      if (fieldErrorParts.length > 0) {
+        // Se houver erros específicos por campo
+        errorDescription = fieldErrorParts.join('; ')
+      } else if (generalMsgLower.includes('cpf')) {
+        // Mensagem disparada pelo hook server-side hook_validar_cpf_pro (BadRequestError)
+        errorDescription = generalMsg
+        setCpfError(generalMsg)
+      } else if (
+        generalMsgLower.includes('email already') ||
+        generalMsgLower.includes('e-mail já') ||
+        (generalMsgLower.includes('unique') && generalMsgLower.includes('email'))
+      ) {
+        errorDescription = 'E-mail: Este e-mail já está cadastrado na plataforma.'
+      } else if (
+        generalMsg &&
+        generalMsg !== 'Failed to create record.' &&
+        generalMsg !== 'Failed to update record.' &&
+        generalMsg !== 'Something went wrong while processing your request.'
+      ) {
+        errorDescription = generalMsg
+      } else {
+        errorDescription = 'Verifique os dados informados e tente novamente.'
+      }
+
       toast({
-        title: 'Erro ao salvar usuário',
-        description: err?.message || 'Verifique se o e-mail já não está cadastrado.',
+        title: editingUser ? 'Erro ao atualizar usuário' : 'Erro ao cadastrar usuário',
+        description: errorDescription,
         variant: 'destructive',
+        duration: 10000,
       })
+      // O modal permanece aberto preservando todos os campos digitados
     } finally {
       setIsSaving(false)
     }
@@ -471,13 +625,27 @@ export function UserAccessManagement() {
 
               <div>
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  CPF (Obrigatório para Pro / Opcional para outros)
+                  CPF {role === 'pro' ? '*' : '(Opcional)'}
                 </label>
                 <Input
                   value={cpf}
-                  onChange={(e) => setCpf(e.target.value)}
+                  onChange={(e) => handleCpfChange(e.target.value)}
                   placeholder="000.000.000-00"
+                  maxLength={14}
+                  className={cpfError ? 'border-rose-500 focus-visible:ring-rose-500' : ''}
                 />
+                {cpfError ? (
+                  <p className="text-[11px] text-rose-600 mt-1 flex items-center gap-1 font-medium">
+                    <AlertCircle className="w-3 h-3 shrink-0" />
+                    {cpfError}
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {role === 'pro'
+                      ? 'Obrigatório para profissionais parceiros.'
+                      : 'Opcional para perfil Empresa e Administrador.'}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -503,7 +671,7 @@ export function UserAccessManagement() {
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
                     Nível de Acesso (Role) *
                   </label>
-                  <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
+                  <Select value={role} onValueChange={(v) => handleRoleChange(v as UserRole)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
