@@ -7,6 +7,99 @@ interface SettingsContextType {
   settings: SettingsRecord | null
   isLoading: boolean
   refreshSettings: () => Promise<void>
+  applyTheme: (s: SettingsRecord | { cor_primaria?: string; cor_secundaria?: string }) => void
+}
+
+export function hexToHsl(hex: string): { h: number; s: number; l: number; str: string } {
+  let cleaned = hex.trim().replace(/^#/, '')
+  if (cleaned.length === 3) {
+    cleaned = cleaned
+      .split('')
+      .map((c) => c + c)
+      .join('')
+  }
+  if (cleaned.length !== 6) {
+    // Fallback padrão se hex inválido (#0F766E -> 173 78% 26%)
+    return { h: 173, s: 78, l: 26, str: '173 78% 26%' }
+  }
+
+  const num = parseInt(cleaned, 16)
+  if (isNaN(num)) {
+    return { h: 173, s: 78, l: 26, str: '173 78% 26%' }
+  }
+
+  const r = (num >> 16) / 255
+  const g = ((num >> 8) & 255) / 255
+  const b = (num & 255) / 255
+
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  let h = 0
+  let s = 0
+  const l = (max + min) / 2
+
+  if (max !== min) {
+    const d = max - min
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+    switch (max) {
+      case r:
+        h = (g - b) / d + (g < b ? 6 : 0)
+        break
+      case g:
+        h = (b - r) / d + 2
+        break
+      case b:
+        h = (r - g) / d + 4
+        break
+    }
+    h = Math.round(h * 60)
+  }
+
+  const sPercent = Math.round(s * 100)
+  const lPercent = Math.round(l * 100)
+  return {
+    h,
+    s: sPercent,
+    l: lPercent,
+    str: `${h} ${sPercent}% ${lPercent}%`,
+  }
+}
+
+export function getForegroundHsl(l: number): string {
+  return l < 60 ? '0 0% 100%' : '222.2 84% 4.9%'
+}
+
+export function applyTheme(
+  s: Partial<SettingsRecord> | { cor_primaria?: string; cor_secundaria?: string },
+) {
+  if (typeof document === 'undefined') return
+
+  const root = document.documentElement
+  const corPrimaria = s.cor_primaria || '#0F766E'
+  const corSecundaria = s.cor_secundaria || '#134E4A'
+
+  const primaryHsl = hexToHsl(corPrimaria)
+  const secondaryHsl = hexToHsl(corSecundaria)
+
+  // --primary e --ring = HSL da primária; --primary-foreground = getForegroundHsl(primária)
+  root.style.setProperty('--primary', primaryHsl.str)
+  root.style.setProperty('--ring', primaryHsl.str)
+  root.style.setProperty('--primary-foreground', getForegroundHsl(primaryHsl.l))
+
+  // --secondary = HSL da secundária; --secondary-foreground = getForegroundHsl(secundária)
+  root.style.setProperty('--secondary', secondaryHsl.str)
+  root.style.setProperty('--secondary-foreground', getForegroundHsl(secondaryHsl.l))
+
+  // --sidebar-background = HSL da secundária
+  root.style.setProperty('--sidebar-background', secondaryHsl.str)
+
+  // --accent = primária com luminosidade 95%; --accent-foreground = primária
+  root.style.setProperty('--accent', `${primaryHsl.h} ${primaryHsl.s}% 95%`)
+  root.style.setProperty('--accent-foreground', primaryHsl.str)
+
+  // manter também --primary-custom / --secondary-custom para retrocompatibilidade
+  root.style.setProperty('--primary-custom', corPrimaria)
+  root.style.setProperty('--secondary-custom', corSecundaria)
 }
 
 const defaultSettings: SettingsRecord = {
@@ -27,6 +120,7 @@ const SettingsContext = createContext<SettingsContextType>({
   settings: defaultSettings,
   isLoading: true,
   refreshSettings: async () => {},
+  applyTheme: () => {},
 })
 
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -43,19 +137,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsLoading(false)
   }
 
-  const applyTheme = (s: SettingsRecord) => {
-    if (typeof document !== 'undefined') {
-      const root = document.documentElement
-      if (s.cor_primaria) {
-        root.style.setProperty('--primary-custom', s.cor_primaria)
-      }
-      if (s.cor_secundaria) {
-        root.style.setProperty('--secondary-custom', s.cor_secundaria)
-      }
-    }
-  }
-
   useEffect(() => {
+    applyTheme(defaultSettings)
     load()
 
     // Subscribe para realtime em settings se mudar white-label
@@ -76,7 +159,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return (
     <SettingsContext.Provider
-      value={{ settings: settings || defaultSettings, isLoading, refreshSettings: load }}
+      value={{
+        settings: settings || defaultSettings,
+        isLoading,
+        refreshSettings: load,
+        applyTheme,
+      }}
     >
       {children}
     </SettingsContext.Provider>

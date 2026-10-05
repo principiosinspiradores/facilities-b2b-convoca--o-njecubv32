@@ -31,7 +31,7 @@ import { FuncoesConfigSection } from './components/FuncoesConfigSection'
 import { BackupConfigSection } from './components/BackupConfigSection'
 
 export default function ConfigPage() {
-  const { settings, refreshSettings } = useSettings()
+  const { settings, refreshSettings, applyTheme } = useSettings()
   const [activeTab, setActiveTab] = useState<
     'whitelabel' | 'usuarios' | 'pagamentos' | 'regras' | 'funcoes' | 'backup'
   >('whitelabel')
@@ -143,6 +143,13 @@ export default function ConfigPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSaving(true)
+
+    // Reflexo imediato do tema visual antes e depois da persistência
+    applyTheme({
+      cor_primaria: corPrimaria.trim(),
+      cor_secundaria: corSecundaria.trim(),
+    })
+
     try {
       // Usar FormData para permitir upload de arquivo em PocketBase
       const formData = new FormData()
@@ -389,11 +396,7 @@ export default function ConfigPage() {
             </Card>
 
             <div className="flex justify-end pt-2">
-              <Button
-                type="submit"
-                className="bg-teal-700 hover:bg-teal-800 text-white font-medium px-8"
-                disabled={isSaving}
-              >
+              <Button type="submit" className="font-medium px-8" disabled={isSaving}>
                 {isSaving ? 'Salvando...' : 'Salvar Alterações de White-Label'}
               </Button>
             </div>
@@ -426,11 +429,7 @@ export default function ConfigPage() {
             />
 
             <div className="flex justify-end pt-2">
-              <Button
-                type="submit"
-                className="bg-teal-700 hover:bg-teal-800 text-white font-medium px-8"
-                disabled={isSaving}
-              >
+              <Button type="submit" className="font-medium px-8" disabled={isSaving}>
                 {isSaving ? 'Salvando...' : 'Salvar Configurações de Pagamento'}
               </Button>
             </div>
@@ -641,11 +640,7 @@ export default function ConfigPage() {
             </Card>
 
             <div className="flex justify-end pt-2">
-              <Button
-                type="submit"
-                className="bg-teal-700 hover:bg-teal-800 text-white font-medium px-8"
-                disabled={isSaving}
-              >
+              <Button type="submit" className="font-medium px-8" disabled={isSaving}>
                 {isSaving ? 'Salvando...' : 'Salvar Regras de Cancelamento & Escrow'}
               </Button>
             </div>
