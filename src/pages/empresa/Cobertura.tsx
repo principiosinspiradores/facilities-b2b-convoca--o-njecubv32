@@ -189,8 +189,8 @@ export default function CoberturaPage() {
 
   // Calcular alertas brutos detectados
   const todosAlertas = useMemo(() => {
-    return detectarAlertasCobertura(escalas, convocacoes, pros, nowDate)
-  }, [escalas, convocacoes, pros, nowDate])
+    return detectarAlertasCobertura(escalas, convocacoes, pros, nowDate, postos)
+  }, [escalas, convocacoes, pros, nowDate, postos])
 
   // Contadores para os Cards no Topo (4 tipos)
   const contadores = useMemo(() => {
@@ -317,6 +317,7 @@ export default function CoberturaPage() {
         todosElegiveis: modoEnvio === 'todos',
         prosBase: pros,
         convocacoesAtuais: convocacoes,
+        todosPostos: postos,
       })
 
       toast({
@@ -1113,9 +1114,26 @@ export default function CoberturaPage() {
                   <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 p-1">
                     {pros
                       .filter((p) => p.status === 'ativo' || p.status === 'teste')
+                      .filter((p) => {
+                        // Mensalista de outro posto NÃO é elegível para cobertura de falta
+                        const outroPostoComMensalista = postos.find(
+                          (postItem) =>
+                            postItem.id !== alertaSelecionado.posto.id &&
+                            postItem.pro_fixo === p.id &&
+                            (postItem.forma_de_contratacao === 'mensalista' ||
+                              postItem.tipo_remuneracao_fixa === 'mensal'),
+                        )
+                        return !outroPostoComMensalista
+                      })
                       .map((pro) => {
                         const isChecked = proIdsSelecionados.includes(pro.id)
                         const isFixa = alertaSelecionado.posto.pro_fixo === pro.id
+                        const postoHorista = postos.find(
+                          (postItem) =>
+                            postItem.pro_fixo === pro.id &&
+                            (postItem.forma_de_contratacao === 'horista' ||
+                              postItem.tipo_remuneracao_fixa === 'por_hora'),
+                        )
 
                         return (
                           <div
@@ -1134,7 +1152,18 @@ export default function CoberturaPage() {
                               </span>
                               {isFixa && (
                                 <Badge className="ml-2 bg-primary/10 text-primary border-primary/20 text-[9px] px-1 py-0">
-                                  Fixa do Posto
+                                  Fixa Titular
+                                </Badge>
+                              )}
+                              {postoHorista && !isFixa && (
+                                <Badge className="ml-2 bg-indigo-100 text-indigo-800 border-indigo-200 text-[9px] px-1 py-0">
+                                  Horista (
+                                  {formatCurrencyBRL(
+                                    postoHorista.valor_hora ||
+                                      postoHorista.valor_remuneracao_fixa ||
+                                      0,
+                                  )}
+                                  /h)
                                 </Badge>
                               )}
                               {pro.status === 'teste' && (

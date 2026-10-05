@@ -188,8 +188,9 @@ export default function GateProsPage() {
     setEditBairro(end.bairro || '')
     setEditCep(end.cep || '')
 
-    setEditStatus(pro.status || 'teste')
-    setEditPeriodoTeste(pro.periodo_teste_dias || 10)
+    const periodoPro = pro.periodo_teste_dias !== undefined ? pro.periodo_teste_dias : 10
+    setEditPeriodoTeste(periodoPro)
+    setEditStatus(pro.status || (periodoPro === 0 ? 'ativo' : 'teste'))
     setEditAjudaCusto(pro.ajuda_custo || 50)
     setEditValorNegociado(pro.valor_negociado)
 
@@ -363,8 +364,8 @@ export default function GateProsPage() {
           cep: newCep,
         },
         documentos: newDocumentos,
-        status: 'teste', // Inicia em teste conforme fluxo operacional
-        periodo_teste_dias: Number(newPeriodoTeste) || 10,
+        status: Number(newPeriodoTeste) === 0 ? 'ativo' : 'teste',
+        periodo_teste_dias: Number(newPeriodoTeste) >= 0 ? Number(newPeriodoTeste) : 0,
         ...(isAdmin
           ? {
               ajuda_custo: Number(newAjudaCusto) || 50,
@@ -527,7 +528,7 @@ export default function GateProsPage() {
           cep: editCep,
         },
         status: editStatus,
-        periodo_teste_dias: Number(editPeriodoTeste) || 10,
+        periodo_teste_dias: Number(editPeriodoTeste) >= 0 ? Number(editPeriodoTeste) : 0,
         documentos: editDocumentos,
       }
 
@@ -898,7 +899,9 @@ export default function GateProsPage() {
                         <td className="py-3 px-2 text-xs text-slate-600">
                           {isTeste ? (
                             <span className="text-amber-800 font-medium">
-                              {p.periodo_teste_dias || 10} dias probatórios
+                              {p.periodo_teste_dias === 0
+                                ? 'Sem teste (ativa imediata)'
+                                : `${p.periodo_teste_dias || 10} dias probatórios`}
                             </span>
                           ) : (
                             <span className="text-emerald-700 font-medium flex items-center gap-1">
@@ -1149,12 +1152,19 @@ export default function GateProsPage() {
                   </label>
                   <Input
                     type="number"
-                    min={1}
+                    min={0}
                     max={90}
                     value={newPeriodoTeste}
-                    onChange={(e) => setNewPeriodoTeste(Number(e.target.value))}
+                    onChange={(e) => {
+                      const val = Math.max(0, Number(e.target.value))
+                      setNewPeriodoTeste(val)
+                    }}
                   />
-                  <span className="text-[10px] text-slate-400">Padrão: 10 dias probatórios</span>
+                  <span className="text-[10px] text-slate-500">
+                    {newPeriodoTeste === 0
+                      ? '0 dias = sem teste, entra ativa imediatamente'
+                      : 'Padrão: 10 dias probatórios (ou 0 = ativa imediata)'}
+                  </span>
                 </div>
 
                 {/* Blindagem Financeira: Empresa NÃO visualiza nem edita precificação */}
@@ -1325,11 +1335,22 @@ export default function GateProsPage() {
                   </label>
                   <Input
                     type="number"
-                    min={1}
+                    min={0}
                     max={90}
                     value={editPeriodoTeste}
-                    onChange={(e) => setEditPeriodoTeste(Number(e.target.value))}
+                    onChange={(e) => {
+                      const val = Math.max(0, Number(e.target.value))
+                      setEditPeriodoTeste(val)
+                      if (val === 0 && editStatus === 'teste') {
+                        setEditStatus('ativo')
+                      }
+                    }}
                   />
+                  <span className="text-[10px] text-slate-500">
+                    {editPeriodoTeste === 0
+                      ? '0 dias = sem teste, entra ativa imediatamente'
+                      : 'Dias em período probatório'}
+                  </span>
                 </div>
               </div>
 

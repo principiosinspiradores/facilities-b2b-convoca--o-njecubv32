@@ -25,13 +25,14 @@ onRecordUpdate((e) => {
       console.log('Erro ao atualizar escala para aceita:', err)
     }
 
-    // 2. Se a profissional for fixa do posto com remuneração MENSAL:
-    // O valor dela NÃO entra no escrow por diária (é salário mensal contratado fora do escrow diário)
+    // 2. Se a profissional for fixa do posto com remuneração MENSAL (mensalista):
+    // O valor dela NÃO entra no escrow por diária (é remuneração salarial mensal contratada fora de escrow)
     let isFixaMensal = false
     if (posto) {
       const proFixoId = posto.getString('pro_fixo')
-      const tipoRemun = posto.getString('tipo_remuneracao_fixa')
-      if (proFixoId && proFixoId === proId && tipoRemun === 'mensal') {
+      const forma =
+        posto.getString('forma_de_contratacao') || posto.getString('tipo_remuneracao_fixa')
+      if (proFixoId && proFixoId === proId && (forma === 'mensalista' || forma === 'mensal')) {
         isFixaMensal = true
       }
     }

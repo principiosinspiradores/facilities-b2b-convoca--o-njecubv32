@@ -26,40 +26,39 @@ routerAdd('GET', '/backend/v1/calcular-diaria/{escalaId}/{proId}', (e) => {
 
   const cargaHoraria = posto.getInt('carga_horaria') || 8
 
-  // REGRA ESPECIAL: PROFISSIONAL FIXA POR POSTO
-  // A profissional fixa NÃO usa o motor de diária. O valor dela é diferente:
-  // Fixo mensal (contratada) -> valor 0 na diária (ou contratado mensal) e não entra em escrow diário
-  // Por hora trabalhada -> cargaHoraria * valor da hora
+  // REGRA ESPECIAL: PROFISSIONAL FIXA POR POSTO (mensalista / horista)
+  // Mensalista / horista NÃO passam pelo motor de diária em 3 camadas
   const proFixoId = posto.getString('pro_fixo')
   if (proFixoId && proFixoId === proId) {
-    const tipoRemun = posto.getString('tipo_remuneracao_fixa') || 'mensal'
-    const valorRemun = posto.getFloat('valor_remuneracao_fixa') || 0
+    const forma =
+      posto.getString('forma_de_contratacao') ||
+      posto.getString('tipo_remuneracao_fixa') ||
+      'mensalista'
+    const salMensal =
+      posto.getFloat('salario_mensal') ||
+      (forma === 'mensalista' ? posto.getFloat('valor_remuneracao_fixa') : 0)
+    const valHora =
+      posto.getFloat('valor_hora') ||
+      (forma === 'horista' ? posto.getFloat('valor_remuneracao_fixa') : 0)
 
-    if (tipoRemun === 'mensal') {
+    if (forma === 'mensalista' || forma === 'mensal') {
       return e.json(200, {
         valor: 0,
-        valor_mensal: valorRemun,
-        tipo_remuneracao: 'mensal',
+        valor_mensal: salMensal,
+        tipo_remuneracao: 'mensalista',
         is_fixa: true,
         regra_aplicada:
-          'profissional fixa (mensalista contratada: R$ ' + valorRemun.toFixed(2) + '/mês)',
+          'profissional fixa mensalista (salário: R$ ' + salMensal.toFixed(2) + '/mês)',
       })
-    } else {
-      // por_hora
-      const valorTotalTurno = cargaHoraria * valorRemun
+    } else if (forma === 'horista' || forma === 'por_hora') {
+      const valorTotalTurno = cargaHoraria * valHora
       return e.json(200, {
         valor: valorTotalTurno,
-        valor_hora: valorRemun,
-        tipo_remuneracao: 'por_hora',
+        valor_hora: valHora,
+        tipo_remuneracao: 'horista',
         is_fixa: true,
         regra_aplicada:
-          'profissional fixa (R$ ' +
-          valorRemun.toFixed(2) +
-          '/h × ' +
-          cargaHoraria +
-          'h = R$ ' +
-          valorTotalTurno.toFixed(2) +
-          ')',
+          'profissional fixa horista (R$ ' + valHora.toFixed(2) + '/h × ' + cargaHoraria + 'h)',
       })
     }
   }

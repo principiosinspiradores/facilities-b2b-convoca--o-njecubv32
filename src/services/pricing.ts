@@ -29,7 +29,7 @@ export interface DiariaCalculadaResponse {
   valor: number
   regra_aplicada: string
   is_fixa?: boolean
-  tipo_remuneracao?: 'mensal' | 'por_hora'
+  tipo_remuneracao?: 'mensal' | 'por_hora' | 'mensalista' | 'horista'
   valor_mensal?: number
   valor_hora?: number
 }
@@ -62,24 +62,36 @@ export async function calcularDiariaEngine(
 
     // Regra fixa
     if (posto?.pro_fixo && posto.pro_fixo === proId) {
-      const tipo = posto.tipo_remuneracao_fixa || 'mensal'
-      const val = Number(posto.valor_remuneracao_fixa || 0)
-      if (tipo === 'mensal') {
+      const forma = posto.forma_de_contratacao || posto.tipo_remuneracao_fixa || 'mensalista'
+      const salMensal =
+        posto.salario_mensal !== undefined
+          ? Number(posto.salario_mensal)
+          : forma === 'mensalista' || forma === 'mensal'
+            ? Number(posto.valor_remuneracao_fixa || 0)
+            : 0
+      const vHora =
+        posto.valor_hora !== undefined
+          ? Number(posto.valor_hora)
+          : forma === 'horista' || forma === 'por_hora'
+            ? Number(posto.valor_remuneracao_fixa || 0)
+            : 0
+
+      if (forma === 'mensalista' || forma === 'mensal') {
         return {
           valor: 0,
-          valor_mensal: val,
+          valor_mensal: salMensal,
           is_fixa: true,
-          tipo_remuneracao: 'mensal',
-          regra_aplicada: `profissional fixa (mensalista contratada: R$ ${val.toFixed(2)}/mês)`,
+          tipo_remuneracao: 'mensalista',
+          regra_aplicada: 'Contrato Mensal Fixo — Remuneração Salarial',
         }
-      } else {
-        const total = carga * val
+      } else if (forma === 'horista' || forma === 'por_hora') {
+        const total = carga * vHora
         return {
           valor: total,
-          valor_hora: val,
+          valor_hora: vHora,
           is_fixa: true,
-          tipo_remuneracao: 'por_hora',
-          regra_aplicada: `profissional fixa (R$ ${val.toFixed(2)}/h × ${carga}h = R$ ${total.toFixed(2)})`,
+          tipo_remuneracao: 'horista',
+          regra_aplicada: `profissional fixa horista (R$ ${vHora.toFixed(2)}/h × ${carga}h)`,
         }
       }
     }

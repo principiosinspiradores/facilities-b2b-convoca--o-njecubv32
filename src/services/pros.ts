@@ -77,12 +77,16 @@ export async function listarPros(): Promise<UserRecord[]> {
 export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarProResult> {
   const tempPassword = 'Pro@' + Math.random().toString(36).substring(2, 10) + '9#'
 
+  const periodoDias = dados.periodo_teste_dias !== undefined ? Number(dados.periodo_teste_dias) : 10
+  const finalStatus: UserStatus =
+    periodoDias === 0 ? 'ativo' : dados.status || (periodoDias > 0 ? 'teste' : 'ativo')
+
   const payload: Record<string, any> = {
     email: dados.email.trim(),
     name: dados.name.trim(),
     cpf: (dados.cpf || '').replace(/\D/g, ''),
     role: 'pro',
-    status: dados.status || 'teste',
+    status: finalStatus,
     password: tempPassword,
     passwordConfirm: tempPassword,
     telefone: (dados.telefone || '').trim(),
@@ -93,7 +97,7 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
       { tipo: 'Comprovante Residência', status: 'pendente' },
       { tipo: 'Certidão Antecedentes', status: 'pendente' },
     ],
-    periodo_teste_dias: dados.periodo_teste_dias !== undefined ? dados.periodo_teste_dias : 10,
+    periodo_teste_dias: periodoDias,
     verified: false,
   }
 
@@ -165,8 +169,17 @@ export async function atualizarPro(id: string, dados: AtualizarProPayload): Prom
   if (dados.funcoes !== undefined) payload.funcoes = dados.funcoes
   if (dados.endereco_completo !== undefined) payload.endereco_completo = dados.endereco_completo
   if (dados.documentos !== undefined) payload.documentos = dados.documentos
-  if (dados.status !== undefined) payload.status = dados.status
-  if (dados.periodo_teste_dias !== undefined) payload.periodo_teste_dias = dados.periodo_teste_dias
+  if (dados.periodo_teste_dias !== undefined) {
+    const periodo = Number(dados.periodo_teste_dias)
+    payload.periodo_teste_dias = periodo
+    if (periodo === 0 && (!dados.status || dados.status === 'teste')) {
+      payload.status = 'ativo'
+    } else if (dados.status !== undefined) {
+      payload.status = dados.status
+    }
+  } else if (dados.status !== undefined) {
+    payload.status = dados.status
+  }
   if (dados.ajuda_custo !== undefined) payload.ajuda_custo = dados.ajuda_custo
   if (dados.valor_negociado !== undefined) payload.valor_negociado = dados.valor_negociado
   if (dados.bloqueado_ate !== undefined) payload.bloqueado_ate = dados.bloqueado_ate

@@ -332,26 +332,70 @@ export default function ConvocacoesPage() {
                     </div>
 
                     <div className="text-right shrink-0">
-                      {posto?.pro_fixo === user?.id && posto.tipo_remuneracao_fixa === 'mensal' ? (
-                        <div>
-                          <div className="text-lg font-black text-primary">Fixo Mensal</div>
-                          <div className="text-[11px] font-semibold text-slate-600">
-                            {formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}/mês
+                      {(() => {
+                        const isFixaDoPosto = posto?.pro_fixo === user?.id
+                        const forma = posto?.forma_de_contratacao || posto?.tipo_remuneracao_fixa
+                        const isMensalista =
+                          isFixaDoPosto && (forma === 'mensalista' || forma === 'mensal')
+                        const isHorista =
+                          isFixaDoPosto && (forma === 'horista' || forma === 'por_hora')
+
+                        if (isMensalista) {
+                          const salMensal =
+                            posto?.salario_mensal !== undefined
+                              ? Number(posto.salario_mensal)
+                              : Number(posto?.valor_remuneracao_fixa || 0)
+                          return (
+                            <div className="space-y-1">
+                              <Badge className="bg-primary/10 text-primary border border-primary/20 text-xs font-semibold py-1 px-2.5">
+                                Contrato Mensal Fixo — Remuneração Salarial
+                              </Badge>
+                              <div className="text-[11px] font-semibold text-slate-600">
+                                {formatCurrencyBRL(salMensal)}/mês (sem diária/escrow)
+                              </div>
+                            </div>
+                          )
+                        }
+
+                        if (isHorista) {
+                          const vHora =
+                            posto?.valor_hora !== undefined
+                              ? Number(posto.valor_hora)
+                              : Number(posto?.valor_remuneracao_fixa || 0)
+                          const carga = posto?.carga_horaria || 8
+                          return (
+                            <div>
+                              <div className="text-2xl font-black text-primary tabular-nums">
+                                {formatCurrencyBRL(conv.valor_diaria || vHora * carga)}
+                              </div>
+                              <div
+                                className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded inline-block mt-0.5 max-w-[210px] truncate"
+                                title={
+                                  conv.regra_aplicada ||
+                                  `profissional fixa horista (R$ ${vHora.toFixed(2)}/h × ${carga}h)`
+                                }
+                              >
+                                {conv.regra_aplicada || `R$ ${vHora.toFixed(2)}/h × ${carga}h`}
+                              </div>
+                            </div>
+                          )
+                        }
+
+                        // Freelancer motor 3 camadas
+                        return (
+                          <div>
+                            <div className="text-2xl font-black text-primary tabular-nums">
+                              {formatCurrencyBRL(conv.valor_diaria)}
+                            </div>
+                            <div
+                              className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded inline-block mt-0.5 max-w-[190px] truncate"
+                              title={conv.regra_aplicada || 'tabela base'}
+                            >
+                              {conv.regra_aplicada || 'tabela base'}
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <div className="text-2xl font-black text-primary tabular-nums">
-                            {formatCurrencyBRL(conv.valor_diaria)}
-                          </div>
-                          <div
-                            className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded inline-block mt-0.5 max-w-[190px] truncate"
-                            title={conv.regra_aplicada || 'tabela base'}
-                          >
-                            {conv.regra_aplicada || 'tabela base'}
-                          </div>
-                        </div>
-                      )}
+                        )
+                      })()}
                     </div>
                   </div>
 
@@ -435,9 +479,17 @@ export default function ConvocacoesPage() {
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                           Turno confirmado no seu calendário
                         </span>
-                        <span className="text-[11px] bg-emerald-200/60 text-emerald-900 px-2 py-0.5 rounded font-bold">
-                          Escrow Provisionado
-                        </span>
+                        {posto?.pro_fixo === user?.id &&
+                        (posto.forma_de_contratacao === 'mensalista' ||
+                          posto.tipo_remuneracao_fixa === 'mensal') ? (
+                          <span className="text-[11px] bg-primary/10 text-primary px-2 py-0.5 rounded font-bold border border-primary/20">
+                            Contrato Mensal Fixo
+                          </span>
+                        ) : (
+                          <span className="text-[11px] bg-emerald-200/60 text-emerald-900 px-2 py-0.5 rounded font-bold">
+                            Escrow Provisionado
+                          </span>
+                        )}
                       </div>
                     )}
 

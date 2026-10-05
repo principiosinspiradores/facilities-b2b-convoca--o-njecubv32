@@ -38,7 +38,16 @@ export function detectarAlertasCobertura(
   convocacoes: ConvocacaoRecord[],
   prosElegiveisAtivos: UserRecord[],
   agora: Date = new Date(),
+  todosPostos: PostoRecord[] = [],
 ): ItemAlertaCobertura[] {
+  // Mapear profissionais que são fixas mensalistas em outros postos
+  const proMensalistaPostos = new Set<string>()
+  for (const p of todosPostos) {
+    const forma = p.forma_de_contratacao || p.tipo_remuneracao_fixa
+    if (p.pro_fixo && (forma === 'mensalista' || forma === 'mensal')) {
+      proMensalistaPostos.add(p.pro_fixo)
+    }
+  }
   const alertas: ItemAlertaCobertura[] = []
 
   // Calcular limites de tempo de hoje e amanhã (UTC ou local da data)
@@ -87,10 +96,15 @@ export function detectarAlertasCobertura(
     const proFixoObj = posto.expand?.pro_fixo
 
     // Pros elegíveis que ainda não foram convocados para esta escala
+    // Exclui mensalistas de outros postos da elegibilidade de cobertura
     const convProIds = new Set(convsEscala.map((c) => c.pro))
-    const elegiveisRestantes = prosElegiveisAtivos.filter(
-      (p) => !convProIds.has(p.id) && p.id !== proFixoId,
-    ).length
+    const elegiveisRestantes = prosElegiveisAtivos.filter((p) => {
+      if (convProIds.has(p.id)) return false
+      if (p.id === proFixoId) return false
+      // Mensalista de outro posto não é elegível para cobrir falta
+      if (proMensalistaPostos.has(p.id)) return false
+      return true
+    }).length
 
     // Calcular tempo aberto
     // Base: momento da ocorrência (falta, recusa ou criação da escala)
@@ -330,6 +344,7 @@ export async function executarConvocacaoManual(params: {
   todosElegiveis: boolean
   prosBase: UserRecord[]
   convocacoesAtuais: ConvocacaoRecord[]
+  todosPostos?: PostoRecord[]
 }): Promise<{ criadas: number; escalaAtualizada: boolean }> {
   const {
     escala,
@@ -340,6 +355,7 @@ export async function executarConvocacaoManual(params: {
     todosElegiveis,
     prosBase,
     convocacoesAtuais,
+    todosPostos = [],
   } = params
 
   const carga = posto.carga_horaria || 8
@@ -347,7 +363,34 @@ export async function executarConvocacaoManual(params: {
   const isPostoComFixa = !!posto.pro_fixo
   const proFixoId = posto.pro_fixo
 
-  // 1. Determinar lista de pros a convocar
+  // Mapear profissionais que são fixas mensalistas e seus postos
+  // Regra: "geralmente o mensal fixo não cobre outros postos"
+  // Mensalista de outro posto NÃO é elegível para cobertura de falta
+  const postosComMensalista = todosPostos.filter((p) => {
+    const forma = p.forma_de_contratacao || p.tipo_remuneracao_fixa
+    return p.pro_fixo && (forma === 'mensalista' || forma === 'mensal')
+  })
+  const proMensalistaOutrosPostos = new Set<string>()
+  for (const p of postosComMensalista) {
+    if (p.id !== posto.id && p.pro_fixo) {
+      proMensalistaOutrosPostos.add(p.pro_fixo)
+    }
+  }
+
+  // Mapear também postos com horistas para saber o valor_hora do candidato
+  const mapaHoristasPostos: Record<string, number> = {}
+  for (const p of todosPostos) {
+    const forma = p.forma_de_contratacao || p.tipo_remuneracao_fixa
+    if (p.pro_fixo && (forma === 'horista' || forma === 'por_hora')) {
+      const vHora =
+        p.valor_hora !== undefined ? Number(p.valor_hora) : Number(p.valor_remuneracao_fixa || 0)
+      if (vHora > 0) {
+        mapaHoristasPostos[p.pro_fixo] = vHora
+      }
+    }
+  }
+
+  // 1. Determinar lista de pros a convocar (excluindo mensalistas de outros postos)
   let prosAlvo: UserRecord[] = []
   if (todosElegiveis) {
     const jaConvocadosIds = new Set(
@@ -359,14 +402,17 @@ export async function executarConvocacaoManual(params: {
       (p) =>
         p.role === 'pro' &&
         (p.status === 'ativo' || p.status === 'teste') &&
-        !jaConvocadosIds.has(p.id),
+        !jaConvocadosIds.has(p.id) &&
+        !proMensalistaOutrosPostos.has(p.id),
     )
   } else {
-    prosAlvo = prosBase.filter((p) => proIdsSelecionados.includes(p.id))
+    prosAlvo = prosBase.filter(
+      (p) => proIdsSelecionados.includes(p.id) && !proMensalistaOutrosPostos.has(p.id),
+    )
   }
 
   if (prosAlvo.length === 0) {
-    throw new Error('Nenhum profissional selecionado para convocação.')
+    throw new Error('Nenhum profissional elegível selecionado para convocação.')
   }
 
   // 2. Determinar diária estimada pelo motor para freelancers
@@ -378,21 +424,31 @@ export async function executarConvocacaoManual(params: {
 
   for (const pro of prosAlvo) {
     const isEsteProFixo = isPostoComFixa && pro.id === proFixoId
+    const formaPosto = posto.forma_de_contratacao || posto.tipo_remuneracao_fixa
 
     let valorCalculado = estimativa.valor || escala.valor_diaria || 180
     let regraCalculada = estimativa.regra || 'motor 3 camadas (convocação manual)'
 
     if (isEsteProFixo) {
-      if (posto.tipo_remuneracao_fixa === 'mensal') {
+      if (formaPosto === 'mensalista' || formaPosto === 'mensal') {
         valorCalculado = 0
-        regraCalculada = 'profissional fixa (mensal)'
+        regraCalculada = 'Contrato Mensal Fixo — Remuneração Salarial'
       } else {
-        const vHora = posto.valor_remuneracao_fixa || 25
+        const vHora =
+          posto.valor_hora !== undefined
+            ? Number(posto.valor_hora)
+            : Number(posto.valor_remuneracao_fixa || 25)
         valorCalculado = vHora * carga
-        regraCalculada = `profissional fixa (R$ ${vHora.toFixed(2)}/h × ${carga}h)`
+        regraCalculada = `profissional fixa horista (R$ ${vHora.toFixed(2)}/h × ${carga}h)`
       }
     } else {
-      if (pro.status === 'teste') {
+      // Valor ofertado segue QUEM VAI CUMPRIR:
+      // se o candidato é fixa horista em algum posto: horas do turno × valor_hora do candidato
+      const valorHoraCandidato = mapaHoristasPostos[pro.id]
+      if (valorHoraCandidato && valorHoraCandidato > 0) {
+        valorCalculado = valorHoraCandidato * carga
+        regraCalculada = `cobertura horista (R$ ${valorHoraCandidato.toFixed(2)}/h × ${carga}h)`
+      } else if (pro.status === 'teste') {
         valorCalculado = pro.ajuda_custo || 50
         regraCalculada = 'ajuda de custo (teste)'
       } else if (pro.valor_negociado && pro.valor_negociado > 0) {

@@ -146,16 +146,21 @@ export default function RelatorioCustoPostoPage() {
       }
 
       // 2. Processar postos com Profissional Fixa Mensalista
-      // Se o posto tem pro_fixo e tipo_remuneracao_fixa === 'mensal', computa o custo fixo mensal uma vez no mês do filtro
+      // Se o posto tem pro_fixo e forma_de_contratacao === 'mensalista' (ou tipo_remuneracao_fixa === 'mensal'),
+      // computa o custo fixo mensal (salario_mensal no mês, não por escala avulsa)
       const postosProcessadosFixaMensal = new Set<string>()
 
       postos.forEach((p) => {
-        if (p.pro_fixo && p.tipo_remuneracao_fixa === 'mensal') {
+        const forma = p.forma_de_contratacao || p.tipo_remuneracao_fixa
+        if (p.pro_fixo && (forma === 'mensalista' || forma === 'mensal')) {
           if (postoFiltro !== 'todos' && p.id !== postoFiltro) return
           if (proFiltro !== 'todos' && p.pro_fixo !== proFiltro) return
 
           const proObj = pros.find((u) => u.id === p.pro_fixo)
-          const valorMensal = p.valor_remuneracao_fixa || 0
+          const valorMensal =
+            p.salario_mensal !== undefined
+              ? Number(p.salario_mensal)
+              : Number(p.valor_remuneracao_fixa || 0)
 
           list.push({
             id: `fixa-mensal-${p.id}`,
@@ -163,17 +168,16 @@ export default function RelatorioCustoPostoPage() {
             postoNome: p.nome,
             data: `${mesAnoFiltro}-01`,
             proId: p.pro_fixo,
-            proNome: proObj?.name || 'Profissional Fixa',
+            proNome: proObj?.name || 'Profissional Fixa Mensalista',
             tipoProfissional: 'fixa_mensal',
-            horasTrabalhadas: (p.carga_horaria || 8) * 22, // Estimativa padrão mensal 22 dias
+            horasTrabalhadas: (p.carga_horaria || 8) * 22, // Referência de 22 dias úteis
             valorUnitarioOuHora: valorMensal,
             custoTotal: valorMensal,
-            origemCalculo: `Contrato Mensal Fixo (${formatCurrencyBRL(valorMensal)}/mês)`,
+            origemCalculo: `Contrato Mensal Fixo (Salário: ${formatCurrencyBRL(valorMensal)}/mês)`,
           })
           postosProcessadosFixaMensal.add(p.id)
         }
       })
-
       // 3. Processar escalas realizadas de cada posto
       escalasDoMes.forEach((escala) => {
         const posto = postos.find((p) => p.id === escala.posto)
@@ -193,9 +197,14 @@ export default function RelatorioCustoPostoPage() {
         const proObj = pros.find((u) => u.id === proId)
         const isProFixo = posto.pro_fixo && posto.pro_fixo === proId
 
+        const formaPosto = posto.forma_de_contratacao || posto.tipo_remuneracao_fixa
+
         // Caso A: Posto com Pro Fixa Horista (horas do ponto × valor da hora da fixa)
-        if (isProFixo && posto.tipo_remuneracao_fixa === 'por_hora') {
-          const valorHora = posto.valor_remuneracao_fixa || 25
+        if (isProFixo && (formaPosto === 'horista' || formaPosto === 'por_hora')) {
+          const valorHora =
+            posto.valor_hora !== undefined
+              ? Number(posto.valor_hora)
+              : Number(posto.valor_remuneracao_fixa || 25)
           const infoPonto = pontosPorEscala[escala.id]
 
           let horas = posto.carga_horaria || 8
@@ -219,7 +228,7 @@ export default function RelatorioCustoPostoPage() {
             postoNome: posto.nome,
             data: escala.data.slice(0, 10),
             proId: proId,
-            proNome: proObj?.name || 'Profissional',
+            proNome: proObj?.name || 'Profissional Horista',
             tipoProfissional: 'fixa_hora',
             horasTrabalhadas: horas,
             valorUnitarioOuHora: valorHora,
@@ -227,11 +236,10 @@ export default function RelatorioCustoPostoPage() {
             origemCalculo: origem,
           })
         }
-        // Caso B: Se for fixa mensal, o valor total já foi lançado acima de forma consolidada no mês.
-        else if (isProFixo && posto.tipo_remuneracao_fixa === 'mensal') {
-          // Já incluso no resumo mensal
-        }
-        // Caso C: Freelancer (motor de 3 camadas por diária)
+        // Caso B: Se for fixa mensal, o custo mensal fixo já foi computado acima para o mês
+        else if (isProFixo && (formaPosto === 'mensalista' || formaPosto === 'mensal')) {
+          // Custo fixo mensal computado uma vez por mês
+        } // Caso C: Freelancer (motor de 3 camadas por diária)
         else {
           const vDiaria = conv.valor_diaria || escala.valor_diaria || 180
           const horas = posto.carga_horaria || 8

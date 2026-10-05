@@ -67,6 +67,7 @@ export interface Endereco {
 }
 
 export type TipoRemuneracaoFixa = 'mensal' | 'por_hora'
+export type FormaDeContratacao = 'freelancer' | 'mensalista' | 'horista'
 
 export interface PostoRecord {
   id: string
@@ -79,6 +80,9 @@ export interface PostoRecord {
   requisitos?: string
   status: PostoStatus
   pro_fixo?: string
+  forma_de_contratacao?: FormaDeContratacao
+  salario_mensal?: number
+  valor_hora?: number
   tipo_remuneracao_fixa?: TipoRemuneracaoFixa
   valor_remuneracao_fixa?: number
   raio_geocerca_m?: number

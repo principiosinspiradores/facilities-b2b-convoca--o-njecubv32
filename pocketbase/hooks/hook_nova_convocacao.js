@@ -46,12 +46,22 @@ onRecordAfterCreateSuccess((e) => {
       postoNome = posto.getString('nome')
 
       const proFixoId = posto.getString('pro_fixo')
-      const tipoRemun = posto.getString('tipo_remuneracao_fixa')
+      const forma =
+        posto.getString('forma_de_contratacao') ||
+        posto.getString('tipo_remuneracao_fixa') ||
+        'mensalista'
+      const salMensal =
+        posto.getFloat('salario_mensal') ||
+        (forma === 'mensalista' ? posto.getFloat('valor_remuneracao_fixa') : 0)
+      const valHora =
+        posto.getFloat('valor_hora') ||
+        (forma === 'horista' ? posto.getFloat('valor_remuneracao_fixa') : 0)
+
       if (proFixoId && proFixoId === proId) {
-        if (tipoRemun === 'mensal') {
-          modeloRemuneracao = `Fixa Mensal (Contrato R$ ${(posto.getFloat('valor_remuneracao_fixa') || 0).toFixed(2)}/mês)`
-        } else if (tipoRemun === 'por_hora') {
-          modeloRemuneracao = `Fixa por Hora (R$ ${(posto.getFloat('valor_remuneracao_fixa') || 0).toFixed(2)}/h × ${posto.getInt('carga_horaria') || 8}h = R$ ${valDiaria.toFixed(2)})`
+        if (forma === 'mensalista' || forma === 'mensal') {
+          modeloRemuneracao = `Fixa Mensalista (Contrato Salarial R$ ${salMensal.toFixed(2)}/mês)`
+        } else if (forma === 'horista' || forma === 'por_hora') {
+          modeloRemuneracao = `Fixa Horista (R$ ${valHora.toFixed(2)}/h × ${posto.getInt('carga_horaria') || 8}h = R$ ${valDiaria.toFixed(2)})`
         }
       }
     } catch (errPosto) {

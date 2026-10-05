@@ -6,6 +6,7 @@ import {
   PostoFuncao,
   UserRecord,
   TipoRemuneracaoFixa,
+  FormaDeContratacao,
   FuncaoRecord,
 } from '@/types/facilities'
 import { listarFuncoes, criarFuncao } from '@/services/funcoes'
@@ -70,6 +71,9 @@ export default function PostosPage() {
 
   // Profissional Fixa por Posto
   const [proFixoId, setProFixoId] = useState<string>('nenhum')
+  const [formaContratacao, setFormaContratacao] = useState<FormaDeContratacao>('mensalista')
+  const [salarioMensal, setSalarioMensal] = useState<number>(2200)
+  const [valorHora, setValorHora] = useState<number>(25)
   const [tipoRemuneracaoFixa, setTipoRemuneracaoFixa] = useState<TipoRemuneracaoFixa>('mensal')
   const [valorRemuneracaoFixa, setValorRemuneracaoFixa] = useState<number>(2200)
   const [raioGeocercaM, setRaioGeocercaM] = useState<number>(100)
@@ -136,6 +140,9 @@ export default function PostosPage() {
     setVigenciaFim('2026-12-31')
     setRequisitos('')
     setProFixoId('nenhum')
+    setFormaContratacao('mensalista')
+    setSalarioMensal(2200)
+    setValorHora(25)
     setTipoRemuneracaoFixa('mensal')
     setValorRemuneracaoFixa(2200)
     setRaioGeocercaM(100)
@@ -166,14 +173,32 @@ export default function PostosPage() {
     setRequisitos(posto.requisitos || '')
 
     setProFixoId(posto.pro_fixo || 'nenhum')
-    setTipoRemuneracaoFixa(posto.tipo_remuneracao_fixa || 'mensal')
-    setValorRemuneracaoFixa(
-      posto.valor_remuneracao_fixa !== undefined
-        ? posto.valor_remuneracao_fixa
-        : posto.tipo_remuneracao_fixa === 'por_hora'
-          ? 25
-          : 2200,
-    )
+    const forma = (posto.forma_de_contratacao ||
+      (posto.tipo_remuneracao_fixa === 'por_hora'
+        ? 'horista'
+        : posto.pro_fixo
+          ? 'mensalista'
+          : 'freelancer')) as FormaDeContratacao
+    setFormaContratacao(forma)
+
+    const salM =
+      posto.salario_mensal !== undefined
+        ? posto.salario_mensal
+        : forma === 'mensalista' || posto.tipo_remuneracao_fixa === 'mensal'
+          ? posto.valor_remuneracao_fixa || 2200
+          : 2200
+    setSalarioMensal(salM)
+
+    const vH =
+      posto.valor_hora !== undefined
+        ? posto.valor_hora
+        : forma === 'horista' || posto.tipo_remuneracao_fixa === 'por_hora'
+          ? posto.valor_remuneracao_fixa || 25
+          : 25
+    setValorHora(vH)
+
+    setTipoRemuneracaoFixa(forma === 'horista' ? 'por_hora' : 'mensal')
+    setValorRemuneracaoFixa(forma === 'horista' ? vH : salM)
     setRaioGeocercaM(posto.raio_geocerca_m || 100)
     const entTol =
       posto.tolerancia_entrada_minutos !== undefined ? posto.tolerancia_entrada_minutos : 10
@@ -265,6 +290,8 @@ export default function PostosPage() {
     setIsSaving(true)
     try {
       const hasProFixo = proFixoId && proFixoId !== 'nenhum'
+      const finalForma: FormaDeContratacao = hasProFixo ? formaContratacao : 'freelancer'
+
       const payload: Record<string, any> = {
         nome: nome.trim(),
         funcao,
@@ -274,8 +301,6 @@ export default function PostosPage() {
         vigencia_fim: vigenciaFim ? new Date(vigenciaFim).toISOString() : null,
         requisitos: requisitos.trim(),
         pro_fixo: hasProFixo ? proFixoId : null,
-        tipo_remuneracao_fixa: hasProFixo ? tipoRemuneracaoFixa : null,
-        valor_remuneracao_fixa: hasProFixo ? Number(valorRemuneracaoFixa) : null,
         raio_geocerca_m: raioGeocercaM ? Math.max(20, Math.min(1000, Number(raioGeocercaM))) : 100,
         tolerancia_entrada_minutos:
           toleranciaEntradaMinutos !== undefined &&
@@ -302,6 +327,26 @@ export default function PostosPage() {
           uf: uf.trim().toUpperCase(),
           cep: cep.trim(),
         },
+      }
+
+      // Blindagem: apenas admin altera forma_de_contratacao / valores salariais
+      if (isAdmin) {
+        payload.forma_de_contratacao = finalForma
+        payload.salario_mensal = finalForma === 'mensalista' ? Number(salarioMensal) || 0 : null
+        payload.valor_hora = finalForma === 'horista' ? Number(valorHora) || 0 : null
+        // retrocompatibilidade com campos legados
+        payload.tipo_remuneracao_fixa =
+          finalForma === 'horista' ? 'por_hora' : finalForma === 'mensalista' ? 'mensal' : null
+        payload.valor_remuneracao_fixa =
+          finalForma === 'horista'
+            ? Number(valorHora) || 0
+            : finalForma === 'mensalista'
+              ? Number(salarioMensal) || 0
+              : null
+      } else if (!editingPosto) {
+        // Na criação por empresa, default neutro
+        payload.forma_de_contratacao = hasProFixo ? 'mensalista' : 'freelancer'
+        payload.tipo_remuneracao_fixa = hasProFixo ? 'mensal' : null
       }
 
       if (editingPosto) {
@@ -423,9 +468,18 @@ export default function PostosPage() {
                             <UserCheck className="w-4 h-4 text-primary" />
                             Profissional Fixa Designada
                           </span>
-                          <Badge className="bg-primary text-primary-foreground text-[10px] uppercase">
-                            {p.tipo_remuneracao_fixa === 'por_hora' ? 'Por Hora' : 'Mensalista'}
-                          </Badge>
+                          {isAdmin ? (
+                            <Badge className="bg-primary text-primary-foreground text-[10px] uppercase">
+                              {p.forma_de_contratacao === 'horista' ||
+                              p.tipo_remuneracao_fixa === 'por_hora'
+                                ? 'Horista'
+                                : 'Mensalista'}
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                              Escala Fixa
+                            </Badge>
+                          )}
                         </div>
                         <div className="font-bold text-slate-900">
                           {p.expand?.pro_fixo?.name ||
@@ -434,15 +488,23 @@ export default function PostosPage() {
                         </div>
                         {isAdmin ? (
                           <div className="text-[11px] text-slate-600">
-                            {p.tipo_remuneracao_fixa === 'por_hora' ? (
+                            {p.forma_de_contratacao === 'horista' ||
+                            p.tipo_remuneracao_fixa === 'por_hora' ? (
                               <span>
                                 Remuneração:{' '}
                                 <strong>
-                                  {formatCurrencyBRL(p.valor_remuneracao_fixa || 0)}/hora
+                                  {formatCurrencyBRL(
+                                    p.valor_hora !== undefined
+                                      ? p.valor_hora
+                                      : p.valor_remuneracao_fixa || 0,
+                                  )}
+                                  /hora
                                 </strong>{' '}
                                 (
                                 {formatCurrencyBRL(
-                                  (p.valor_remuneracao_fixa || 0) * (p.carga_horaria || 8),
+                                  (p.valor_hora !== undefined
+                                    ? p.valor_hora
+                                    : p.valor_remuneracao_fixa || 0) * (p.carga_horaria || 8),
                                 )}
                                 /turno de {p.carga_horaria}h)
                               </span>
@@ -450,18 +512,20 @@ export default function PostosPage() {
                               <span>
                                 Salário Mensal:{' '}
                                 <strong>
-                                  {formatCurrencyBRL(p.valor_remuneracao_fixa || 0)}/mês
+                                  {formatCurrencyBRL(
+                                    p.salario_mensal !== undefined
+                                      ? p.salario_mensal
+                                      : p.valor_remuneracao_fixa || 0,
+                                  )}
+                                  /mês
                                 </strong>{' '}
-                                (fora de diárias)
+                                (sem motor de diária)
                               </span>
                             )}
                           </div>
                         ) : (
                           <div className="text-[11px] text-slate-500">
-                            Contrato{' '}
-                            {p.tipo_remuneracao_fixa === 'por_hora'
-                              ? 'por hora apurada em ponto'
-                              : 'mensal fixo'}
+                            Posto operacional com profissional alocada (escala e horário definidos).
                           </div>
                         )}
                       </div>
@@ -469,11 +533,13 @@ export default function PostosPage() {
                       <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-500">
                         <span className="flex items-center gap-1.5">
                           <Briefcase className="w-3.5 h-3.5 text-slate-400" />
-                          Sem profissional fixa (convocações freelancers)
+                          Sem profissional fixa (convocações sob demanda)
                         </span>
-                        <Badge variant="outline" className="text-[10px] text-slate-500">
-                          Motor 3 Camadas
-                        </Badge>
+                        {isAdmin && (
+                          <Badge variant="outline" className="text-[10px] text-slate-500">
+                            Freelancers
+                          </Badge>
+                        )}
                       </div>
                     )}
                   </div>
@@ -909,23 +975,24 @@ export default function PostosPage() {
                   </div>
                 </div>
 
-                {proFixoId && proFixoId !== 'nenhum' && (
-                  <div
-                    className={`grid grid-cols-1 ${isAdmin ? 'sm:grid-cols-2' : ''} gap-3 pt-2 border-t border-slate-200`}
-                  >
+                {/* BLINDAGEM: Forma de Contratação e Valores Visíveis e Editáveis SOMENTE por Role Admin */}
+                {proFixoId && proFixoId !== 'nenhum' && isAdmin && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200 bg-amber-50/50 p-3 rounded-lg border border-amber-200">
                     <div>
-                      <label className="text-xs font-semibold text-slate-700 block mb-1">
-                        Tipo de Modelo da Fixa *
+                      <label className="text-xs font-semibold text-slate-800 block mb-1">
+                        Forma de Contratação (Admin) *
                       </label>
                       <Select
-                        value={tipoRemuneracaoFixa}
+                        value={formaContratacao}
                         onValueChange={(v) => {
-                          const val = v as TipoRemuneracaoFixa
-                          setTipoRemuneracaoFixa(val)
-                          if (val === 'mensal' && valorRemuneracaoFixa < 100) {
-                            setValorRemuneracaoFixa(2200)
-                          } else if (val === 'por_hora' && valorRemuneracaoFixa > 200) {
-                            setValorRemuneracaoFixa(25)
+                          const val = v as FormaDeContratacao
+                          setFormaContratacao(val)
+                          if (val === 'mensalista') {
+                            setTipoRemuneracaoFixa('mensal')
+                            if (salarioMensal < 100) setSalarioMensal(2200)
+                          } else if (val === 'horista') {
+                            setTipoRemuneracaoFixa('por_hora')
+                            if (valorHora > 200 || valorHora <= 0) setValorHora(25)
                           }
                         }}
                       >
@@ -933,37 +1000,60 @@ export default function PostosPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="mensal">Mensal (Contrato Fixo Mensalista)</SelectItem>
-                          <SelectItem value="por_hora">Por Hora Trabalhada (Ponto)</SelectItem>
+                          <SelectItem value="mensalista">
+                            Mensalista (Salário Mensal Fixo)
+                          </SelectItem>
+                          <SelectItem value="horista">
+                            Horista (Valor da Hora Trabalhada)
+                          </SelectItem>
                         </SelectContent>
                       </Select>
+                      <span className="text-[10px] text-slate-500">
+                        {formaContratacao === 'mensalista'
+                          ? 'Mensalista não recebe oferta de falta de outros postos.'
+                          : 'Horista recebe turnos × valor da hora.'}
+                      </span>
                     </div>
 
-                    {isAdmin && (
-                      <div>
-                        <label className="text-xs font-semibold text-slate-700 block mb-1">
-                          {tipoRemuneracaoFixa === 'mensal'
-                            ? 'Valor Mensal Contratado (R$) *'
-                            : 'Valor da Hora (R$/h) *'}
-                        </label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={valorRemuneracaoFixa}
-                          onChange={(e) => setValorRemuneracaoFixa(Number(e.target.value))}
-                          className="bg-white text-xs"
-                          required={proFixoId !== 'nenhum'}
-                        />
-                        <p className="text-[10px] text-slate-500 mt-1">
-                          {tipoRemuneracaoFixa === 'mensal'
-                            ? 'Não gera cobrança de diária no escrow por escala.'
-                            : `Total por turno (${cargaHoraria}h): ${formatCurrencyBRL(
-                                Number(valorRemuneracaoFixa) * Number(cargaHoraria),
-                              )}`}
-                        </p>
-                      </div>
-                    )}
+                    <div>
+                      <label className="text-xs font-semibold text-slate-800 block mb-1">
+                        {formaContratacao === 'mensalista'
+                          ? 'Salário Mensal Fixo R$ (Admin) *'
+                          : 'Valor da Hora R$/h (Admin) *'}
+                      </label>
+                      {formaContratacao === 'mensalista' ? (
+                        <>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={salarioMensal}
+                            onChange={(e) => setSalarioMensal(Number(e.target.value))}
+                            className="bg-white text-xs"
+                            required
+                          />
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            Sem diária ou escrow por escala. Custo fixo mensal.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={valorHora}
+                            onChange={(e) => setValorHora(Number(e.target.value))}
+                            className="bg-white text-xs"
+                            required
+                          />
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            Turno de {cargaHoraria}h:{' '}
+                            {formatCurrencyBRL(Number(valorHora) * Number(cargaHoraria))}
+                          </p>
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
