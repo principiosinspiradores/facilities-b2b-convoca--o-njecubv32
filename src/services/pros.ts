@@ -105,6 +105,8 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
     payload.valor_negociado = dados.valor_negociado
   }
 
+  // Criação do registro no PocketBase. Caso ocorra erro 400 ou validação de hook,
+  // o ClientResponseError é propagado intacto com err.data.data por campo e err.message.
   const created = await pb.collection('users').create<UserRecord>(payload)
 
   // O e-mail de boas-vindas com dados completos e botão de login é disparado

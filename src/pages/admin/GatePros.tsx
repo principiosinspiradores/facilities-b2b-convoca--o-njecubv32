@@ -395,36 +395,95 @@ export default function GateProsPage() {
       setCreateModalOpen(false)
       loadData()
     } catch (err: any) {
-      console.error(err)
+      console.error('Erro ao cadastrar Pro:', err)
 
-      // Detecção de e-mail duplicado
-      const emailFieldMsg =
-        err?.data?.data?.email?.message || err?.response?.data?.email?.message || ''
-      const emailFieldCode = err?.data?.data?.email?.code || err?.response?.data?.email?.code || ''
-      const generalMsg = (
-        err?.data?.message ||
-        err?.response?.message ||
-        err?.message ||
-        ''
-      ).toLowerCase()
+      // 1. Extração estruturada de erros por campo (PocketBase: err.data.data ou err.response.data)
+      const fieldData = err?.data?.data || err?.response?.data || {}
+      const fieldLabels: Record<string, string> = {
+        cpf: 'CPF',
+        email: 'E-mail',
+        name: 'Nome',
+        telefone: 'Telefone',
+        role: 'Perfil',
+        status: 'Status',
+        funcoes: 'Funções',
+        periodo_teste_dias: 'Período de teste',
+        ajuda_custo: 'Ajuda de custo',
+        valor_negociado: 'Valor negociado',
+        password: 'Senha',
+        passwordConfirm: 'Confirmação de senha',
+      }
 
-      const isEmailDuplicate =
-        emailFieldCode === 'validation_not_unique' ||
-        emailFieldMsg.toLowerCase().includes('unique') ||
-        emailFieldMsg.toLowerCase().includes('duplicat') ||
-        emailFieldMsg.toLowerCase().includes('exist') ||
-        emailFieldMsg.toLowerCase().includes('já') ||
-        generalMsg.includes('unique') ||
-        generalMsg.includes('email already') ||
-        generalMsg.includes('e-mail já')
+      const fieldErrorParts: string[] = []
+      if (typeof fieldData === 'object' && fieldData !== null) {
+        for (const [field, detail] of Object.entries(fieldData)) {
+          let msg = ''
+          let code = ''
+          if (typeof detail === 'string') {
+            msg = detail
+          } else if (detail && typeof detail === 'object') {
+            msg = (detail as any).message || ''
+            code = (detail as any).code || ''
+          }
 
-      let errorDescription = 'Verifique os dados informados e tente novamente.'
-      if (isEmailDuplicate) {
-        errorDescription = 'Este e-mail já está cadastrado na base de profissionais.'
-      } else if (emailFieldMsg) {
-        errorDescription = emailFieldMsg
-      } else if (err?.message) {
-        errorDescription = err.message
+          if (field === 'email') {
+            const isEmailDup =
+              code === 'validation_not_unique' ||
+              msg.toLowerCase().includes('unique') ||
+              msg.toLowerCase().includes('duplicat') ||
+              msg.toLowerCase().includes('exist') ||
+              msg.toLowerCase().includes('já')
+            if (isEmailDup) {
+              msg = 'Este e-mail já está cadastrado na plataforma.'
+            }
+          }
+
+          if (field === 'cpf') {
+            const isCpfDup =
+              code === 'validation_not_unique' ||
+              msg.toLowerCase().includes('unique') ||
+              msg.toLowerCase().includes('duplicat') ||
+              msg.toLowerCase().includes('exist') ||
+              msg.toLowerCase().includes('já')
+            if (isCpfDup) {
+              msg = 'CPF já cadastrado na plataforma.'
+            }
+          }
+
+          if (msg) {
+            const label = fieldLabels[field] || field
+            fieldErrorParts.push(`${label}: ${msg}`)
+          }
+        }
+      }
+
+      // 2. Mensagens gerais do backend (err.data.message, err.response.message ou err.message)
+      const generalMsg = (err?.data?.message || err?.response?.message || err?.message || '').trim()
+
+      const generalMsgLower = generalMsg.toLowerCase()
+
+      let errorDescription = ''
+
+      if (fieldErrorParts.length > 0) {
+        // Se houver erros específicos por campo
+        errorDescription = fieldErrorParts.join('; ')
+      } else if (generalMsgLower.includes('cpf')) {
+        // Mensagem disparada pelo hook server-side hook_validar_cpf_pro (BadRequestError)
+        errorDescription = generalMsg
+      } else if (
+        generalMsgLower.includes('email already') ||
+        generalMsgLower.includes('e-mail já') ||
+        (generalMsgLower.includes('unique') && generalMsgLower.includes('email'))
+      ) {
+        errorDescription = 'E-mail: Este e-mail já está cadastrado na plataforma.'
+      } else if (
+        generalMsg &&
+        generalMsg !== 'Failed to create record.' &&
+        generalMsg !== 'Something went wrong while processing your request.'
+      ) {
+        errorDescription = generalMsg
+      } else {
+        errorDescription = 'Verifique os dados informados e tente novamente.'
       }
 
       toast({
