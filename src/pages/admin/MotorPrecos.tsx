@@ -579,7 +579,7 @@ export default function MotorPrecosPage() {
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Calculator className="w-6 h-6 text-teal-700" />
+            <Calculator className="w-6 h-6 text-primary" />
             Motor de Cálculo de Diárias
           </h1>
           <p className="text-slate-500 text-sm mt-1">
@@ -590,7 +590,7 @@ export default function MotorPrecosPage() {
         <div className="flex items-center gap-2 self-start md:self-auto">
           <Badge
             variant="outline"
-            className="bg-teal-50 text-teal-800 border-teal-200 text-xs px-3 py-1 font-semibold"
+            className="bg-primary/5 text-primary border-primary/20 text-xs px-3 py-1 font-semibold"
           >
             Modo Edição Ativo (Admin)
           </Badge>
@@ -598,25 +598,25 @@ export default function MotorPrecosPage() {
       </div>
 
       {/* 4. Painel explicativo da ordem de prioridade do motor */}
-      <Card className="border-teal-200 bg-gradient-to-br from-teal-50/70 via-white to-slate-50 shadow-sm overflow-hidden">
-        <CardHeader className="pb-3 border-b border-teal-100/60 bg-teal-50/40">
+      <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-white to-slate-50 shadow-sm overflow-hidden">
+        <CardHeader className="pb-3 border-b border-primary/10 bg-primary/5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-teal-700 text-white shadow-sm">
+              <div className="p-1.5 rounded-lg bg-primary text-primary-foreground shadow-sm">
                 <Layers className="w-4 h-4" />
               </div>
               <div>
-                <CardTitle className="text-base font-bold text-teal-950">
+                <CardTitle className="text-base font-bold text-slate-900">
                   Ordem de Decisão do Motor de Precificação
                 </CardTitle>
-                <CardDescription className="text-xs text-teal-800/80">
+                <CardDescription className="text-xs text-slate-600">
                   Como as 5 camadas disputam o valor final da diária para cada convocação
                 </CardDescription>
               </div>
             </div>
             <Badge
               variant="outline"
-              className="border-teal-300 text-teal-800 bg-white text-[11px] self-start sm:self-auto font-medium"
+              className="border-primary/30 text-primary bg-white text-[11px] self-start sm:self-auto font-medium"
             >
               Hierarquia de Sobreposição
             </Badge>
@@ -648,10 +648,10 @@ export default function MotorPrecosPage() {
             {/* Camada 2 */}
             <div className="p-3 rounded-lg bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-800 text-white">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-primary text-primary-foreground">
                   2º Prioridade
                 </span>
-                <UserCheck className="w-4 h-4 text-teal-600" />
+                <UserCheck className="w-4 h-4 text-primary" />
               </div>
               <div>
                 <h4 className="text-xs font-bold text-slate-900 leading-tight">Pro em Teste</h4>
@@ -667,10 +667,10 @@ export default function MotorPrecosPage() {
             {/* Camada 3 */}
             <div className="p-3 rounded-lg bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-700 text-white">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-primary/90 text-primary-foreground">
                   3º Prioridade
                 </span>
-                <Tag className="w-4 h-4 text-teal-600" />
+                <Tag className="w-4 h-4 text-primary" />
               </div>
               <div>
                 <h4 className="text-xs font-bold text-slate-900 leading-tight">Valor Negociado</h4>
@@ -687,10 +687,10 @@ export default function MotorPrecosPage() {
             {/* Camada 4 */}
             <div className="p-3 rounded-lg bg-white border border-slate-200/90 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-600 text-white">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-primary/80 text-primary-foreground">
                   4º Prioridade
                 </span>
-                <AlertTriangle className="w-4 h-4 text-teal-600" />
+                <AlertTriangle className="w-4 h-4 text-primary" />
               </div>
               <div>
                 <h4 className="text-xs font-bold text-slate-900 leading-tight">Exceção do Posto</h4>
@@ -725,8 +725,8 @@ export default function MotorPrecosPage() {
             </div>
           </div>
 
-          <div className="flex items-start gap-2 bg-teal-100/50 text-teal-950 p-2.5 rounded-lg text-xs border border-teal-200/60">
-            <Info className="w-4 h-4 text-teal-700 shrink-0 mt-0.5" />
+          <div className="flex items-start gap-2 bg-primary/5 text-slate-900 p-2.5 rounded-lg text-xs border border-primary/20">
+            <Info className="w-4 h-4 text-primary shrink-0 mt-0.5" />
             <div className="leading-relaxed">
               <strong>Onde cada configuração vive:</strong> regras de posto (tabela base, exceções e
               feriados) são gerenciadas nesta tela e no cadastro do posto. Os valores individuais de
@@ -761,7 +761,7 @@ export default function MotorPrecosPage() {
             </div>
             <Button
               onClick={handleOpenCreateBase}
-              className="bg-teal-700 hover:bg-teal-800 text-white text-xs shrink-0"
+              className="text-xs shrink-0"
             >
               <Plus className="w-4 h-4 mr-1.5" />
               Adicionar Faixa de Horas
@@ -770,7 +770,7 @@ export default function MotorPrecosPage() {
 
           {isLoading ? (
             <div className="flex items-center justify-center p-12 text-slate-400 gap-2">
-              <Loader2 className="w-5 h-5 animate-spin text-teal-700" />
+              <Loader2 className="w-5 h-5 animate-spin text-primary" />
               Carregando faixas base...
             </div>
           ) : baseRules.length === 0 ? (
@@ -785,7 +785,7 @@ export default function MotorPrecosPage() {
               {baseRules.map((r) => (
                 <Card
                   key={r.id}
-                  className="border border-slate-200 bg-white hover:border-teal-200 transition-colors"
+                  className="border border-slate-200 bg-white hover:border-primary/30 transition-colors"
                 >
                   <CardContent className="pt-5 flex items-center justify-between">
                     <div>
@@ -795,7 +795,7 @@ export default function MotorPrecosPage() {
                       <div className="text-2xl font-black text-slate-900">
                         {r.faixa_horas} Horas
                       </div>
-                      <div className="text-xl font-bold text-teal-700 mt-1 tabular-nums">
+                      <div className="text-xl font-bold text-primary mt-1 tabular-nums">
                         {formatCurrencyBRL(r.valor)}
                       </div>
                     </div>
@@ -805,7 +805,7 @@ export default function MotorPrecosPage() {
                         size="icon"
                         title="Editar faixa"
                         onClick={() => handleOpenEditBase(r)}
-                        className="text-slate-500 hover:text-teal-700 hover:bg-teal-50"
+                        className="text-slate-500 hover:text-primary hover:bg-primary/5"
                       >
                         <Edit2 className="w-4 h-4" />
                       </Button>
@@ -840,7 +840,7 @@ export default function MotorPrecosPage() {
             </div>
             <Button
               onClick={handleOpenCreateExcecao}
-              className="bg-teal-700 hover:bg-teal-800 text-white text-xs shrink-0"
+              className="text-xs shrink-0"
             >
               <Plus className="w-4 h-4 mr-1.5" />
               Nova Exceção por Posto
@@ -849,7 +849,7 @@ export default function MotorPrecosPage() {
 
           {isLoading ? (
             <div className="flex items-center justify-center p-12 text-slate-400 gap-2">
-              <Loader2 className="w-5 h-5 animate-spin text-teal-700" />
+              <Loader2 className="w-5 h-5 animate-spin text-primary" />
               Carregando exceções...
             </div>
           ) : excecoes.length === 0 ? (
@@ -869,7 +869,7 @@ export default function MotorPrecosPage() {
                 return (
                   <Card
                     key={exc.id}
-                    className="border border-slate-200 bg-white hover:border-teal-200 transition-colors"
+                    className="border border-slate-200 bg-white hover:border-primary/30 transition-colors"
                   >
                     <CardHeader className="pb-3 flex flex-row items-start justify-between">
                       <div>
@@ -891,7 +891,7 @@ export default function MotorPrecosPage() {
                           size="icon"
                           title="Editar exceção"
                           onClick={() => handleOpenEditExcecao(exc)}
-                          className="text-slate-500 hover:text-teal-700 hover:bg-teal-50"
+                          className="text-slate-500 hover:text-primary hover:bg-primary/5"
                         >
                           <Edit2 className="w-4 h-4" />
                         </Button>
@@ -914,7 +914,7 @@ export default function MotorPrecosPage() {
                     <CardContent className="text-xs space-y-2">
                       <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-lg border border-slate-100">
                         <span className="text-slate-500">Valor da Diária na Exceção:</span>
-                        <span className="text-base font-bold text-teal-800 tabular-nums">
+                        <span className="text-base font-bold text-primary tabular-nums">
                           {formatCurrencyBRL(exc.valor)}
                         </span>
                       </div>
@@ -949,12 +949,12 @@ export default function MotorPrecosPage() {
                 onClick={() => setModalImportarOpen(true)}
                 className="border-slate-300 text-slate-700 hover:bg-slate-50 text-xs shrink-0"
               >
-                <DownloadCloud className="w-4 h-4 mr-1.5 text-teal-700" />
+                <DownloadCloud className="w-4 h-4 mr-1.5 text-primary" />
                 Importar Feriados Nacionais
               </Button>
               <Button
                 onClick={handleOpenCreateFeriado}
-                className="bg-teal-700 hover:bg-teal-800 text-white text-xs shrink-0"
+                className="text-xs shrink-0"
               >
                 <Plus className="w-4 h-4 mr-1.5" />
                 Cadastrar Feriado
@@ -966,7 +966,7 @@ export default function MotorPrecosPage() {
             <CardContent className="pt-4">
               {isLoading ? (
                 <div className="flex items-center justify-center p-12 text-slate-400 gap-2">
-                  <Loader2 className="w-5 h-5 animate-spin text-teal-700" />
+                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
                   Carregando feriados...
                 </div>
               ) : holidays.length === 0 ? (
@@ -1025,7 +1025,7 @@ export default function MotorPrecosPage() {
                                 size="icon"
                                 title="Editar feriado"
                                 onClick={() => handleOpenEditFeriado(h)}
-                                className="text-slate-500 hover:text-teal-700 hover:bg-teal-50"
+                                className="text-slate-500 hover:text-primary hover:bg-primary/5"
                               >
                                 <Edit2 className="w-4 h-4" />
                               </Button>
@@ -1111,7 +1111,6 @@ export default function MotorPrecosPage() {
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="bg-teal-700 hover:bg-teal-800 text-white"
               >
                 {isSubmitting ? (
                   <>
@@ -1249,7 +1248,6 @@ export default function MotorPrecosPage() {
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="bg-teal-700 hover:bg-teal-800 text-white"
               >
                 {isSubmitting ? (
                   <>
@@ -1272,7 +1270,7 @@ export default function MotorPrecosPage() {
         <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <DownloadCloud className="w-5 h-5 text-teal-700" />
+              <DownloadCloud className="w-5 h-5 text-primary" />
               Importar Feriados Nacionais
             </DialogTitle>
             <DialogDescription>
@@ -1312,7 +1310,6 @@ export default function MotorPrecosPage() {
               type="button"
               disabled={isImporting}
               onClick={handleImportarFeriadosNacionais}
-              className="bg-teal-700 hover:bg-teal-800 text-white"
             >
               {isImporting ? (
                 <>
@@ -1396,7 +1393,7 @@ export default function MotorPrecosPage() {
                                 setFeriadoCidade(loc.cidade)
                                 setFeriadoUf(loc.uf)
                               }}
-                              className="text-[11px] px-2 py-0.5 rounded bg-white border border-slate-300 hover:border-teal-500 hover:text-teal-700 text-slate-700 transition-colors shadow-2xs"
+                              className="text-[11px] px-2 py-0.5 rounded bg-white border border-slate-300 hover:border-primary/50 hover:text-primary text-slate-700 transition-colors shadow-2xs"
                             >
                               {loc.cidade}/{loc.uf}
                             </button>
@@ -1471,7 +1468,6 @@ export default function MotorPrecosPage() {
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="bg-teal-700 hover:bg-teal-800 text-white"
               >
                 {isSubmitting ? (
                   <>

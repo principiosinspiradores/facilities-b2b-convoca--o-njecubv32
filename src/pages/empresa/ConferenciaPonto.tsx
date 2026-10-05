@@ -363,7 +363,7 @@ export default function ConferenciaPontoPage() {
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Clock className="w-6 h-6 text-teal-700" />
+            <Clock className="w-6 h-6 text-primary" />
             Espelho & Conferência de Pontos
           </h1>
           <p className="text-slate-500 text-sm mt-1">
@@ -379,7 +379,7 @@ export default function ConferenciaPontoPage() {
           {tabAtiva === 'pontos' && (
             <Button
               onClick={handleExportCSV}
-              className="bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold"
+              className="text-xs font-semibold"
             >
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Exportar CSV do Ponto
@@ -393,17 +393,17 @@ export default function ConferenciaPontoPage() {
         <TabsList className="bg-slate-100 p-1 rounded-lg">
           <TabsTrigger
             value="pontos"
-            className="text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-teal-800"
+            className="text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-primary"
           >
-            <Clock className="w-3.5 h-3.5 mr-1.5 text-teal-700" />
+            <Clock className="w-3.5 h-3.5 mr-1.5 text-primary" />
             Espelho de Pontos
           </TabsTrigger>
 
           <TabsTrigger
             value="atestados"
-            className="text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-teal-800"
+            className="text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-primary"
           >
-            <FileText className="w-3.5 h-3.5 mr-1.5 text-teal-700" />
+            <FileText className="w-3.5 h-3.5 mr-1.5 text-primary" />
             Atestados Médicos
             {atestados.filter((a) => a.status_validacao === 'pendente').length > 0 && (
               <span className="ml-2 bg-amber-500 text-white rounded-full px-1.5 py-0.2 text-[10px] font-bold">
@@ -549,7 +549,7 @@ export default function ConferenciaPontoPage() {
                                   href={arquivoUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1.5 text-xs text-teal-700 hover:text-teal-900 font-semibold bg-teal-50 px-2 py-1 rounded border border-teal-200"
+                                  className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary font-semibold bg-primary/5 px-2 py-1 rounded border border-primary/20"
                                 >
                                   <FileText className="w-3.5 h-3.5" />
                                   Abrir PDF
@@ -560,7 +560,7 @@ export default function ConferenciaPontoPage() {
                                   href={arquivoUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="block w-12 h-12 rounded overflow-hidden border border-slate-200 hover:ring-2 hover:ring-teal-500"
+                                  className="block w-12 h-12 rounded overflow-hidden border border-slate-200 hover:ring-2 hover:ring-primary/50"
                                 >
                                   <img
                                     src={arquivoUrl}
@@ -603,7 +603,7 @@ export default function ConferenciaPontoPage() {
                                 setModalAtestado(a)
                                 setObsAtestado(a.observacao_validacao || '')
                               }}
-                              className="h-8 text-xs text-teal-700 hover:bg-teal-50"
+                              className="h-8 text-xs text-primary hover:bg-primary/5"
                             >
                               <Eye className="w-3.5 h-3.5 mr-1" />
                               Avaliar
@@ -738,7 +738,7 @@ export default function ConferenciaPontoPage() {
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <Card
               className={`border transition-all cursor-pointer ${
-                filtroOrigem === 'offline' ? 'ring-2 ring-teal-600 bg-teal-50/40' : 'bg-white'
+                filtroOrigem === 'offline' ? 'ring-2 ring-primary bg-primary/5' : 'bg-white'
               }`}
               onClick={() => setFiltroOrigem(filtroOrigem === 'offline' ? 'todos' : 'offline')}
             >
@@ -750,7 +750,7 @@ export default function ConferenciaPontoPage() {
                   <span className="text-xl font-bold text-slate-800">{qtdOffline}</span>
                   <span className="text-[10px] text-slate-500 block">Sincronizados</span>
                 </div>
-                <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-800 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center">
                   <WifiOff className="w-4 h-4" />
                 </div>
               </CardContent>
@@ -962,7 +962,7 @@ export default function ConferenciaPontoPage() {
           {/* Tabela de Pontos Registrados */}
           {isLoading ? (
             <div className="flex justify-center py-12">
-              <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
           ) : pontosFiltrados.length === 0 ? (
             <Card className="text-center py-12 border-dashed border-2 border-slate-200 bg-white">
@@ -1056,7 +1056,7 @@ export default function ConferenciaPontoPage() {
                             <Badge
                               className={
                                 p.tipo === 'chegada'
-                                  ? 'bg-teal-100 text-teal-800 border-teal-200 uppercase text-[10px]'
+                                  ? 'bg-primary/10 text-primary border-primary/20 uppercase text-[10px]'
                                   : 'bg-indigo-100 text-indigo-800 border-indigo-200 uppercase text-[10px]'
                               }
                             >
@@ -1079,8 +1079,8 @@ export default function ConferenciaPontoPage() {
                           <td className="p-3">
                             {p.batido_offline ? (
                               <div className="space-y-0.5">
-                                <Badge className="bg-teal-100 text-teal-800 border-teal-300 text-[10px] flex items-center gap-1 w-fit">
-                                  <WifiOff className="w-3 h-3 text-teal-700" />
+                                <Badge className="bg-primary/10 text-primary border-primary/30 text-[10px] flex items-center gap-1 w-fit">
+                                  <WifiOff className="w-3 h-3 text-primary" />
                                   Batido Offline
                                 </Badge>
                                 {p.atraso_sincronizacao_minutos &&
@@ -1134,7 +1134,7 @@ export default function ConferenciaPontoPage() {
                                 <img
                                   src={fotoUrl}
                                   alt="Foto"
-                                  className="w-10 h-10 object-cover rounded border border-slate-200 hover:ring-2 hover:ring-teal-500 transition-all cursor-pointer"
+                                  className="w-10 h-10 object-cover rounded border border-slate-200 hover:ring-2 hover:ring-primary/50 transition-all cursor-pointer"
                                 />
                               </a>
                             ) : (
@@ -1204,7 +1204,7 @@ export default function ConferenciaPontoPage() {
                                 setModalPonto(p)
                                 setObservacaoGestao(p.observacao_gestao || '')
                               }}
-                              className="h-8 text-xs text-teal-700 hover:text-teal-800 hover:bg-teal-50"
+                              className="h-8 text-xs text-primary hover:text-primary hover:bg-primary/5"
                             >
                               <Eye className="w-3.5 h-3.5 mr-1" />
                               Conferir
@@ -1226,7 +1226,7 @@ export default function ConferenciaPontoPage() {
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto bg-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-900">
-              <FileText className="w-5 h-5 text-teal-700" />
+              <FileText className="w-5 h-5 text-primary" />
               Auditoria de Atestado Médico
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
@@ -1278,13 +1278,13 @@ export default function ConferenciaPontoPage() {
                     {arquivoUrl ? (
                       isPdf ? (
                         <div className="border border-slate-200 rounded-lg p-4 bg-slate-50 text-center space-y-2">
-                          <FileText className="w-10 h-10 text-teal-700 mx-auto" />
+                          <FileText className="w-10 h-10 text-primary mx-auto" />
                           <p className="font-semibold text-slate-800">Documento PDF anexado</p>
                           <a
                             href={arquivoUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-xs text-white bg-teal-700 hover:bg-teal-800 px-3 py-1.5 rounded font-semibold"
+                            className="inline-flex items-center gap-1.5 text-xs text-primary-foreground bg-primary hover:bg-primary/90 px-3 py-1.5 rounded font-semibold"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
                             Abrir PDF em nova aba
@@ -1363,7 +1363,7 @@ export default function ConferenciaPontoPage() {
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800">
-              <Clock className="w-5 h-5 text-teal-700" />
+              <Clock className="w-5 h-5 text-primary" />
               Conferência de Ponto Digital
             </DialogTitle>
             <DialogDescription>
@@ -1392,16 +1392,16 @@ export default function ConferenciaPontoPage() {
                 </div>
                 <div className="text-slate-600 flex items-center gap-1.5">
                   Horário Oficial do Batimento:{' '}
-                  <strong className="text-teal-900 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
+                  <strong className="text-slate-900 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/20">
                     {new Date(modalPonto.timestamp_real).toLocaleString('pt-BR')}
                   </strong>
                 </div>
               </div>
 
               {/* Rastreabilidade Offline / Sincronização */}
-              <div className="bg-teal-50/50 p-3 rounded-lg border border-teal-200 space-y-1">
-                <div className="font-bold text-teal-900 flex items-center gap-1.5">
-                  <WifiOff className="w-4 h-4 text-teal-700" />
+              <div className="bg-primary/5 p-3 rounded-lg border border-primary/20 space-y-1">
+                <div className="font-bold text-primary flex items-center gap-1.5">
+                  <WifiOff className="w-4 h-4 text-primary" />
                   Rastreabilidade de Transmissão
                 </div>
                 <div className="text-slate-700">
@@ -1426,7 +1426,7 @@ export default function ConferenciaPontoPage() {
                         ? `${(modalPonto.atraso_sincronizacao_minutos / 60).toFixed(1)} hora(s)`
                         : `${modalPonto.atraso_sincronizacao_minutos} minuto(s)`}
                     </strong>
-                    <span className="text-[11px] text-teal-700 block mt-0.5">
+                    <span className="text-[11px] text-primary block mt-0.5">
                       ✓ A hora oficial considerada é estritamente a do momento do batimento no
                       aparelho.
                     </span>
@@ -1489,7 +1489,7 @@ export default function ConferenciaPontoPage() {
                   }`}
                 >
                   <div className="font-bold flex items-center gap-1">
-                    <Clock className="w-4 h-4 text-teal-700" />
+                    <Clock className="w-4 h-4 text-primary" />
                     Janela de Horário
                   </div>
                   <div className="mt-1 font-semibold">
@@ -1573,7 +1573,7 @@ export default function ConferenciaPontoPage() {
                 type="button"
                 onClick={() => handleAcaoValidacao('aprovado_manual')}
                 disabled={isUpdatingPonto}
-                className="bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold"
+                className="text-xs font-semibold"
               >
                 <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
                 Validar / Aprovar

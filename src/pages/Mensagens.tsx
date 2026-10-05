@@ -387,11 +387,11 @@ export default function MensagensPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-xs">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <MessageSquare className="w-6 h-6 text-teal-700" />
+            <MessageSquare className="w-6 h-6 text-primary" />
             Central de Mensagens Internas
             <Badge
               variant="outline"
-              className="bg-teal-50 text-teal-800 border-teal-200 text-[11px] font-semibold uppercase tracking-wider"
+              className="bg-primary/5 text-primary border-primary/20 text-[11px] font-semibold uppercase tracking-wider"
             >
               Tempo Real
             </Badge>
@@ -439,7 +439,7 @@ export default function MensagensPage() {
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
             {isLoadingConversas ? (
               <div className="p-8 text-center text-slate-400 text-xs">
-                <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
                 Carregando conversas...
               </div>
             ) : conversasFiltradas.length === 0 ? (
@@ -468,14 +468,14 @@ export default function MensagensPage() {
                     }}
                     className={`w-full text-left p-3.5 transition-colors flex items-start gap-3 relative ${
                       isSelected
-                        ? 'bg-teal-50/80 border-r-4 border-teal-700'
+                        ? 'bg-primary/5 border-r-4 border-primary'
                         : 'hover:bg-slate-100/70 bg-white'
                     }`}
                   >
                     {/* Avatar */}
                     <div
                       style={{
-                        backgroundColor: isSelected ? corPrimaria : '#0f766e',
+                        backgroundColor: corPrimaria,
                       }}
                       className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-xs mt-0.5"
                     >
@@ -535,7 +535,7 @@ export default function MensagensPage() {
 
                     {/* Badge indicador de não lida */}
                     {naoLida && (
-                      <span className="w-2.5 h-2.5 rounded-full bg-teal-600 shrink-0 self-center"></span>
+                      <span className="w-2.5 h-2.5 rounded-full bg-primary shrink-0 self-center"></span>
                     )}
                   </button>
                 )
@@ -609,7 +609,7 @@ export default function MensagensPage() {
               <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3">
                 {isLoadingMensagens ? (
                   <div className="py-12 text-center text-slate-400 text-xs">
-                    <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
                     Carregando histórico...
                   </div>
                 ) : mensagens.length === 0 ? (
@@ -652,14 +652,14 @@ export default function MensagensPage() {
 
                           <div
                             className={`flex items-center justify-end gap-1 mt-1 text-[10px] ${
-                              isMinha ? 'text-teal-100' : 'text-slate-400'
+                              isMinha ? 'text-white/80' : 'text-slate-400'
                             }`}
                           >
                             <span>{msg.created ? msg.created.slice(11, 16) : ''}</span>
                             {isMinha && (
                               <span>
                                 {msg.lida ? (
-                                  <CheckCheck className="w-3.5 h-3.5 text-teal-200 inline" />
+                                  <CheckCheck className="w-3.5 h-3.5 text-white inline" />
                                 ) : (
                                   <Check className="w-3.5 h-3.5 opacity-70 inline" />
                                 )}

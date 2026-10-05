@@ -387,7 +387,7 @@ export default function CoberturaPage() {
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700">
+            <div className="w-10 h-10 rounded-lg bg-primary/5 border border-primary/20 flex items-center justify-center text-primary">
               <Activity className="w-6 h-6 animate-pulse" />
             </div>
             <div>
@@ -421,7 +421,7 @@ export default function CoberturaPage() {
             variant="default"
             size="sm"
             onClick={() => navigate('/escalas')}
-            className="text-xs bg-teal-700 hover:bg-teal-800 text-white font-medium"
+            className="text-xs font-medium"
           >
             <Calendar className="w-3.5 h-3.5 mr-1.5" />
             Ir para Escalas
@@ -819,7 +819,7 @@ export default function CoberturaPage() {
                   setDataInicioCustom('')
                   setDataFimCustom('')
                 }}
-                className="text-xs text-teal-700 hover:text-teal-800 p-0 h-auto"
+                className="text-xs text-primary hover:text-primary/80 p-0 h-auto"
               >
                 Limpar todos os filtros
               </Button>
@@ -833,7 +833,7 @@ export default function CoberturaPage() {
         <CardHeader className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-teal-700" />
+              <Activity className="w-4 h-4 text-primary" />
               Turnos em Alerta Operacional
             </CardTitle>
             <CardDescription className="text-xs text-slate-500">
@@ -844,7 +844,7 @@ export default function CoberturaPage() {
         <CardContent className="p-0">
           {isLoading ? (
             <div className="flex justify-center py-16">
-              <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
           ) : alertasFiltrados.length === 0 ? (
             <div className="text-center py-16 text-slate-400 space-y-2">
@@ -887,7 +887,7 @@ export default function CoberturaPage() {
                         {isPostoComFixa && (
                           <Badge
                             variant="outline"
-                            className="bg-teal-50 text-teal-800 border-teal-300 text-[10px] font-medium flex items-center gap-1"
+                            className="bg-primary/5 text-primary border-primary/30 text-[10px] font-medium flex items-center gap-1"
                           >
                             <UserCheck className="w-3 h-3" />
                             Posto com Fixa ({proFixoData?.name || 'Designada'})
@@ -905,7 +905,7 @@ export default function CoberturaPage() {
                       {/* Nome do Posto & Endereço */}
                       <div>
                         <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                          <Building2 className="w-4 h-4 text-teal-700 shrink-0" />
+                          <Building2 className="w-4 h-4 text-primary shrink-0" />
                           <span>{posto.nome}</span>
                         </h3>
                         <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
@@ -923,7 +923,7 @@ export default function CoberturaPage() {
                       {/* Data / Hora do Turno e Situação */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 text-xs pt-1">
                         <div className="flex items-center gap-1.5 text-slate-700 font-medium">
-                          <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                          <Calendar className="w-3.5 h-3.5 text-primary" />
                           <span>{formatDateBR(escala.data)}</span>
                           <span className="text-slate-400">&bull;</span>
                           <span>
@@ -954,7 +954,7 @@ export default function CoberturaPage() {
 
                       {/* Descrição da Situação Atual */}
                       <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-200 text-xs text-slate-700 flex items-start gap-2">
-                        <Info className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                        <Info className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                         <div>
                           <strong>Situação Operacional:</strong> {alerta.situacaoAtual}
                           {alerta.convocacoesAtivas.length > 0 && (
@@ -973,7 +973,7 @@ export default function CoberturaPage() {
                       <Button
                         size="sm"
                         onClick={() => handleAbrirConvocacaoModal(alerta)}
-                        className="bg-teal-700 hover:bg-teal-800 text-white font-medium text-xs shadow-xs"
+                        className="font-medium text-xs shadow-xs"
                       >
                         <Send className="w-3.5 h-3.5 mr-1.5" />
                         Abrir Convocação Manual
@@ -1007,7 +1007,7 @@ export default function CoberturaPage() {
                               `/mensagens?escala=${escala.id}&convocacao=${convAlvo}&pro=${proAlvo}`,
                             )
                           }}
-                          className="text-xs text-teal-700 hover:bg-teal-50"
+                          className="text-xs text-primary hover:bg-primary/5"
                           title="Mensagens com a equipe ou profissional"
                         >
                           <MessageSquare className="w-3.5 h-3.5" />
@@ -1027,7 +1027,7 @@ export default function CoberturaPage() {
         <DialogContent className="max-w-lg bg-white">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Send className="w-5 h-5 text-teal-700" />
+              <Send className="w-5 h-5 text-primary" />
               Abrir Convocação Manual de Turno
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
@@ -1064,7 +1064,7 @@ export default function CoberturaPage() {
                     onClick={() => setModoEnvio('todos')}
                     className={`cursor-pointer p-3 rounded-lg border text-xs text-center transition-all ${
                       modoEnvio === 'todos'
-                        ? 'border-teal-600 bg-teal-50 text-teal-900 font-bold'
+                        ? 'border-primary bg-primary/5 text-primary font-bold'
                         : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                     }`}
                   >
@@ -1074,7 +1074,7 @@ export default function CoberturaPage() {
                     onClick={() => setModoEnvio('especifico')}
                     className={`cursor-pointer p-3 rounded-lg border text-xs text-center transition-all ${
                       modoEnvio === 'especifico'
-                        ? 'border-teal-600 bg-teal-50 text-teal-900 font-bold'
+                        ? 'border-primary bg-primary/5 text-primary font-bold'
                         : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                     }`}
                   >
@@ -1101,7 +1101,7 @@ export default function CoberturaPage() {
                             setProIdsSelecionados(pros.map((p) => p.id))
                           }
                         }}
-                        className="text-[11px] text-teal-700 h-6 p-0"
+                        className="text-[11px] text-primary h-6 p-0"
                       >
                         {proIdsSelecionados.length === pros.length
                           ? 'Desmarcar todos'
@@ -1133,7 +1133,7 @@ export default function CoberturaPage() {
                                 {pro.name || pro.email}
                               </span>
                               {isFixa && (
-                                <Badge className="ml-2 bg-teal-100 text-teal-800 border-teal-200 text-[9px] px-1 py-0">
+                                <Badge className="ml-2 bg-primary/10 text-primary border-primary/20 text-[9px] px-1 py-0">
                                   Fixa do Posto
                                 </Badge>
                               )}
@@ -1151,19 +1151,19 @@ export default function CoberturaPage() {
               )}
 
               {/* Blindagem Financeira: Explicação das Regras de Remuneração */}
-              <div className="p-3 bg-teal-50/50 border border-teal-200 rounded-lg text-xs space-y-1 text-teal-900">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <ShieldCheck className="w-4 h-4 text-teal-700" />
+              <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg text-xs space-y-1 text-slate-900">
+                <div className="flex items-center gap-1.5 font-bold text-primary">
+                  <ShieldCheck className="w-4 h-4 text-primary" />
                   <span>Regra Contratual & Blindagem Financeira</span>
                 </div>
-                <p className="text-teal-800/90 leading-relaxed text-[11px]">
+                <p className="text-slate-600 leading-relaxed text-[11px]">
                   Os profissionais recebem a convocação nominal diretamente no aplicativo. Caso o
                   profissional selecionado seja a titular fixa do posto, a remuneração segue o
                   modelo contratado (mensal ou por hora). Caso seja freelancer, o sistema aciona o
                   motor de 3 camadas da plataforma.
                 </p>
                 {isAdmin && (
-                  <div className="mt-1 pt-1 border-t border-teal-200/60 font-semibold text-[11px] text-teal-950">
+                  <div className="mt-1 pt-1 border-t border-primary/20 font-semibold text-[11px] text-slate-900">
                     Visão Admin: Diária estimada do motor:{' '}
                     {formatCurrencyBRL(alertaSelecionado.escala.valor_diaria || 180)}
                   </div>
@@ -1186,7 +1186,7 @@ export default function CoberturaPage() {
               size="sm"
               onClick={handleConfirmarConvocacaoManual}
               disabled={isSendingConvocacao}
-              className="bg-teal-700 hover:bg-teal-800 text-white font-medium text-xs"
+              className="font-medium text-xs"
             >
               <Send className={`w-3.5 h-3.5 mr-1.5 ${isSendingConvocacao ? 'animate-spin' : ''}`} />
               {isSendingConvocacao ? 'Disparando...' : 'Confirmar e Convocar'}
@@ -1200,7 +1200,7 @@ export default function CoberturaPage() {
         <DialogContent className="max-w-md bg-white">
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <History className="w-5 h-5 text-teal-700" />
+              <History className="w-5 h-5 text-primary" />
               Histórico Operacional da Escala
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
@@ -1218,7 +1218,7 @@ export default function CoberturaPage() {
 
               {isLoadingHistorico ? (
                 <div className="flex justify-center py-8">
-                  <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
                 </div>
               ) : historicoItens.length === 0 ? (
                 <div className="text-center py-8 text-slate-400 text-xs">
