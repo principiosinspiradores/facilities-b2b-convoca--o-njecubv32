@@ -4,16 +4,9 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
-} from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { toast } from '@/hooks/use-toast'
-import { Lock, Mail, ShieldAlert, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { Lock, Mail, ShieldAlert, ArrowRight } from 'lucide-react'
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -26,7 +19,6 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState('')
 
   const corPrimaria = settings?.cor_primaria || '#0F766E'
-  const corSecundaria = settings?.cor_secundaria || '#134E4A'
   const nomeEmpresa = settings?.nome_empresa || 'Facilities Pro'
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -47,11 +39,6 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false)
     }
-  }
-
-  const handleQuickLogin = (quickEmail: string) => {
-    setEmail(quickEmail)
-    setPassword('Skip@Pass')
   }
 
   return (
@@ -138,51 +125,6 @@ export default function LoginPage() {
               </Button>
             </form>
           </CardContent>
-
-          {/* Atalhos Rápidos para Demonstração */}
-          <CardFooter className="pt-0 flex flex-col space-y-3 border-t border-slate-100 bg-slate-50/50 p-4 rounded-b-xl">
-            <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
-              Acesso Rápido de Teste (Skip@Pass):
-            </span>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 w-full">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-[11px] h-8 px-1 font-semibold"
-                onClick={() => handleQuickLogin('janluyfranca@gmail.com')}
-              >
-                Admin (Total)
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-[11px] h-8 px-1"
-                onClick={() => handleQuickLogin('empresa@facilitiespro.com.br')}
-              >
-                Empresa (Alpha)
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-[11px] h-8 px-1"
-                onClick={() => handleQuickLogin('rh@facilitiespro.com.br')}
-              >
-                Empresa (RH)
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-[11px] h-8 px-1"
-                onClick={() => handleQuickLogin('carlos.silva@pro.com.br')}
-              >
-                Pro (Carlos)
-              </Button>
-            </div>
-          </CardFooter>
         </Card>
       </div>
     </div>
