@@ -77,6 +77,7 @@ export function BackupConfigSection({ settings, onSnapshotSuccess }: BackupConfi
     'pontos',
     'mensagens_conversas',
     'mensagens_mensagens',
+    'atestados',
   ]
 
   const ultimoSnapshotData = lastSnapshot?.header?.generated_at || settings?.ultimo_snapshot_em
@@ -159,7 +160,7 @@ export function BackupConfigSection({ settings, onSnapshotSuccess }: BackupConfi
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <Layers className="w-4 h-4 text-teal-700" />
-                Coleções Incluídas no Snapshot (16 tabelas)
+                Coleções Incluídas no Snapshot ({collectionNames.length} tabelas)
               </h3>
               {lastSnapshot?.header?.counts && (
                 <Badge
