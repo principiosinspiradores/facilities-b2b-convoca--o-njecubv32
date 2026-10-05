@@ -204,19 +204,31 @@ export function UserAccessManagement() {
           return
         }
 
+        const cleanEmail = email.trim()
         await pb.collection('users').create({
-          email: email.trim(),
+          email: cleanEmail,
           password: password.trim(),
           passwordConfirm: password.trim(),
           name: name.trim(),
           role,
           status,
           cpf: cpfDigits || undefined,
-          verified: true,
         })
+
+        // Disparo tolerante do e-mail de verificação para o novo usuário
+        let emailSent = true
+        try {
+          await pb.collection('users').requestVerification(cleanEmail)
+        } catch (mailErr) {
+          console.warn('Falha ao enviar e-mail de verificação:', mailErr)
+          emailSent = false
+        }
+
         toast({
           title: 'Usuário criado com sucesso',
-          description: `Novo usuário ${email.trim()} adicionado com perfil ${role.toUpperCase()}.`,
+          description: emailSent
+            ? `Novo usuário ${cleanEmail} adicionado com perfil ${role.toUpperCase()} (e-mail de verificação enviado).`
+            : `Novo usuário ${cleanEmail} adicionado com perfil ${role.toUpperCase()}, mas o e-mail de verificação não pôde ser enviado.`,
         })
       }
 
