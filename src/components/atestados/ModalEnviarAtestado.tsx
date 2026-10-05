@@ -105,7 +105,7 @@ export function ModalEnviarAtestado({
       <DialogContent className="max-w-md bg-white">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg">
-            <FileText className="w-5 h-5 text-teal-700" />
+            <FileText className="w-5 h-5 text-primary" />
             Enviar Atestado Médico
           </DialogTitle>
           <DialogDescription className="text-slate-500 text-xs">
@@ -134,7 +134,7 @@ export function ModalEnviarAtestado({
             Documento de Comprovação (PDF ou Foto - Máx 10MB)
           </Label>
 
-          <div className="border-2 border-dashed border-slate-300 hover:border-teal-600 rounded-lg p-4 text-center cursor-pointer transition-colors relative bg-slate-50/50">
+          <div className="border-2 border-dashed border-slate-300 hover:border-primary rounded-lg p-4 text-center cursor-pointer transition-colors relative bg-slate-50/50">
             <input
               type="file"
               accept=".pdf,image/jpeg,image/png,image/webp"
@@ -142,8 +142,8 @@ export function ModalEnviarAtestado({
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
             {file ? (
-              <div className="flex items-center justify-center gap-2 text-teal-800 font-medium text-xs">
-                <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
+              <div className="flex items-center justify-center gap-2 text-primary font-medium text-xs">
+                <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
                 <span className="truncate max-w-[260px]">{file.name}</span>
                 <span className="text-[10px] text-slate-500">
                   ({(file.size / (1024 * 1024)).toFixed(2)} MB)
@@ -187,7 +187,7 @@ export function ModalEnviarAtestado({
             size="sm"
             onClick={handleSubmit}
             disabled={!file || isSubmitting}
-            className="text-xs bg-teal-700 hover:bg-teal-800 text-white font-medium"
+            className="text-xs font-medium"
           >
             {isSubmitting ? (
               <>

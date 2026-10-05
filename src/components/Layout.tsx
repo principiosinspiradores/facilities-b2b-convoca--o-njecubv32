@@ -156,7 +156,7 @@ export default function Layout() {
               >
                 {nomeEmpresa}
               </div>
-              <div className="text-[10px] text-teal-200 uppercase tracking-widest font-semibold truncate">
+              <div className="text-[10px] text-white/70 uppercase tracking-widest font-semibold truncate">
                 Facilities B2B
               </div>
             </div>
@@ -199,7 +199,7 @@ export default function Layout() {
             </div>
             <div className="overflow-hidden flex-1">
               <div className="text-xs font-bold text-white truncate">{user.name || user.email}</div>
-              <div className="text-[10px] text-teal-200 capitalize font-medium">Perfil: {role}</div>
+              <div className="text-[10px] text-white/70 capitalize font-medium">Perfil: {role}</div>
             </div>
           </div>
 
@@ -249,7 +249,7 @@ export default function Layout() {
                   )}
                   <div className="overflow-hidden">
                     <div className="font-bold text-sm text-white truncate">{nomeEmpresa}</div>
-                    <div className="text-[10px] text-teal-200 uppercase font-semibold">
+                    <div className="text-[10px] text-white/70 uppercase font-semibold">
                       Facilities B2B
                     </div>
                   </div>

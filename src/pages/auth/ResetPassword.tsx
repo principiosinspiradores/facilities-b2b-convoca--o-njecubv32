@@ -125,7 +125,7 @@ export default function ResetPasswordPage() {
         <CardFooter className="border-t border-slate-100 justify-center">
           <Link
             to="/login"
-            className="text-xs text-teal-700 hover:underline flex items-center gap-1"
+            className="text-xs text-primary hover:underline flex items-center gap-1"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Voltar para o Login

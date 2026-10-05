@@ -210,7 +210,7 @@ export default function ConfigPage() {
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Sliders className="w-6 h-6 text-teal-700" />
+            <Sliders className="w-6 h-6 text-primary" />
             Configurações do Sistema & White-Label
           </h1>
           <p className="text-slate-500 text-sm mt-1">
@@ -260,7 +260,7 @@ export default function ConfigPage() {
             <Card className="border border-slate-200 bg-white">
               <CardHeader>
                 <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <Palette className="w-5 h-5 text-teal-700" />
+                  <Palette className="w-5 h-5 text-primary" />
                   Identidade White-Label (Marca & Logotipo)
                 </CardTitle>
                 <CardDescription>
@@ -312,7 +312,7 @@ export default function ConfigPage() {
                           className="bg-white hover:bg-slate-100 text-xs text-slate-700 border-slate-300"
                           onClick={() => fileInputRef.current?.click()}
                         >
-                          <Upload className="w-3.5 h-3.5 mr-1.5 text-teal-700" />
+                          <Upload className="w-3.5 h-3.5 mr-1.5 text-primary" />
                           Enviar logo do computador
                         </Button>
                         {logoPreviewUrl && (
@@ -329,7 +329,7 @@ export default function ConfigPage() {
                         )}
                       </div>
                       {logoFile && (
-                        <p className="text-[11px] text-teal-700 font-medium">
+                        <p className="text-[11px] text-primary font-medium">
                           Arquivo selecionado: {logoFile.name} ({(logoFile.size / 1024).toFixed(1)}{' '}
                           KB)
                         </p>
@@ -440,7 +440,7 @@ export default function ConfigPage() {
             <Card className="border border-slate-200 bg-white">
               <CardHeader>
                 <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-teal-700" />
+                  <Shield className="w-5 h-5 text-primary" />
                   Regras de Multa e Cancelamento (Modelo Operacional Profreela)
                 </CardTitle>
                 <CardDescription>
@@ -594,9 +594,9 @@ export default function ConfigPage() {
                 </div>
 
                 {/* 4. Escrow & Janela de Disputa */}
-                <div className="p-4 bg-teal-50/60 rounded-xl border border-teal-200 space-y-3">
-                  <div className="flex items-center gap-2 text-teal-900 font-bold text-sm">
-                    <FileCheck className="w-4 h-4 text-teal-700" />
+                <div className="p-4 bg-primary/5 rounded-xl border border-primary/20 space-y-3">
+                  <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
+                    <FileCheck className="w-4 h-4 text-primary" />
                     4. Escrow Contábil & Janela de Disputas
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">

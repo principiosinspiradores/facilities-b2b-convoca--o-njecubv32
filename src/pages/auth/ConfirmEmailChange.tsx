@@ -77,11 +77,7 @@ export default function ConfirmEmailChangePage() {
               </div>
             </div>
 
-            <Button
-              type="submit"
-              className="w-full bg-teal-700 hover:bg-teal-800 text-white font-semibold"
-              disabled={isLoading}
-            >
+            <Button type="submit" className="w-full font-semibold" disabled={isLoading}>
               {isLoading ? 'Confirmando...' : 'Confirmar Alteração'}
             </Button>
           </form>
@@ -89,7 +85,7 @@ export default function ConfirmEmailChangePage() {
         <CardFooter className="justify-center border-t border-slate-100">
           <Link
             to="/login"
-            className="text-xs text-teal-700 hover:underline flex items-center gap-1"
+            className="text-xs text-primary hover:underline flex items-center gap-1"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Voltar para o Login

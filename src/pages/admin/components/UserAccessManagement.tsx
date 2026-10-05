@@ -212,7 +212,7 @@ export function UserAccessManagement() {
       <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4">
         <div>
           <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <Users className="w-5 h-5 text-teal-700" />
+            <Users className="w-5 h-5 text-primary" />
             Níveis de Acesso & Gestão de Usuários
           </CardTitle>
           <CardDescription>
@@ -221,11 +221,7 @@ export function UserAccessManagement() {
             repasses).
           </CardDescription>
         </div>
-        <Button
-          onClick={handleOpenCreate}
-          size="sm"
-          className="bg-teal-700 hover:bg-teal-800 text-white shrink-0"
-        >
+        <Button onClick={handleOpenCreate} size="sm" className="shrink-0">
           <UserPlus className="w-4 h-4 mr-1.5" />
           Novo Usuário
         </Button>
@@ -258,8 +254,8 @@ export function UserAccessManagement() {
           </div>
 
           <div className="space-y-1">
-            <div className="flex items-center gap-1.5 font-bold text-teal-900">
-              <Briefcase className="w-3.5 h-3.5 text-teal-600" />
+            <div className="flex items-center gap-1.5 font-bold text-slate-900">
+              <Briefcase className="w-3.5 h-3.5 text-primary" />
               PROFISSIONAL (PRO)
             </div>
             <p className="text-slate-600 leading-relaxed">
@@ -307,8 +303,8 @@ export function UserAccessManagement() {
               onClick={() => setFilterRole('pro')}
               className={`px-2.5 py-1 rounded-md transition-colors ${
                 filterRole === 'pro'
-                  ? 'bg-teal-700 text-white font-semibold'
-                  : 'bg-teal-50 text-teal-700 hover:bg-teal-100'
+                  ? 'bg-primary text-primary-foreground font-semibold'
+                  : 'bg-primary/5 text-primary hover:bg-primary/10'
               }`}
             >
               Pro ({users.filter((u) => u.role === 'pro').length})
@@ -323,7 +319,7 @@ export function UserAccessManagement() {
         {/* Tabela de Usuários */}
         {isLoading ? (
           <div className="flex justify-center py-8">
-            <div className="w-7 h-7 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-7 h-7 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
           </div>
         ) : filteredUsers.length === 0 ? (
           <div className="text-center py-8 text-xs text-slate-400">
@@ -360,7 +356,7 @@ export function UserAccessManagement() {
                           </Badge>
                         )}
                         {u.role === 'pro' && (
-                          <Badge className="bg-teal-100 text-teal-800 border-teal-200">
+                          <Badge className="bg-primary/10 text-primary border-primary/20">
                             Profissional (Pro)
                           </Badge>
                         )}
@@ -397,7 +393,7 @@ export function UserAccessManagement() {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          className="h-7 px-2 text-slate-600 hover:text-teal-700 hover:bg-teal-50"
+                          className="h-7 px-2 text-slate-600 hover:text-primary hover:bg-primary/5"
                           onClick={() => handleOpenEdit(u)}
                         >
                           <Edit2 className="w-3.5 h-3.5 mr-1" />
@@ -542,11 +538,7 @@ export function UserAccessManagement() {
               <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                className="bg-teal-700 hover:bg-teal-800 text-white"
-                disabled={isSaving}
-              >
+              <Button type="submit" disabled={isSaving}>
                 {isSaving ? 'Salvando...' : editingUser ? 'Atualizar Usuário' : 'Criar Usuário'}
               </Button>
             </DialogFooter>

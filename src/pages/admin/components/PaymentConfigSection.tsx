@@ -157,7 +157,7 @@ export function PaymentConfigSection({
       <Card className="border border-slate-200 bg-white">
         <CardHeader>
           <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <Building className="w-5 h-5 text-teal-700" />
+            <Building className="w-5 h-5 text-primary" />
             Conta de Pagamento da Empresa (Origem dos Repasses)
           </CardTitle>
           <CardDescription>
@@ -247,7 +247,7 @@ export function PaymentConfigSection({
         <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4">
           <div>
             <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-teal-700" />
+              <ShieldCheck className="w-5 h-5 text-primary" />
               Gate de Contas Pix dos Pros (Validação Obrigatória de Repasse)
             </CardTitle>
             <CardDescription>
@@ -335,7 +335,7 @@ export function PaymentConfigSection({
           {/* Tabela de Contas */}
           {isLoadingContas ? (
             <div className="flex justify-center py-8">
-              <div className="w-7 h-7 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-7 h-7 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
           ) : filteredContas.length === 0 ? (
             <div className="text-center py-8 text-xs text-slate-400">

@@ -607,7 +607,7 @@ export default function GateProsPage() {
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <ShieldCheck className="w-6 h-6 text-teal-700" />
+            <ShieldCheck className="w-6 h-6 text-primary" />
             Gate de Documentação & Gestão de Pros
           </h1>
           <p className="text-slate-500 text-sm mt-1">
@@ -619,10 +619,7 @@ export default function GateProsPage() {
 
         {/* Botão de Cadastro acessível para Empresa e Admin */}
         <div className="flex items-center gap-2 shrink-0">
-          <Button
-            onClick={openCreateModal}
-            className="bg-teal-700 hover:bg-teal-800 text-white shadow-xs font-semibold"
-          >
+          <Button onClick={openCreateModal} className="shadow-xs font-semibold">
             <UserPlus className="w-4 h-4 mr-2" />
             Cadastrar Pro
           </Button>
@@ -645,7 +642,7 @@ export default function GateProsPage() {
 
             {/* Contador de resumo */}
             <div className="flex items-center gap-2 text-xs">
-              <span className="bg-teal-50 text-teal-800 border border-teal-200 px-2.5 py-1 rounded-md font-semibold">
+              <span className="bg-primary/5 text-primary border border-primary/20 px-2.5 py-1 rounded-md font-semibold">
                 Total: {pros.length}
               </span>
               <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-md font-semibold">
@@ -705,7 +702,7 @@ export default function GateProsPage() {
         <CardContent>
           {isLoading ? (
             <div className="flex justify-center py-12">
-              <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
           ) : prosFiltrados.length === 0 ? (
             <div className="text-center py-12 text-slate-400 text-sm">
@@ -878,7 +875,7 @@ export default function GateProsPage() {
                             className="text-slate-700 border-slate-200 hover:bg-slate-100 text-xs h-8 px-2"
                             onClick={() => handleResendInvite(p)}
                           >
-                            <Mail className="w-3.5 h-3.5 mr-1 text-teal-600" />
+                            <Mail className="w-3.5 h-3.5 mr-1 text-primary" />
                             Reenviar Convite
                           </Button>
 
@@ -912,7 +909,7 @@ export default function GateProsPage() {
                           <Button
                             variant="default"
                             size="sm"
-                            className="bg-teal-700 hover:bg-teal-800 text-white text-xs h-8"
+                            className="text-xs h-8"
                             onClick={() => openEditModal(p)}
                           >
                             <Edit className="w-3.5 h-3.5 mr-1" />
@@ -934,7 +931,7 @@ export default function GateProsPage() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <form onSubmit={handleCreatePro}>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-teal-800 text-lg">
+              <DialogTitle className="flex items-center gap-2 text-primary text-lg">
                 <UserPlus className="w-5 h-5" />
                 Cadastrar Novo Profissional (Pro)
               </DialogTitle>
@@ -1005,7 +1002,7 @@ export default function GateProsPage() {
               {/* Endereço / Localização */}
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
                 <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-teal-600" />
+                  <MapPin className="w-3.5 h-3.5 text-primary" />
                   Endereço Residencial do Pro
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -1070,13 +1067,15 @@ export default function GateProsPage() {
                         onClick={() => toggleFuncao(f.nome, true)}
                         className={`text-xs px-2.5 py-1.5 rounded-lg border font-medium flex items-center gap-1.5 transition-colors ${
                           isSelected
-                            ? 'bg-teal-700 text-white border-teal-800'
+                            ? 'bg-primary text-primary-foreground border-primary'
                             : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                         }`}
                       >
                         <Briefcase className="w-3 h-3" />
                         {f.nome}
-                        {isSelected && <CheckCircle2 className="w-3 h-3 text-teal-200" />}
+                        {isSelected && (
+                          <CheckCircle2 className="w-3 h-3 text-primary-foreground/80" />
+                        )}
                       </button>
                     )
                   })}
@@ -1140,7 +1139,7 @@ export default function GateProsPage() {
                           {doc.tipo}
                         </div>
                         {doc.arquivo_nome ? (
-                          <div className="text-[11px] text-teal-700 flex items-center gap-1 font-mono">
+                          <div className="text-[11px] text-primary flex items-center gap-1 font-mono">
                             <CheckCircle2 className="w-3 h-3" />
                             {doc.arquivo_nome}
                           </div>
@@ -1213,11 +1212,7 @@ export default function GateProsPage() {
               >
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                className="bg-teal-700 hover:bg-teal-800 text-white"
-                disabled={isCreating}
-              >
+              <Button type="submit" disabled={isCreating}>
                 {isCreating ? 'Cadastrando e Notificando...' : 'Cadastrar Profissional'}
               </Button>
             </DialogFooter>
@@ -1230,7 +1225,7 @@ export default function GateProsPage() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <form onSubmit={handleSaveEdit}>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-teal-800 text-lg">
+              <DialogTitle className="flex items-center gap-2 text-primary text-lg">
                 <ShieldCheck className="w-5 h-5" />
                 Gate de Conformidade & Edição: {selectedPro?.name}
               </DialogTitle>
@@ -1330,7 +1325,7 @@ export default function GateProsPage() {
               {/* Endereço */}
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
                 <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-teal-600" />
+                  <MapPin className="w-3.5 h-3.5 text-primary" />
                   Endereço Residencial do Pro
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -1392,13 +1387,15 @@ export default function GateProsPage() {
                         onClick={() => toggleFuncao(f.nome, false)}
                         className={`text-xs px-2.5 py-1.5 rounded-lg border font-medium flex items-center gap-1.5 transition-colors ${
                           isSelected
-                            ? 'bg-teal-700 text-white border-teal-800'
+                            ? 'bg-primary text-primary-foreground border-primary'
                             : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                         }`}
                       >
                         <Briefcase className="w-3 h-3" />
                         {f.nome}
-                        {isSelected && <CheckCircle2 className="w-3 h-3 text-teal-200" />}
+                        {isSelected && (
+                          <CheckCircle2 className="w-3 h-3 text-primary-foreground/80" />
+                        )}
                       </button>
                     )
                   })}
@@ -1458,7 +1455,7 @@ export default function GateProsPage() {
                           {doc.tipo}
                         </div>
                         {doc.arquivo_nome ? (
-                          <div className="text-[11px] text-teal-700 flex items-center gap-1 font-mono">
+                          <div className="text-[11px] text-primary flex items-center gap-1 font-mono">
                             <CheckCircle2 className="w-3 h-3" />
                             {doc.arquivo_nome}
                           </div>
@@ -1536,11 +1533,7 @@ export default function GateProsPage() {
               >
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                className="bg-teal-700 hover:bg-teal-800 text-white"
-                disabled={isSaving}
-              >
+              <Button type="submit" disabled={isSaving}>
                 {isSaving ? 'Salvando...' : 'Salvar Gate & Dados'}
               </Button>
             </DialogFooter>

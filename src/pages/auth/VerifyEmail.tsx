@@ -47,7 +47,7 @@ export default function VerifyEmailPage() {
         <CardContent className="py-6">
           {status === 'verifying' && (
             <div className="space-y-3">
-              <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
               <p className="text-sm text-slate-600">Validando autenticidade do seu endereço...</p>
             </div>
           )}
@@ -75,7 +75,7 @@ export default function VerifyEmailPage() {
         <CardFooter className="justify-center border-t border-slate-100">
           <Link
             to="/login"
-            className="text-xs text-teal-700 hover:underline flex items-center gap-1 font-semibold"
+            className="text-xs text-primary hover:underline flex items-center gap-1 font-semibold"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Ir para o Login

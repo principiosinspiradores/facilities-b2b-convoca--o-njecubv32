@@ -182,7 +182,7 @@ export function FuncoesConfigSection() {
       <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4">
         <div>
           <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <Briefcase className="w-5 h-5 text-teal-700" />
+            <Briefcase className="w-5 h-5 text-primary" />
             Catálogo de Funções de Posto
           </CardTitle>
           <CardDescription>
@@ -191,11 +191,7 @@ export function FuncoesConfigSection() {
             disponíveis no cadastro de postos.
           </CardDescription>
         </div>
-        <Button
-          type="button"
-          onClick={handleOpenNew}
-          className="bg-teal-700 hover:bg-teal-800 text-white font-medium shrink-0"
-        >
+        <Button type="button" onClick={handleOpenNew} className="font-medium shrink-0">
           <Plus className="w-4 h-4 mr-1.5" />
           Nova Função
         </Button>
@@ -240,7 +236,7 @@ export function FuncoesConfigSection() {
         {/* Tabela de Funções */}
         {isLoading ? (
           <div className="flex justify-center py-10">
-            <div className="w-7 h-7 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-7 h-7 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
           </div>
         ) : funcoesFiltradas.length === 0 ? (
           <div className="text-center py-10 text-slate-400 border border-dashed rounded-lg">
@@ -271,7 +267,7 @@ export function FuncoesConfigSection() {
                   return (
                     <tr key={f.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-2">
-                        <Briefcase className="w-4 h-4 text-teal-700 shrink-0" />
+                        <Briefcase className="w-4 h-4 text-primary shrink-0" />
                         <span>{f.nome}</span>
                       </td>
                       <td className="py-3 px-4 text-slate-600 max-w-xs truncate">
@@ -310,7 +306,7 @@ export function FuncoesConfigSection() {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleOpenEdit(f)}
-                          className="h-7 px-2 text-slate-600 hover:text-teal-700 hover:bg-teal-50"
+                          className="h-7 px-2 text-slate-600 hover:text-primary hover:bg-primary/5"
                           title="Editar função"
                         >
                           <Edit2 className="w-3.5 h-3.5 mr-1" />
@@ -356,7 +352,7 @@ export function FuncoesConfigSection() {
           <form onSubmit={handleSave}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Briefcase className="w-5 h-5 text-teal-700" />
+                <Briefcase className="w-5 h-5 text-primary" />
                 {editingFuncao ? 'Editar Função' : 'Nova Função no Catálogo'}
               </DialogTitle>
               <DialogDescription>
@@ -398,7 +394,7 @@ export function FuncoesConfigSection() {
                   id="funcao-ativo-checkbox"
                   checked={ativo}
                   onChange={(e) => setAtivo(e.target.checked)}
-                  className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 w-4 h-4 cursor-pointer"
+                  className="rounded border-slate-300 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
                 />
                 <label
                   htmlFor="funcao-ativo-checkbox"
@@ -413,11 +409,7 @@ export function FuncoesConfigSection() {
               <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                className="bg-teal-700 hover:bg-teal-800 text-white"
-                disabled={isSaving}
-              >
+              <Button type="submit" disabled={isSaving}>
                 {isSaving
                   ? 'Salvando...'
                   : editingFuncao
