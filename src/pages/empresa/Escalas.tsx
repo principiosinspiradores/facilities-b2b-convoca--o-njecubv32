@@ -39,6 +39,11 @@ import {
   ShieldCheck,
   Info,
   MessageSquare,
+  Filter,
+  Search,
+  UserX,
+  Palmtree,
+  RefreshCw,
 } from 'lucide-react'
 
 export default function EscalasPage() {
@@ -77,12 +82,35 @@ export default function EscalasPage() {
   const [selectedProIds, setSelectedProIds] = useState<string[]>([])
   const [isSendingConvocacoes, setIsSendingConvocacoes] = useState(false)
 
+  // Filtros de período e visualização
+  const [filtroPeriodo, setFiltroPeriodo] = useState<
+    'hoje' | 'semana' | 'mes' | 'custom' | 'todos'
+  >('semana')
+  const [dataDeCustom, setDataDeCustom] = useState('')
+  const [dataAteCustom, setDataAteCustom] = useState('')
+  const [filtroPosto, setFiltroPosto] = useState('todos')
+  const [filtroStatus, setFiltroStatus] = useState('todos')
+  const [buscaTexto, setBuscaTexto] = useState('')
+
+  // Modal de Cobertura por Período (Férias / Ausência da Fixa)
+  const [modalCoberturaPeriodo, setModalCoberturaPeriodo] = useState(false)
+  const [coberturaPostoId, setCoberturaPostoId] = useState('')
+  const [coberturaDataInicio, setCoberturaDataInicio] = useState('')
+  const [coberturaDataFim, setCoberturaDataFim] = useState('')
+  const [coberturaMotivo, setCoberturaMotivo] = useState<
+    'ferias' | 'licenca' | 'atestado' | 'outro'
+  >('ferias')
+  const [coberturaObservacao, setCoberturaObservacao] = useState('')
+  const [coberturaModoEnvio, setCoberturaModoEnvio] = useState<'todos' | 'especifico'>('todos')
+  const [coberturaProIdsSelecionados, setCoberturaProIdsSelecionados] = useState<string[]>([])
+  const [isProcessandoCobertura, setIsProcessandoCobertura] = useState(false)
+
   const loadData = async () => {
     setIsLoading(true)
     try {
       const [escalasRes, postosRes, prosRes, convocacoesRes] = await Promise.all([
         pb.collection('escalas').getFullList<EscalaRecord>({
-          sort: '-data',
+          sort: 'data,turno_inicio',
           expand: 'posto,posto.pro_fixo',
         }),
         pb.collection('postos').getFullList<PostoRecord>({
@@ -166,6 +194,404 @@ export default function EscalasPage() {
       }
     }
   }, [selectedPosto])
+
+  // Helpers de data no fuso local (YYYY-MM-DD)
+  const formatLocalDate = (d: Date): string => {
+    const ano = d.getFullYear()
+    const mes = String(d.getMonth() + 1).padStart(2, '0')
+    const dia = String(d.getDate()).padStart(2, '0')
+    return `${ano}-${mes}-${dia}`
+  }
+
+  // Obter strings YYYY-MM-DD para Hoje, Início/Fim da Semana, Início/Fim do Mês
+  const periodosCalculados = useMemo(() => {
+    const hoje = new Date()
+    const hojeStr = formatLocalDate(hoje)
+
+    // Esta semana (segunda-feira até domingo)
+    const diaSemanaHoje = hoje.getDay() // 0=Dom, 1=Seg...
+    const diasAteSegunda = diaSemanaHoje === 0 ? -6 : 1 - diaSemanaHoje
+    const inicioSemana = new Date(hoje)
+    inicioSemana.setDate(hoje.getDate() + diasAteSegunda)
+    const fimSemana = new Date(inicioSemana)
+    fimSemana.setDate(inicioSemana.getDate() + 6)
+    const semanaInicioStr = formatLocalDate(inicioSemana)
+    const semanaFimStr = formatLocalDate(fimSemana)
+
+    // Este mês (1º dia até último dia do mês atual)
+    const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+    const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
+    const mesInicioStr = formatLocalDate(inicioMes)
+    const mesFimStr = formatLocalDate(fimMes)
+
+    return {
+      hojeStr,
+      semanaInicioStr,
+      semanaFimStr,
+      mesInicioStr,
+      mesFimStr,
+    }
+  }, [])
+
+  // Filtragem e Ordenação por proximidade
+  // Regra:
+  // - "Esta semana": turnos da semana, do dia atual em diante (hojeStr até semanaFimStr)
+  // - "Hoje": data == hojeStr
+  // - "Este mês": do dia atual em diante neste mês (ou todo o mês)
+  // - "Personalizado": entre dataDe e dataAte
+  // - "Todos": todas as escalas
+  // Ordenação: do dia atual para frente (mais próximo primeiro, ascendente a partir de hoje),
+  // com turnos passados acessíveis ao final (ou via Todos / Personalizado)
+  const { escalasFiltradas, totalTurnosFiltrados, textoPeriodoResumo } = useMemo(() => {
+    const { hojeStr, semanaInicioStr, semanaFimStr, mesInicioStr, mesFimStr } = periodosCalculados
+
+    let textoResumo = 'em todos os períodos'
+
+    const filtradas = escalas.filter((escala) => {
+      const dataStr = (escala.data || '').slice(0, 10)
+
+      // 1. Filtro de Período
+      if (filtroPeriodo === 'hoje') {
+        textoResumo = 'hoje'
+        if (dataStr !== hojeStr) return false
+      } else if (filtroPeriodo === 'semana') {
+        textoResumo = 'nesta semana'
+        // Mostrar turnos da semana atual do dia de hoje para frente
+        // (ou turnos da semana se o gestor olhar a semana: hojeStr <= dataStr <= semanaFimStr)
+        if (dataStr < hojeStr || dataStr > semanaFimStr) return false
+      } else if (filtroPeriodo === 'mes') {
+        textoResumo = 'neste mês'
+        if (dataStr < hojeStr || dataStr > mesFimStr) return false
+      } else if (filtroPeriodo === 'custom') {
+        if (dataDeCustom && dataAteCustom) {
+          textoResumo = `de ${formatDateBR(dataDeCustom)} a ${formatDateBR(dataAteCustom)}`
+          if (dataStr < dataDeCustom || dataStr > dataAteCustom) return false
+        } else if (dataDeCustom) {
+          textoResumo = `a partir de ${formatDateBR(dataDeCustom)}`
+          if (dataStr < dataDeCustom) return false
+        } else if (dataAteCustom) {
+          textoResumo = `até ${formatDateBR(dataAteCustom)}`
+          if (dataStr > dataAteCustom) return false
+        } else {
+          textoResumo = 'período personalizado'
+        }
+      } else if (filtroPeriodo === 'todos') {
+        textoResumo = 'no total geral'
+      }
+
+      // 2. Filtro de Posto
+      if (filtroPosto !== 'todos' && escala.posto !== filtroPosto) {
+        return false
+      }
+
+      // 3. Filtro de Status
+      if (filtroStatus !== 'todos' && escala.status !== filtroStatus) {
+        return false
+      }
+
+      // 4. Busca textual (nome do posto, pro aceito, etc.)
+      if (buscaTexto.trim()) {
+        const query = buscaTexto.toLowerCase()
+        const postoNome = (escala.expand?.posto?.nome || '').toLowerCase()
+        const postoFuncao = (escala.expand?.posto?.funcao || '').toLowerCase()
+        const statusStr = (escala.status || '').toLowerCase()
+        if (
+          !postoNome.includes(query) &&
+          !postoFuncao.includes(query) &&
+          !statusStr.includes(query)
+        ) {
+          return false
+        }
+      }
+
+      return true
+    })
+
+    // Ordenação:
+    // "do dia atual para frente (mais próximo primeiro, ascendente a partir de hoje),
+    // com turnos passados acessíveis ao final ou via filtro Todos/Personalizado"
+    filtradas.sort((a, b) => {
+      const dataA = (a.data || '').slice(0, 10)
+      const dataB = (b.data || '').slice(0, 10)
+
+      const isFuturoA = dataA >= hojeStr
+      const isFuturoB = dataB >= hojeStr
+
+      // Se um é futuro (hoje em diante) e outro é passado:
+      if (isFuturoA && !isFuturoB) return -1
+      if (!isFuturoA && isFuturoB) return 1
+
+      // Se ambos são futuros (>= hoje): ordem ascendente (mais próximo primeiro)
+      if (isFuturoA && isFuturoB) {
+        if (dataA !== dataB) return dataA.localeCompare(dataB)
+        return (a.turno_inicio || '').localeCompare(b.turno_inicio || '')
+      }
+
+      // Se ambos são passados (< hoje): ordem descendente (passado mais recente primeiro)
+      if (dataA !== dataB) return dataB.localeCompare(dataA)
+      return (b.turno_inicio || '').localeCompare(a.turno_inicio || '')
+    })
+
+    return {
+      escalasFiltradas: filtradas,
+      totalTurnosFiltrados: filtradas.length,
+      textoPeriodoResumo: textoResumo,
+    }
+  }, [
+    escalas,
+    periodosCalculados,
+    filtroPeriodo,
+    dataDeCustom,
+    dataAteCustom,
+    filtroPosto,
+    filtroStatus,
+    buscaTexto,
+  ])
+
+  // Abrir modal de cobertura por período
+  const handleAbrirCoberturaPeriodo = (postoId?: string) => {
+    if (postoId) {
+      setCoberturaPostoId(postoId)
+    } else if (postos.length > 0) {
+      // Priorizar postos com fixa vinculada se houver
+      const postoComFixa = postos.find((p) => !!p.pro_fixo)
+      setCoberturaPostoId(postoComFixa ? postoComFixa.id : postos[0].id)
+    }
+    const hoje = new Date()
+    const amanha = new Date(hoje.getTime() + 24 * 60 * 60 * 1000)
+    const em7Dias = new Date(hoje.getTime() + 7 * 24 * 60 * 60 * 1000)
+    setCoberturaDataInicio(formatLocalDate(amanha))
+    setCoberturaDataFim(formatLocalDate(em7Dias))
+    setCoberturaMotivo('ferias')
+    setCoberturaObservacao('')
+    setCoberturaModoEnvio('todos')
+    setCoberturaProIdsSelecionados([])
+    setModalCoberturaPeriodo(true)
+  }
+
+  // Executar cobertura por período (férias/ausência da fixa)
+  const handleConfirmarCoberturaPeriodo = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!coberturaPostoId) {
+      toast({ title: 'Selecione o posto', variant: 'destructive' })
+      return
+    }
+    if (!coberturaDataInicio || !coberturaDataFim) {
+      toast({ title: 'Informe o período (início e término)', variant: 'destructive' })
+      return
+    }
+    if (coberturaDataInicio > coberturaDataFim) {
+      toast({ title: 'A data final deve ser igual ou após a data inicial', variant: 'destructive' })
+      return
+    }
+
+    const postoAlvo = postos.find((p) => p.id === coberturaPostoId)
+    if (!postoAlvo) {
+      toast({ title: 'Posto não encontrado', variant: 'destructive' })
+      return
+    }
+
+    const proFixoId = postoAlvo.pro_fixo
+    const proFixoObj = pros.find((p) => p.id === proFixoId)
+
+    setIsProcessandoCobertura(true)
+    try {
+      // 1. Encontrar ou criar as escalas do período para este posto
+      const datasDoPeriodo = getDatasDoPeriodo(coberturaDataInicio, coberturaDataFim)
+      if (datasDoPeriodo.length === 0) {
+        toast({ title: 'Nenhuma data no período', variant: 'destructive' })
+        setIsProcessandoCobertura(false)
+        return
+      }
+
+      // Buscar escalas já existentes no intervalo para este posto
+      const escalasExistentes = escalas.filter((esc) => {
+        const dStr = (esc.data || '').slice(0, 10)
+        return esc.posto === postoAlvo.id && dStr >= coberturaDataInicio && dStr <= coberturaDataFim
+      })
+      const mapaEscalasExistentes: Record<string, EscalaRecord> = {}
+      escalasExistentes.forEach((e) => {
+        mapaEscalasExistentes[(e.data || '').slice(0, 10)] = e
+      })
+
+      // Mapear candidatos elegíveis (excluindo a fixa do posto!)
+      // Mensalistas de OUTROS postos também não cobrem faltas/férias
+      const postosComMensalista = postos.filter((p) => {
+        const forma = p.forma_de_contratacao || p.tipo_remuneracao_fixa
+        return p.pro_fixo && (forma === 'mensalista' || forma === 'mensal')
+      })
+      const proMensalistaOutrosPostos = new Set<string>()
+      for (const p of postosComMensalista) {
+        if (p.id !== postoAlvo.id && p.pro_fixo) {
+          proMensalistaOutrosPostos.add(p.pro_fixo)
+        }
+      }
+
+      // Mapa de horistas em algum posto para saber valor_hora do candidato
+      const mapaHoristasPostos: Record<string, number> = {}
+      for (const p of postos) {
+        const forma = p.forma_de_contratacao || p.tipo_remuneracao_fixa
+        if (p.pro_fixo && (forma === 'horista' || forma === 'por_hora')) {
+          const vHora =
+            p.valor_hora !== undefined
+              ? Number(p.valor_hora)
+              : Number(p.valor_remuneracao_fixa || 0)
+          if (vHora > 0) {
+            mapaHoristasPostos[p.pro_fixo] = vHora
+          }
+        }
+      }
+
+      // Lista de pros elegíveis para receber as convocações de cobertura
+      // A FIXA NÃO É CONVOCADA NAS DATAS DO INTERVALO (está ausente)
+      let prosParaConvocar: UserRecord[] = []
+      if (coberturaModoEnvio === 'especifico') {
+        prosParaConvocar = pros.filter(
+          (p) =>
+            coberturaProIdsSelecionados.includes(p.id) &&
+            p.id !== proFixoId &&
+            !proMensalistaOutrosPostos.has(p.id),
+        )
+      } else {
+        prosParaConvocar = pros.filter(
+          (p) =>
+            p.role === 'pro' &&
+            (p.status === 'ativo' || p.status === 'teste') &&
+            p.id !== proFixoId &&
+            !proMensalistaOutrosPostos.has(p.id),
+        )
+      }
+
+      if (prosParaConvocar.length === 0) {
+        toast({
+          title: 'Nenhum profissional disponível para cobertura',
+          description:
+            'A titular fixa foi excluída do período, mas não há outros profissionais elegíveis selecionados.',
+          variant: 'destructive',
+        })
+        setIsProcessandoCobertura(false)
+        return
+      }
+
+      const carga = postoAlvo.carga_horaria || 8
+      const end = (postoAlvo.endereco as any) || {}
+      const nowIso = new Date().toISOString()
+      let totalEscalasCobertas = 0
+      let totalConvocacoesGeradas = 0
+
+      // Para cada dia do período:
+      for (const dataStr of datasDoPeriodo) {
+        // A. Obter ou criar a escala do dia
+        let escalaId = ''
+        let escalaObj = mapaEscalasExistentes[dataStr]
+
+        // Estimar valor da diária para este dia via motor de 3 camadas
+        const estimativa = await estimarDiariaParaData(
+          postoAlvo.id,
+          dataStr,
+          carga,
+          end.cidade,
+          end.uf,
+        )
+        const valorDiariaCalculada = estimativa.valor || 180
+
+        if (escalaObj) {
+          escalaId = escalaObj.id
+          // Se houver convocação pendente para a fixa neste dia, cancelar ou marcar como ausência
+          if (proFixoId) {
+            const convsFixa = convocacoes.filter(
+              (c) => c.escala === escalaId && c.pro === proFixoId && c.status === 'pendente',
+            )
+            for (const c of convsFixa) {
+              await pb.collection('convocacoes').update(c.id, {
+                status: 'recusada',
+                regra_aplicada: `ausência/férias da fixa (${coberturaMotivo})`,
+              })
+            }
+          }
+          // Reabrir a vaga daquele período para outro pro cobrir
+          await pb.collection('escalas').update(escalaId, {
+            status: 'convocada',
+            valor_diaria: valorDiariaCalculada,
+          })
+        } else {
+          // Criar escala para o dia
+          const isoDate = new Date(`${dataStr}T12:00:00Z`).toISOString()
+          const ch = postoAlvo.carga_horaria || 8
+          const horaIni = ch === 12 ? '07:00' : ch === 4 ? '08:00' : '07:00'
+          const horaFim = ch === 12 ? '19:00' : ch === 4 ? '12:00' : ch === 6 ? '13:00' : '15:00'
+
+          const novaEsc = await pb.collection('escalas').create<EscalaRecord>({
+            posto: postoAlvo.id,
+            data: isoDate,
+            turno_inicio: horaIni,
+            turno_fim: horaFim,
+            status: 'convocada',
+            multa_aplicada: false,
+            valor_diaria: valorDiariaCalculada,
+          })
+          escalaId = novaEsc.id
+        }
+
+        totalEscalasCobertas++
+
+        // B. Gerar convocações para os profissionais de cobertura
+        // Regras vigentes:
+        // - freelancer → motor de diária com carga horária do turno
+        // - horista → horas do turno × valor_hora do candidato
+        // - fixa não é convocada nas datas do intervalo
+        for (const proCandidato of prosParaConvocar) {
+          let valDiariaCandidato = valorDiariaCalculada
+          let regraCandidato = estimativa.regra || 'motor 3 camadas (cobertura férias)'
+
+          const valorHoraCandidato = mapaHoristasPostos[proCandidato.id]
+          if (valorHoraCandidato && valorHoraCandidato > 0) {
+            valDiariaCandidato = valorHoraCandidato * carga
+            regraCandidato = `cobertura horista (R$ ${valorHoraCandidato.toFixed(2)}/h × ${carga}h)`
+          } else if (proCandidato.status === 'teste') {
+            valDiariaCandidato = proCandidato.ajuda_custo || 50
+            regraCandidato = 'ajuda de custo (teste - cobertura)'
+          } else if (proCandidato.valor_negociado && proCandidato.valor_negociado > 0) {
+            valDiariaCandidato = proCandidato.valor_negociado
+            regraCandidato = 'valor negociado (cobertura)'
+          }
+
+          // Checar se já não há convocação deste pro nesta escala
+          const jaConvocado = convocacoes.some(
+            (c) => c.escala === escalaId && c.pro === proCandidato.id,
+          )
+          if (!jaConvocado) {
+            await pb.collection('convocacoes').create({
+              escala: escalaId,
+              pro: proCandidato.id,
+              status: 'pendente',
+              valor_diaria: valDiariaCandidato,
+              regra_aplicada: regraCandidato,
+              data_convocacao: nowIso,
+            })
+            totalConvocacoesGeradas++
+          }
+        }
+      }
+
+      toast({
+        title: 'Cobertura de período gerada com sucesso!',
+        description: `${totalEscalasCobertas} turno(s) abertos de ${formatDateBR(coberturaDataInicio)} a ${formatDateBR(coberturaDataFim)} com ${totalConvocacoesGeradas} convocações disparadas. A titular fixa (${proFixoObj?.name || 'vinculada'}) não foi convocada e retornará à prioridade automaticamente após ${formatDateBR(coberturaDataFim)}.`,
+      })
+
+      setModalCoberturaPeriodo(false)
+      loadData()
+    } catch (err: any) {
+      console.error('Erro ao gerar cobertura de período:', err)
+      toast({
+        title: 'Erro ao gerar cobertura de período',
+        description: err?.message || 'Verifique os dados e tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsProcessandoCobertura(false)
+    }
+  }
 
   // Toggle dia da semana (0: Domingo, 1: Segunda, ..., 6: Sábado)
   const toggleDiaSemana = (dia: number) => {
@@ -483,6 +909,7 @@ export default function EscalasPage() {
 
   return (
     <div className="space-y-6">
+      {/* Topo / Header da Página */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
@@ -490,33 +917,263 @@ export default function EscalasPage() {
             Escalas & Convocação Nominal
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Gere os turnos por posto e dispare as convocações exclusivas para profissionais
-            elegíveis.
+            Gere os turnos por posto, filtre por período e abra cobertura temporária em caso de
+            férias ou ausência da profissional fixa.
           </p>
         </div>
-        <Button onClick={() => setModalNovaEscala(true)} className="font-medium">
-          <Plus className="w-4 h-4 mr-1.5" />
-          Gerar Nova Escala
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => handleAbrirCoberturaPeriodo()}
+            className="font-medium border-amber-300 bg-amber-50/50 hover:bg-amber-100/60 text-amber-900"
+          >
+            <Palmtree className="w-4 h-4 mr-1.5 text-amber-600" />
+            Cobertura de Férias / Ausência
+          </Button>
+          <Button onClick={() => setModalNovaEscala(true)} className="font-medium">
+            <Plus className="w-4 h-4 mr-1.5" />
+            Gerar Nova Escala
+          </Button>
+        </div>
       </div>
 
+      {/* Resumo do Total Filtrado + Botão de Recarregar */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="border border-slate-200 bg-white shadow-xs md:col-span-2">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="space-y-0.5">
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <CalendarRange className="w-3.5 h-3.5 text-primary" />
+                Resumo Operacional do Período
+              </span>
+              <div className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-2">
+                <span>{totalTurnosFiltrados}</span>
+                <span className="text-sm sm:text-base font-semibold text-slate-600">
+                  {totalTurnosFiltrados === 1 ? 'turno' : 'turnos'} {textoPeriodoResumo}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Ordenados por proximidade: do dia de hoje para frente (mais próximo primeiro).
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={loadData}
+              title="Atualizar lista"
+              className="text-slate-500 hover:text-slate-700"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-primary/20 bg-primary/5 shadow-xs">
+          <CardContent className="p-4 space-y-1">
+            <div className="text-xs font-semibold text-primary uppercase tracking-wider flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Prioridade da Fixa & Cobertura
+            </div>
+            <div className="text-xs text-slate-600 leading-relaxed">
+              Postos com fixa designam automaticamente seus turnos à titular. Em caso de férias ou
+              afastamento, use a <strong>Cobertura por Período</strong> para abrir as vagas a outros
+              profissionais sem perder o vínculo do posto.
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Barra de Filtros: Período, Datas De-Até, Posto, Status e Busca */}
+      <Card className="border border-slate-200 bg-white shadow-xs">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            {/* Seletor Rápido de Período */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-semibold text-slate-500 mr-1 flex items-center gap-1">
+                <Filter className="w-3.5 h-3.5" /> Período:
+              </span>
+              {[
+                { id: 'hoje', label: 'Hoje' },
+                { id: 'semana', label: 'Esta Semana' },
+                { id: 'mes', label: 'Este Mês' },
+                { id: 'custom', label: 'Personalizado' },
+                { id: 'todos', label: 'Todos' },
+              ].map((p) => {
+                const isSelected = filtroPeriodo === p.id
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setFiltroPeriodo(p.id as any)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      isSelected
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Busca Rápida Textual */}
+            <div className="relative w-full lg:w-72">
+              <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
+              <Input
+                type="text"
+                placeholder="Buscar por posto, função..."
+                value={buscaTexto}
+                onChange={(e) => setBuscaTexto(e.target.value)}
+                className="pl-8 text-xs h-9"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+            {/* Seletor de Posto */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                Posto de Trabalho
+              </label>
+              <Select value={filtroPosto} onValueChange={setFiltroPosto}>
+                <SelectTrigger className="text-xs h-9">
+                  <SelectValue placeholder="Todos os postos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os Postos ({postos.length})</SelectItem>
+                  {postos.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.nome} {p.pro_fixo ? '[Fixa]' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Seletor de Status */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                Status da Escala
+              </label>
+              <Select value={filtroStatus} onValueChange={setFiltroStatus}>
+                <SelectTrigger className="text-xs h-9">
+                  <SelectValue placeholder="Todos os status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os Status</SelectItem>
+                  <SelectItem value="aberta">Aberta</SelectItem>
+                  <SelectItem value="convocada">Convocada</SelectItem>
+                  <SelectItem value="aceita">Aceita / Coberta</SelectItem>
+                  <SelectItem value="falta">Falta</SelectItem>
+                  <SelectItem value="concluida">Concluída</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Campos de Data De - Até (Ativos quando Personalizado) */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                De (Data Inicial)
+              </label>
+              <Input
+                type="date"
+                value={dataDeCustom}
+                disabled={filtroPeriodo !== 'custom'}
+                onChange={(e) => {
+                  setDataDeCustom(e.target.value)
+                  if (filtroPeriodo !== 'custom') setFiltroPeriodo('custom')
+                }}
+                className={`text-xs h-9 ${filtroPeriodo !== 'custom' ? 'opacity-60 bg-slate-50' : ''}`}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                Até (Data Final)
+              </label>
+              <Input
+                type="date"
+                value={dataAteCustom}
+                disabled={filtroPeriodo !== 'custom'}
+                onChange={(e) => {
+                  setDataAteCustom(e.target.value)
+                  if (filtroPeriodo !== 'custom') setFiltroPeriodo('custom')
+                }}
+                className={`text-xs h-9 ${filtroPeriodo !== 'custom' ? 'opacity-60 bg-slate-50' : ''}`}
+              />
+            </div>
+          </div>
+
+          {/* Limpar Filtros */}
+          {(filtroPeriodo !== 'semana' ||
+            filtroPosto !== 'todos' ||
+            filtroStatus !== 'todos' ||
+            buscaTexto ||
+            dataDeCustom ||
+            dataAteCustom) && (
+            <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-100">
+              <span>
+                Filtros ativos aplicados sobre <strong>{escalas.length}</strong> escalas no total.
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setFiltroPeriodo('semana')
+                  setFiltroPosto('todos')
+                  setFiltroStatus('todos')
+                  setBuscaTexto('')
+                  setDataDeCustom('')
+                  setDataAteCustom('')
+                }}
+                className="text-xs text-primary hover:text-primary/80 h-auto p-0"
+              >
+                Restaurar padrão (Esta semana)
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Lista de Escalas Filtradas */}
       {isLoading ? (
         <div className="flex justify-center py-12">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
         </div>
-      ) : escalas.length === 0 ? (
-        <Card className="text-center py-12 border-dashed border-2 border-slate-200">
+      ) : escalasFiltradas.length === 0 ? (
+        <Card className="text-center py-12 border-dashed border-2 border-slate-200 bg-white">
           <CardContent className="space-y-3">
             <Calendar className="w-12 h-12 text-slate-300 mx-auto" />
-            <h3 className="font-semibold text-slate-700">Nenhuma escala programada</h3>
+            <h3 className="font-semibold text-slate-700">Nenhum turno no período filtrado</h3>
             <p className="text-sm text-slate-400">
-              Clique em "Gerar Nova Escala" para abrir um turno em um posto.
+              {filtroPeriodo === 'semana'
+                ? 'Não há escalas programadas do dia de hoje até o final desta semana. Alterne para "Este mês", "Todos" ou selecione "Personalizado".'
+                : 'Nenhum resultado corresponde aos critérios de pesquisa selecionados.'}
             </p>
+            <div className="flex justify-center gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setFiltroPeriodo('todos')}
+                className="text-xs"
+              >
+                Ver Todas as Escalas
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setModalNovaEscala(true)}
+                className="text-xs font-medium"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                Gerar Nova Escala
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-4">
-          {escalas.map((escala) => {
+          {escalasFiltradas.map((escala) => {
             const posto = escala.expand?.posto
             const convsDestaEscala = convocacoes.filter((c) => c.escala === escala.id)
             const aceito = convsDestaEscala.find((c) => c.status === 'aceita')
@@ -609,6 +1266,19 @@ export default function EscalasPage() {
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
+                      {isPostoComFixa && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleAbrirCoberturaPeriodo(posto?.id)}
+                          title="Abrir cobertura por período (férias/ausência da titular fixa)"
+                          className="border-amber-300 bg-amber-50/50 hover:bg-amber-100/60 text-amber-900 text-xs h-9"
+                        >
+                          <Palmtree className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                          Cobertura / Férias
+                        </Button>
+                      )}
+
                       <Button
                         variant="outline"
                         size="sm"
@@ -1233,6 +1903,335 @@ export default function EscalasPage() {
                 : `Disparar ${selectedProIds.length} Convocações`}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Cobertura por Período (Férias / Ausência da Profissional Fixa) */}
+      <Dialog
+        open={modalCoberturaPeriodo}
+        onOpenChange={(open) => {
+          if (!isProcessandoCobertura) setModalCoberturaPeriodo(open)
+        }}
+      >
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <form onSubmit={handleConfirmarCoberturaPeriodo}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-amber-900">
+                <Palmtree className="w-5 h-5 text-amber-600" />
+                Cobertura por Período (Férias / Ausência)
+              </DialogTitle>
+              <DialogDescription>
+                Abra as vagas de um intervalo de datas para outros profissionais cobrirem — sem
+                alterar o vínculo da profissional fixa titular do posto.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {/* Seleção do Posto */}
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Posto de Trabalho *
+                </label>
+                <Select value={coberturaPostoId} onValueChange={setCoberturaPostoId}>
+                  <SelectTrigger className="text-xs">
+                    <SelectValue placeholder="Selecione o posto..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {postos.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.nome} ({p.funcao} - {p.carga_horaria}h)
+                        {p.pro_fixo ? ' [Tem Fixa]' : ' [Sem Fixa Vinculada]'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Informação sobre a Profissional Fixa */}
+              {(() => {
+                const postoSelecionado = postos.find((p) => p.id === coberturaPostoId)
+                const titular = postoSelecionado?.expand?.pro_fixo
+
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs space-y-1.5 text-amber-950">
+                    <div className="font-bold flex items-center gap-1.5 text-amber-800">
+                      <ShieldCheck className="w-4 h-4 text-amber-600" />
+                      Regra de Proteção do Vínculo
+                    </div>
+                    {titular ? (
+                      <p className="leading-relaxed">
+                        Titular Atual:{' '}
+                        <strong>
+                          {titular.name || titular.email} ({titular.cpf || 'CPF cadastrado'})
+                        </strong>
+                        . Durante o intervalo selecionado, a titular <strong>não</strong> será
+                        convocada. O vínculo permanece intacto e, ao fim do período, ela voltará a
+                        ser convocada prioritariamente de forma automática.
+                      </p>
+                    ) : (
+                      <p className="leading-relaxed text-slate-600">
+                        Este posto não possui titular fixa vinculada no momento, mas você pode abrir
+                        o período para convocações emergenciais em lote.
+                      </p>
+                    )}
+                    <div className="text-[11px] text-amber-800/80 pt-1 border-t border-amber-200/60 flex items-center gap-1">
+                      <Info className="w-3.5 h-3.5 shrink-0" />
+                      Cálculo de Custos: O contrato da fixa segue inalterado no Relatório de Custos
+                      e as coberturas computam apenas os turnos efetivamente cumpridos.
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Intervalo de Datas da Ausência */}
+              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Data Inicial da Cobertura *
+                  </label>
+                  <Input
+                    type="date"
+                    value={coberturaDataInicio}
+                    onChange={(e) => setCoberturaDataInicio(e.target.value)}
+                    required
+                    className="text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Data Final da Cobertura *
+                  </label>
+                  <Input
+                    type="date"
+                    value={coberturaDataFim}
+                    onChange={(e) => setCoberturaDataFim(e.target.value)}
+                    required
+                    className="text-xs"
+                  />
+                </div>
+                <div className="col-span-2 text-[11px] text-slate-500">
+                  {coberturaDataInicio &&
+                  coberturaDataFim &&
+                  coberturaDataInicio <= coberturaDataFim ? (
+                    <span className="font-medium text-slate-700">
+                      Total: {getDatasDoPeriodo(coberturaDataInicio, coberturaDataFim).length}{' '}
+                      dia(s) no intervalo de cobertura.
+                    </span>
+                  ) : (
+                    'Selecione o intervalo completo de afastamento da titular.'
+                  )}
+                </div>
+              </div>
+
+              {/* Motivo do Afastamento */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Motivo da Cobertura *
+                  </label>
+                  <Select
+                    value={coberturaMotivo}
+                    onValueChange={(val: any) => setCoberturaMotivo(val)}
+                  >
+                    <SelectTrigger className="text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ferias">Férias Regulamentares</SelectItem>
+                      <SelectItem value="atestado">Atestado / Licença Médica</SelectItem>
+                      <SelectItem value="licenca">Licença / Afastamento</SelectItem>
+                      <SelectItem value="outro">Outro Motivo Operacional</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Observação Interna (Opcional)
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="Ex: Férias de 10 dias aprovadas"
+                    value={coberturaObservacao}
+                    onChange={(e) => setCoberturaObservacao(e.target.value)}
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Modo de Envio da Convocação */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Quem deve receber as convocações de cobertura? *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCoberturaModoEnvio('todos')}
+                    className={`p-2.5 rounded-lg border text-left text-xs font-medium transition-all ${
+                      coberturaModoEnvio === 'todos'
+                        ? 'border-primary bg-primary/5 text-primary font-bold ring-1 ring-primary'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-primary" />
+                      <span>Todos os Elegíveis</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-normal mt-0.5">
+                      Disparar para a base ativa (freelancers/horistas)
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCoberturaModoEnvio('especifico')}
+                    className={`p-2.5 rounded-lg border text-left text-xs font-medium transition-all ${
+                      coberturaModoEnvio === 'especifico'
+                        ? 'border-primary bg-primary/5 text-primary font-bold ring-1 ring-primary'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <UserCheck className="w-4 h-4 text-primary" />
+                      <span>Profissionais Específicos</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-normal mt-0.5">
+                      Escolher candidatos manualmente
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Lista para seleção manual de candidatos */}
+              {coberturaModoEnvio === 'especifico' && (
+                <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Selecione os Candidatos ({coberturaProIdsSelecionados.length} selecionados)
+                    </label>
+                    <span className="text-[11px] text-slate-400">
+                      Fixa titular excluída automaticamente
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {(() => {
+                      const postoSel = postos.find((p) => p.id === coberturaPostoId)
+                      const titularId = postoSel?.pro_fixo
+
+                      return pros
+                        .filter(
+                          (p) =>
+                            (p.status === 'ativo' || p.status === 'teste') && p.id !== titularId,
+                        )
+                        .map((pro) => {
+                          const isSelected = coberturaProIdsSelecionados.includes(pro.id)
+                          return (
+                            <div
+                              key={pro.id}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setCoberturaProIdsSelecionados(
+                                    coberturaProIdsSelecionados.filter((id) => id !== pro.id),
+                                  )
+                                } else {
+                                  setCoberturaProIdsSelecionados([
+                                    ...coberturaProIdsSelecionados,
+                                    pro.id,
+                                  ])
+                                }
+                              }}
+                              className={`p-2 rounded border text-xs cursor-pointer flex items-center justify-between transition-colors ${
+                                isSelected
+                                  ? 'bg-primary/5 border-primary text-primary font-medium'
+                                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {}}
+                                  className="rounded border-slate-300 text-primary focus:ring-primary"
+                                />
+                                <div>
+                                  <div className="font-semibold">{pro.name || pro.email}</div>
+                                  <div className="text-[10px] text-slate-400">
+                                    Status: {pro.status}
+                                  </div>
+                                </div>
+                              </div>
+                              <Badge variant="outline" className="text-[10px]">
+                                Elegível
+                              </Badge>
+                            </div>
+                          )
+                        })
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {/* Regras de Remuneração Aplicadas */}
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1 text-slate-600">
+                <div className="font-semibold text-slate-700 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+                  Regras Vigentes de Convocação de Cobertura
+                </div>
+                <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-600">
+                  <li>
+                    <strong>Freelancer:</strong> Motor de diária em 3 camadas com base na carga
+                    horária do posto (adicionais de fim de semana/feriado automáticos).
+                  </li>
+                  <li>
+                    <strong>Horista:</strong> Carga horária do turno × valor por hora do candidato.
+                  </li>
+                  <li>
+                    <strong>Titular Fixa:</strong> Não convocada durante o intervalo selecionado.
+                  </li>
+                  <li>
+                    <strong>Fim do Intervalo:</strong> A titular volta a ter prioridade máxima de
+                    convocação nas escalas seguintes.
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isProcessandoCobertura}
+                onClick={() => setModalCoberturaPeriodo(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  isProcessandoCobertura ||
+                  !coberturaPostoId ||
+                  !coberturaDataInicio ||
+                  !coberturaDataFim ||
+                  (coberturaModoEnvio === 'especifico' && coberturaProIdsSelecionados.length === 0)
+                }
+                className="bg-amber-600 hover:bg-amber-700 text-white font-medium"
+              >
+                {isProcessandoCobertura ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    Processando Cobertura...
+                  </>
+                ) : (
+                  <>
+                    <Palmtree className="w-4 h-4 mr-1.5" />
+                    Confirmar e Abrir Cobertura
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
