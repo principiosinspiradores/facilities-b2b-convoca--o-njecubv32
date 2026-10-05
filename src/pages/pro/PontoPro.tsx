@@ -702,7 +702,7 @@ export default function PontoProPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-              <Clock className="w-6 h-6 text-teal-700" />
+              <Clock className="w-6 h-6 text-primary" />
               Registro de Ponto Digital
             </h1>
             {isOnline ? (
@@ -730,9 +730,9 @@ export default function PontoProPage() {
               onClick={handleInstallPwa}
               variant="outline"
               size="sm"
-              className="text-xs border-teal-600 text-teal-800 hover:bg-teal-50"
+              className="text-xs border-primary/30 text-primary hover:bg-primary/10"
             >
-              <Smartphone className="w-3.5 h-3.5 mr-1.5 text-teal-700" />
+              <Smartphone className="w-3.5 h-3.5 mr-1.5 text-primary" />
               Instalar App PWA
             </Button>
           )}
@@ -799,14 +799,14 @@ export default function PontoProPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
         </div>
       ) : (
         <div className="space-y-6">
           {/* Turnos disponíveis para bater ponto */}
           <div className="space-y-3">
             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-teal-700" />
+              <Calendar className="w-4 h-4 text-primary" />
               Escalas Confirmadas & Registro do Dia
             </h2>
 
@@ -853,7 +853,7 @@ export default function PontoProPage() {
                         <div className="flex items-center justify-between">
                           <Badge
                             variant="outline"
-                            className="bg-teal-50 text-teal-800 border-teal-200 text-xs font-semibold"
+                            className="bg-primary/5 text-primary border-primary/20 text-xs font-semibold"
                           >
                             {posto?.funcao || 'Operacional'}
                           </Badge>
@@ -884,7 +884,7 @@ export default function PontoProPage() {
                             <span className="text-[10px] uppercase font-semibold text-slate-400 block">
                               Cerca Digital & Tolerância
                             </span>
-                            <span className="font-semibold text-teal-700">
+                            <span className="font-semibold text-primary">
                               Raio de {posto?.raio_geocerca_m || 100}m &bull; Tol.{' '}
                               {posto?.tolerancia_entrada_minutos || 10}min
                             </span>
@@ -972,7 +972,7 @@ export default function PontoProPage() {
                             size="sm"
                             disabled={temChegada}
                             onClick={() => openRegistroModal(conv, 'chegada')}
-                            className="bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold"
+                            className="text-xs font-semibold"
                           >
                             <Camera className="w-3.5 h-3.5 mr-1" />
                             {temChegada ? 'Chegada Registrada' : 'Registrar Chegada'}
@@ -1033,7 +1033,7 @@ export default function PontoProPage() {
           <div className="space-y-3 pt-4 border-t border-slate-200">
             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between">
               <span className="flex items-center gap-2">
-                <FileCheck className="w-4 h-4 text-teal-700" />
+                <FileCheck className="w-4 h-4 text-primary" />
                 Histórico dos Meus Registros de Ponto
               </span>
               <span className="text-xs font-normal text-slate-400">
@@ -1076,7 +1076,7 @@ export default function PontoProPage() {
                             <Badge
                               className={
                                 item.tipo === 'chegada'
-                                  ? 'bg-teal-100 text-teal-800 border-teal-200 uppercase text-[10px]'
+                                  ? 'bg-primary/10 text-primary border-primary/20 uppercase text-[10px]'
                                   : 'bg-indigo-100 text-indigo-800 border-indigo-200 uppercase text-[10px]'
                               }
                             >
@@ -1143,7 +1143,7 @@ export default function PontoProPage() {
                               <Badge
                                 className={
                                   p.tipo === 'chegada'
-                                    ? 'bg-teal-100 text-teal-800 border-teal-200 uppercase text-[10px]'
+                                    ? 'bg-primary/10 text-primary border-primary/20 uppercase text-[10px]'
                                     : 'bg-indigo-100 text-indigo-800 border-indigo-200 uppercase text-[10px]'
                                 }
                               >
@@ -1177,7 +1177,7 @@ export default function PontoProPage() {
                                 Enviado ao sistema
                               </Badge>
                               {p.batido_offline && (
-                                <span className="text-[10px] text-teal-700 block font-medium mt-0.5">
+                                <span className="text-[10px] text-primary block font-medium mt-0.5">
                                   Origem: Batido offline
                                 </span>
                               )}
@@ -1251,7 +1251,7 @@ export default function PontoProPage() {
               <Button
                 size="sm"
                 onClick={() => setModalPresencaSemConvOpen(false)}
-                className="bg-teal-700 text-white text-xs mt-2"
+                className="text-xs mt-2"
               >
                 Concluir e Fechar
               </Button>
@@ -1277,7 +1277,7 @@ export default function PontoProPage() {
                     variant="ghost"
                     size="sm"
                     onClick={capturarLocalizacao}
-                    className="h-6 text-[11px] text-teal-700"
+                    className="h-6 text-[11px] text-primary"
                   >
                     Recapturar GPS
                   </Button>
@@ -1333,7 +1333,7 @@ export default function PontoProPage() {
                             type="button"
                             size="sm"
                             onClick={capturePhoto}
-                            className="flex-1 bg-teal-700 text-white text-xs font-semibold"
+                            className="flex-1 text-xs font-semibold"
                           >
                             <Camera className="w-3.5 h-3.5 mr-1" />
                             Capturar Foto Agora
@@ -1421,8 +1421,8 @@ export default function PontoProPage() {
       >
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-teal-800">
-              <Clock className="w-5 h-5 text-teal-600" />
+            <DialogTitle className="flex items-center gap-2 text-primary">
+              <Clock className="w-5 h-5 text-primary" />
               Registrar {tipoRegistro === 'chegada' ? 'Chegada' : 'Saída'} no Posto
             </DialogTitle>
             <DialogDescription>
@@ -1447,7 +1447,7 @@ export default function PontoProPage() {
             <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-2">
               <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
                 <span className="flex items-center gap-1.5">
-                  <Navigation className="w-4 h-4 text-teal-700" />
+                  <Navigation className="w-4 h-4 text-primary" />
                   Cerca Digital & Localização GPS
                 </span>
                 <Button
@@ -1455,7 +1455,7 @@ export default function PontoProPage() {
                   variant="ghost"
                   onClick={capturarLocalizacao}
                   disabled={isCapturingLocation}
-                  className="h-7 text-[11px] text-teal-700 hover:text-teal-800"
+                  className="h-7 text-[11px] text-primary hover:text-primary"
                 >
                   <RefreshCw
                     className={`w-3 h-3 mr-1 ${isCapturingLocation ? 'animate-spin' : ''}`}
@@ -1466,7 +1466,7 @@ export default function PontoProPage() {
 
               {isCapturingLocation ? (
                 <div className="text-xs text-slate-500 flex items-center gap-2 py-2">
-                  <div className="w-3.5 h-3.5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
                   Obtendo coordenadas do GPS (funciona offline)...
                 </div>
               ) : userCoords ? (
@@ -1534,7 +1534,7 @@ export default function PontoProPage() {
             <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 text-xs space-y-1">
               <div className="flex items-center justify-between font-semibold text-slate-700">
                 <span className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-teal-700" />
+                  <Clock className="w-4 h-4 text-primary" />
                   Horário Oficial do Batimento
                 </span>
                 <span className="text-slate-500 font-normal">
@@ -1640,11 +1640,7 @@ export default function PontoProPage() {
                     muted
                   />
                   <div className="flex justify-center gap-2 pt-2">
-                    <Button
-                      type="button"
-                      onClick={capturePhoto}
-                      className="bg-teal-600 hover:bg-teal-700 text-white text-xs"
-                    >
+                    <Button type="button" onClick={capturePhoto} className="text-xs">
                       <Camera className="w-3.5 h-3.5 mr-1" />
                       Capturar Foto Agora
                     </Button>
@@ -1664,9 +1660,9 @@ export default function PontoProPage() {
                     type="button"
                     variant="outline"
                     onClick={startCamera}
-                    className="border-dashed border-teal-600 bg-teal-50 text-teal-800 hover:bg-teal-100 text-xs py-5"
+                    className="border-dashed border-primary/40 bg-primary/5 text-primary hover:bg-primary/10 text-xs py-5"
                   >
-                    <Camera className="w-4 h-4 mr-1.5 text-teal-700" />
+                    <Camera className="w-4 h-4 mr-1.5 text-primary" />
                     Abrir Câmera
                   </Button>
 
@@ -1721,9 +1717,7 @@ export default function PontoProPage() {
                   onClick={handleSalvarPonto}
                   disabled={isSaving || (tipoRegistro === 'chegada' && !fotoFile) || foraDaCerca}
                   className={
-                    foraDaCerca
-                      ? 'bg-slate-400 cursor-not-allowed text-white'
-                      : 'bg-teal-700 hover:bg-teal-800 text-white font-medium'
+                    foraDaCerca ? 'bg-slate-400 cursor-not-allowed text-white' : 'font-medium'
                   }
                   title={
                     foraDaCerca

@@ -331,7 +331,7 @@ export default function PostosPage() {
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Building2 className="w-6 h-6 text-teal-700" />
+            <Building2 className="w-6 h-6 text-primary" />
             Postos de Trabalho & Alocações
           </h1>
           <p className="text-slate-500 text-sm mt-1">
@@ -339,10 +339,7 @@ export default function PostosPage() {
             zeladoria são executadas.
           </p>
         </div>
-        <Button
-          onClick={openNewModal}
-          className="bg-teal-700 hover:bg-teal-800 text-white font-medium"
-        >
+        <Button onClick={openNewModal} className="font-medium">
           <Plus className="w-4 h-4 mr-1.5" />
           Novo Posto
         </Button>
@@ -350,7 +347,7 @@ export default function PostosPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
         </div>
       ) : postos.length === 0 ? (
         <Card className="text-center py-12 border-dashed border-2 border-slate-200">
@@ -377,7 +374,7 @@ export default function PostosPage() {
                   <div className="flex items-center justify-between">
                     <Badge
                       variant="outline"
-                      className="bg-teal-50 text-teal-800 border-teal-200 uppercase text-[11px] font-semibold"
+                      className="bg-primary/5 text-primary border-primary/20 uppercase text-[11px] font-semibold"
                     >
                       {p.funcao}
                     </Badge>
@@ -392,13 +389,13 @@ export default function PostosPage() {
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   <div className="flex items-center gap-2 text-slate-600 text-xs">
-                    <Clock className="w-4 h-4 text-teal-600 shrink-0" />
+                    <Clock className="w-4 h-4 text-primary shrink-0" />
                     <span>
                       Carga Horária Padrão: <strong>{p.carga_horaria}h / turno</strong>
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-slate-600 text-xs">
-                    <Navigation className="w-4 h-4 text-teal-600 shrink-0" />
+                    <Navigation className="w-4 h-4 text-primary shrink-0" />
                     <span>
                       Cerca Digital: <strong>{p.raio_geocerca_m || 100}m de raio</strong> &bull;
                       Tol.: <strong>{p.tolerancia_entrada_minutos || 10}min</strong>
@@ -420,13 +417,13 @@ export default function PostosPage() {
                   {/* Seção Profissional Fixa */}
                   <div className="pt-2 border-t border-slate-100">
                     {p.pro_fixo ? (
-                      <div className="bg-teal-50/70 border border-teal-200 rounded-lg p-2.5 text-xs text-teal-950 space-y-1">
+                      <div className="bg-primary/5 border border-primary/20 rounded-lg p-2.5 text-xs text-slate-900 space-y-1">
                         <div className="flex items-center justify-between font-semibold">
-                          <span className="flex items-center gap-1.5 text-teal-800">
-                            <UserCheck className="w-4 h-4 text-teal-600" />
+                          <span className="flex items-center gap-1.5 text-primary">
+                            <UserCheck className="w-4 h-4 text-primary" />
                             Profissional Fixa Designada
                           </span>
-                          <Badge className="bg-teal-600 text-white text-[10px] uppercase">
+                          <Badge className="bg-primary text-primary-foreground text-[10px] uppercase">
                             {p.tipo_remuneracao_fixa === 'por_hora' ? 'Por Hora' : 'Mensalista'}
                           </Badge>
                         </div>
@@ -488,7 +485,7 @@ export default function PostosPage() {
                       variant="ghost"
                       size="sm"
                       onClick={() => openEditModal(p)}
-                      className="text-teal-700 hover:text-teal-800 hover:bg-teal-50 h-8 px-2 text-xs"
+                      className="text-primary hover:text-primary hover:bg-primary/10 h-8 px-2 text-xs"
                     >
                       <Edit2 className="w-3.5 h-3.5 mr-1" />
                       Editar
@@ -551,7 +548,7 @@ export default function PostosPage() {
                           {/* Opção rápida de criar nova função */}
                           <SelectItem
                             value="__nova_funcao__"
-                            className="font-bold text-teal-700 hover:text-teal-800 focus:text-teal-800 bg-teal-50/60 cursor-pointer border-b mb-1"
+                            className="font-bold text-primary hover:text-primary focus:text-primary bg-primary/5 cursor-pointer border-b mb-1"
                           >
                             <span className="flex items-center gap-1.5">
                               <Plus className="w-3.5 h-3.5" />+ Cadastrar Nova Função...
@@ -580,7 +577,7 @@ export default function PostosPage() {
                         <button
                           type="button"
                           onClick={() => setMostrandoNovaFuncaoInline(true)}
-                          className="text-teal-700 hover:underline flex items-center gap-0.5"
+                          className="text-primary hover:underline flex items-center gap-0.5"
                         >
                           <Plus className="w-3 h-3" />
                           Nova função
@@ -588,8 +585,8 @@ export default function PostosPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="p-2.5 bg-teal-50/70 border border-teal-200 rounded-lg space-y-2">
-                      <div className="text-[11px] font-bold text-teal-900 flex items-center justify-between">
+                    <div className="p-2.5 bg-primary/5 border border-primary/20 rounded-lg space-y-2">
+                      <div className="text-[11px] font-bold text-primary flex items-center justify-between">
                         <span>Nova Função no Catálogo</span>
                         <button
                           type="button"
@@ -621,7 +618,7 @@ export default function PostosPage() {
                           size="sm"
                           onClick={handleCriarFuncaoRapida}
                           disabled={isCriandoFuncaoInline || !nomeNovaFuncaoInline.trim()}
-                          className="bg-teal-700 hover:bg-teal-800 text-white h-8 px-3 text-xs shrink-0"
+                          className="h-8 px-3 text-xs shrink-0"
                         >
                           {isCriandoFuncaoInline ? 'Criando...' : 'Adicionar'}
                         </Button>
@@ -707,10 +704,10 @@ export default function PostosPage() {
               </div>
 
               {/* Calibração de Tolerância de Horário */}
-              <div className="bg-teal-50/50 p-3.5 rounded-lg border border-teal-200/80 space-y-3">
+              <div className="bg-primary/5 p-3.5 rounded-lg border border-primary/20 space-y-3">
                 <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-teal-900 flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-teal-700" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-primary" />
                     Tolerância de Horário de Batida (Minutos)
                   </h4>
                   <p className="text-[11px] text-slate-600 mt-0.5">
@@ -753,7 +750,7 @@ export default function PostosPage() {
                           setUsarToleranciaSaidaSeparada(novo)
                           if (!novo) setToleranciaSaidaMinutos(toleranciaEntradaMinutos)
                         }}
-                        className="text-[10px] text-teal-700 hover:underline font-medium"
+                        className="text-[10px] text-primary hover:underline font-medium"
                       >
                         {usarToleranciaSaidaSeparada
                           ? 'Usar mesma da entrada'
@@ -856,7 +853,7 @@ export default function PostosPage() {
               <div className="pt-3 border-t border-slate-200 space-y-3 bg-slate-50/70 p-3.5 rounded-lg border">
                 <div>
                   <div className="flex items-center gap-2">
-                    <UserCheck className="w-4 h-4 text-teal-700" />
+                    <UserCheck className="w-4 h-4 text-primary" />
                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
                       Profissional Fixa do Posto
                     </h4>
@@ -988,11 +985,7 @@ export default function PostosPage() {
               <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                className="bg-teal-700 hover:bg-teal-800 text-white"
-                disabled={isSaving}
-              >
+              <Button type="submit" disabled={isSaving}>
                 {isSaving ? 'Salvando...' : 'Salvar Posto'}
               </Button>
             </DialogFooter>

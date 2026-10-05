@@ -494,10 +494,7 @@ export default function EscalasPage() {
             elegíveis.
           </p>
         </div>
-        <Button
-          onClick={() => setModalNovaEscala(true)}
-          className="font-medium"
-        >
+        <Button onClick={() => setModalNovaEscala(true)} className="font-medium">
           <Plus className="w-4 h-4 mr-1.5" />
           Gerar Nova Escala
         </Button>
@@ -1006,10 +1003,7 @@ export default function EscalasPage() {
                 <Button type="button" variant="outline" onClick={() => setModalNovaEscala(false)}>
                   Cancelar
                 </Button>
-                <Button
-                  type="submit"
-                  disabled={isCreatingEscala || !selectedPostoId}
-                >
+                <Button type="submit" disabled={isCreatingEscala || !selectedPostoId}>
                   {tipoAgendamento === 'periodo' || tipoAgendamento === 'recorrente' ? (
                     <>
                       Revisar Programação <ArrowRight className="w-3.5 h-3.5 ml-1" />

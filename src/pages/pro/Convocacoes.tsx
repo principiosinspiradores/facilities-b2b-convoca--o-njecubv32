@@ -206,7 +206,7 @@ export default function ConvocacoesPage() {
             Minhas Convocações
             <Badge
               variant="outline"
-              className="bg-teal-50 text-teal-800 border-teal-200 text-xs uppercase tracking-wide"
+              className="bg-primary/5 text-primary border-primary/20 text-xs uppercase tracking-wide"
             >
               Marketplace Fechado
             </Badge>
@@ -245,18 +245,18 @@ export default function ConvocacoesPage() {
             <TabsList className="bg-slate-100 p-1 rounded-lg">
               <TabsTrigger
                 value="pendentes"
-                className="text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-teal-800 data-[state=active]:shadow-sm"
+                className="text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm"
               >
                 Disponíveis (Pendentes)
                 {convocacoes.filter((c) => c.status === 'pendente').length > 0 && (
-                  <span className="ml-2 bg-teal-600 text-white rounded-full px-2 py-0.5 text-xs font-bold">
+                  <span className="ml-2 bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-xs font-bold">
                     {convocacoes.filter((c) => c.status === 'pendente').length}
                   </span>
                 )}
               </TabsTrigger>
               <TabsTrigger
                 value="minhas"
-                className="text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-teal-800 data-[state=active]:shadow-sm"
+                className="text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm"
               >
                 Minhas Escalas Confirmadas
                 {convocacoes.filter((c) => c.status === 'aceita').length > 0 && (
@@ -281,7 +281,7 @@ export default function ConvocacoesPage() {
       {/* Listagem de cards */}
       {isLoading ? (
         <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-          <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mb-3"></div>
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
           <p className="text-sm">Carregando convocações...</p>
         </div>
       ) : filteredConvocacoes.length === 0 ? (
@@ -321,12 +321,12 @@ export default function ConvocacoesPage() {
                           {posto?.funcao || 'Operacional'}
                         </Badge>
                         {posto?.pro_fixo && posto.pro_fixo === user?.id && (
-                          <Badge className="bg-teal-700 text-white text-[10px] uppercase font-bold">
+                          <Badge className="bg-primary text-primary-foreground text-[10px] uppercase font-bold">
                             Seu Posto Fixo
                           </Badge>
                         )}
                       </div>
-                      <h3 className="text-lg font-bold text-slate-900 group-hover:text-teal-700 transition-colors">
+                      <h3 className="text-lg font-bold text-slate-900 group-hover:text-primary transition-colors">
                         {posto?.nome || 'Posto de Trabalho'}
                       </h3>
                     </div>
@@ -334,14 +334,14 @@ export default function ConvocacoesPage() {
                     <div className="text-right shrink-0">
                       {posto?.pro_fixo === user?.id && posto.tipo_remuneracao_fixa === 'mensal' ? (
                         <div>
-                          <div className="text-lg font-black text-teal-800">Fixo Mensal</div>
+                          <div className="text-lg font-black text-primary">Fixo Mensal</div>
                           <div className="text-[11px] font-semibold text-slate-600">
                             {formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}/mês
                           </div>
                         </div>
                       ) : (
                         <div>
-                          <div className="text-2xl font-black text-teal-700 tabular-nums">
+                          <div className="text-2xl font-black text-primary tabular-nums">
                             {formatCurrencyBRL(conv.valor_diaria)}
                           </div>
                           <div
@@ -358,7 +358,7 @@ export default function ConvocacoesPage() {
                   {/* Informações de turno e data */}
                   <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100">
                     <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-teal-600 shrink-0" />
+                      <Calendar className="w-4 h-4 text-primary shrink-0" />
                       <div>
                         <div className="text-[10px] text-slate-400 uppercase font-semibold">
                           Data
@@ -370,7 +370,7 @@ export default function ConvocacoesPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-teal-600 shrink-0" />
+                      <Clock className="w-4 h-4 text-primary shrink-0" />
                       <div>
                         <div className="text-[10px] text-slate-400 uppercase font-semibold">
                           Horário / Turno
@@ -417,7 +417,7 @@ export default function ConvocacoesPage() {
 
                         <Button
                           size="sm"
-                          className="flex-1 bg-teal-700 hover:bg-teal-800 text-white font-medium shadow-sm"
+                          className="flex-1 font-medium shadow-sm"
                           disabled={actionLoading === conv.id}
                           onClick={() => handleAceitar(conv)}
                         >
@@ -450,7 +450,7 @@ export default function ConvocacoesPage() {
                           `/mensagens?convocacao=${conv.id}&escala=${conv.escala || ''}&pro=${user?.id || ''}`,
                         )
                       }}
-                      className="w-full text-xs text-teal-700 hover:bg-teal-50 hover:text-teal-800 flex items-center justify-center gap-1.5 h-8 border border-teal-100"
+                      className="w-full text-xs text-primary hover:bg-primary/10 hover:text-primary flex items-center justify-center gap-1.5 h-8 border border-primary/20"
                     >
                       <MessageSquare className="w-3.5 h-3.5" />
                       Mensagens sobre este turno (horário / suporte)
@@ -501,7 +501,7 @@ export default function ConvocacoesPage() {
                                 Ocorrência de Falta registrada
                               </span>
                               {dentroDoPrazo ? (
-                                <span className="text-[11px] text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded font-semibold">
+                                <span className="text-[11px] text-primary bg-primary/5 border border-primary/20 px-1.5 py-0.5 rounded font-semibold">
                                   Prazo: resta(m) {horasRestantes}h
                                 </span>
                               ) : (
@@ -520,7 +520,7 @@ export default function ConvocacoesPage() {
                               }}
                               className={`w-full text-xs font-semibold ${
                                 dentroDoPrazo
-                                  ? 'bg-teal-700 hover:bg-teal-800 text-white'
+                                  ? ''
                                   : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                               }`}
                             >

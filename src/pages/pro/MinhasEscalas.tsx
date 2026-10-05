@@ -140,7 +140,7 @@ export default function MinhasEscalasPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
         </div>
       ) : escalas.length === 0 ? (
         <Card className="text-center py-12 border-dashed border-2 border-slate-200">
@@ -180,7 +180,7 @@ export default function MinhasEscalasPage() {
               >
                 <CardHeader className="pb-3 border-b border-slate-100">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-teal-800 bg-teal-50 px-2 py-0.5 rounded">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-primary bg-primary/5 px-2 py-0.5 rounded">
                       {posto?.funcao || 'Operacional'}
                     </span>
                     <Badge variant="outline" className={`${badgeVariant} text-xs font-medium`}>
@@ -223,7 +223,7 @@ export default function MinhasEscalasPage() {
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                     <div>
                       <div className="text-xs text-slate-400">Valor da diária</div>
-                      <div className="text-base font-bold text-teal-700">
+                      <div className="text-base font-bold text-primary">
                         {formatCurrencyBRL(conv.valor_diaria)}
                       </div>
                     </div>
@@ -231,11 +231,8 @@ export default function MinhasEscalasPage() {
                     {conv.status === 'aceita' && (
                       <div className="flex items-center gap-2">
                         <Link to="/ponto-pro">
-                          <Button
-                            size="sm"
-                            className="text-xs bg-teal-700 hover:bg-teal-800 text-white font-medium"
-                          >
-                            <Clock className="w-3.5 h-3.5 mr-1" />
+                          <Button size="sm" className="text-xs font-medium">
+                            <Clock className="w-3.5 h-3.5 mr-1 text-primary-foreground" />
                             Bater Ponto
                           </Button>
                         </Link>
@@ -298,7 +295,7 @@ export default function MinhasEscalasPage() {
                               Falta registrada ao turno
                             </span>
                             {dentroDoPrazo ? (
-                              <span className="text-[11px] text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded font-semibold">
+                              <span className="text-[11px] text-primary bg-primary/5 border border-primary/20 px-1.5 py-0.5 rounded font-semibold">
                                 Prazo: {horasRestantes}h restantes
                               </span>
                             ) : (
@@ -316,9 +313,7 @@ export default function MinhasEscalasPage() {
                               setIsModalAtestadoOpen(true)
                             }}
                             className={`w-full text-xs font-semibold ${
-                              dentroDoPrazo
-                                ? 'bg-teal-700 hover:bg-teal-800 text-white'
-                                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                              dentroDoPrazo ? '' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                             }`}
                           >
                             <FileText className="w-3.5 h-3.5 mr-1.5" />

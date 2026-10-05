@@ -196,7 +196,7 @@ export default function MeusRepassesPage() {
         <CardContent>
           {isLoading ? (
             <div className="flex justify-center py-10">
-              <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
           ) : payouts.length === 0 ? (
             <div className="text-center py-12 text-slate-400">
@@ -232,7 +232,7 @@ export default function MeusRepassesPage() {
                         <td className="py-3.5 text-slate-600">
                           {formatDateBR(pay.expand?.escala?.data)}
                         </td>
-                        <td className="py-3.5 font-bold text-teal-800 tabular-nums">
+                        <td className="py-3.5 font-bold text-primary tabular-nums">
                           {formatCurrencyBRL(pay.valor)}
                         </td>
                         <td className="py-3.5">

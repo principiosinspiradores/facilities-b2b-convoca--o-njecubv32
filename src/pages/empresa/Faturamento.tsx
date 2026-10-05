@@ -42,7 +42,7 @@ export default function FaturamentoPage({ isAdmin = false }: { isAdmin?: boolean
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Receipt className="w-6 h-6 text-teal-700" />
+            <Receipt className="w-6 h-6 text-primary" />
             {isAdmin ? 'Faturamento Global & Cobrança B2B' : 'Faturamento Mensal da Empresa'}
           </h1>
           <p className="text-slate-500 text-sm mt-1">
@@ -69,15 +69,15 @@ export default function FaturamentoPage({ isAdmin = false }: { isAdmin?: boolean
 
       {/* Cards de Métricas de Faturamento */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="border border-teal-200 bg-teal-50/50">
+        <Card className="border border-primary/20 bg-primary/5">
           <CardContent className="pt-5">
-            <div className="text-xs font-semibold text-teal-800 uppercase tracking-wider">
+            <div className="text-xs font-semibold text-primary uppercase tracking-wider">
               Total a Faturar (Mês)
             </div>
-            <div className="text-3xl font-black text-teal-900 mt-2 tabular-nums">
+            <div className="text-3xl font-black text-primary mt-2 tabular-nums">
               {formatCurrencyBRL(valorTotalFaturar)}
             </div>
-            <p className="text-xs text-teal-700/80 mt-1">
+            <p className="text-xs text-primary/80 mt-1">
               Consolidado de diárias aceitas e concluídas
             </p>
           </CardContent>
@@ -131,11 +131,11 @@ export default function FaturamentoPage({ isAdmin = false }: { isAdmin?: boolean
               { mes: 'Jun/25 (Atual)', valor: valorTotalFaturar || 7400, altura: '95%' },
             ].map((bar, idx) => (
               <div key={idx} className="flex flex-col items-center flex-1 h-full justify-end group">
-                <span className="text-[11px] font-bold text-teal-800 mb-1 group-hover:scale-110 transition-transform">
+                <span className="text-[11px] font-bold text-primary mb-1 group-hover:scale-110 transition-transform">
                   {formatCurrencyBRL(bar.valor)}
                 </span>
                 <div
-                  className="w-full max-w-[50px] bg-teal-700 rounded-t-md hover:bg-teal-800 transition-all cursor-pointer shadow-sm"
+                  className="w-full max-w-[50px] bg-primary rounded-t-md hover:bg-primary/90 transition-all cursor-pointer shadow-sm"
                   style={{ height: bar.altura }}
                   title={`${bar.mes}: ${formatCurrencyBRL(bar.valor)}`}
                 ></div>
@@ -157,7 +157,7 @@ export default function FaturamentoPage({ isAdmin = false }: { isAdmin?: boolean
         <CardContent>
           {isLoading ? (
             <div className="flex justify-center py-8">
-              <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -184,7 +184,7 @@ export default function FaturamentoPage({ isAdmin = false }: { isAdmin?: boolean
                           {e.status}
                         </Badge>
                       </td>
-                      <td className="py-3 text-right font-bold text-teal-800 tabular-nums">
+                      <td className="py-3 text-right font-bold text-primary tabular-nums">
                         {formatCurrencyBRL(e.valor_diaria)}
                       </td>
                     </tr>

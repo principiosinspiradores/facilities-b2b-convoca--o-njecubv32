@@ -377,10 +377,7 @@ export default function ConferenciaPontoPage() {
             Atualizar Dados
           </Button>
           {tabAtiva === 'pontos' && (
-            <Button
-              onClick={handleExportCSV}
-              className="text-xs font-semibold"
-            >
+            <Button onClick={handleExportCSV} className="text-xs font-semibold">
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Exportar CSV do Ponto
             </Button>

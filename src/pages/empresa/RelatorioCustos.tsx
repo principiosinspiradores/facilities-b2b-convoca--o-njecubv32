@@ -328,7 +328,7 @@ export default function RelatorioCustoPostoPage() {
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <DollarSign className="w-6 h-6 text-teal-700" />
+            <DollarSign className="w-6 h-6 text-primary" />
             Relatório de Custo Mensal por Posto
           </h1>
           <p className="text-slate-500 text-sm mt-1">
@@ -341,10 +341,7 @@ export default function RelatorioCustoPostoPage() {
             <RefreshCw className="w-3.5 h-3.5 mr-1" />
             Atualizar
           </Button>
-          <Button
-            onClick={handleExportCSV}
-            className="bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold"
-          >
+          <Button onClick={handleExportCSV} className="text-xs font-semibold">
             <Download className="w-3.5 h-3.5 mr-1.5" />
             Exportar CSV Gerencial
           </Button>
@@ -367,16 +364,16 @@ export default function RelatorioCustoPostoPage() {
         </Card>
 
         {/* Fixas Mensalistas */}
-        <Card className="border border-teal-200 bg-teal-50/50 shadow-xs">
+        <Card className="border border-primary/20 bg-primary/5 shadow-xs">
           <CardContent className="p-4 space-y-1">
-            <div className="text-xs font-semibold text-teal-800 uppercase tracking-wider flex items-center gap-1">
+            <div className="text-xs font-semibold text-primary uppercase tracking-wider flex items-center gap-1">
               <UserCheck className="w-3.5 h-3.5" />
               Fixas Mensalistas
             </div>
-            <div className="text-2xl font-black text-teal-900">
+            <div className="text-2xl font-black text-primary">
               {formatCurrencyBRL(totalFixasMensais)}
             </div>
-            <div className="text-[11px] text-teal-700">Contratos fixos mensais</div>
+            <div className="text-[11px] text-primary/80">Contratos fixos mensais</div>
           </CardContent>
         </Card>
 
@@ -472,7 +469,7 @@ export default function RelatorioCustoPostoPage() {
       {/* Tabela Detalhada de Custos */}
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
         </div>
       ) : itensCustos.length === 0 ? (
         <Card className="text-center py-12 border-dashed border-2 border-slate-200 bg-white">
@@ -519,7 +516,7 @@ export default function RelatorioCustoPostoPage() {
                     <td className="p-3 font-medium text-slate-800">{it.proNome}</td>
                     <td className="p-3">
                       {it.tipoProfissional === 'fixa_mensal' ? (
-                        <Badge className="bg-teal-100 text-teal-800 border-teal-200 text-[10px]">
+                        <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px]">
                           Fixa Mensal
                         </Badge>
                       ) : it.tipoProfissional === 'fixa_hora' ? (
@@ -538,7 +535,7 @@ export default function RelatorioCustoPostoPage() {
                       {it.tipoProfissional === 'fixa_hora' && '/h'}
                       {it.tipoProfissional === 'fixa_mensal' && '/mês'}
                     </td>
-                    <td className="p-3 font-bold text-teal-800 text-sm">
+                    <td className="p-3 font-bold text-primary text-sm">
                       {formatCurrencyBRL(it.custoTotal)}
                     </td>
                     <td

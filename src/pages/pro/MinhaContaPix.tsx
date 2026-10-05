@@ -108,7 +108,7 @@ export default function MinhaContaPixPage() {
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <QrCode className="w-6 h-6 text-teal-700" />
+          <QrCode className="w-6 h-6 text-primary" />
           Minha Conta Pix & Recebimentos
         </h1>
         <p className="text-slate-500 text-sm mt-1">
@@ -128,7 +128,7 @@ export default function MinhaContaPixPage() {
         <CardContent>
           {isLoading ? (
             <div className="flex justify-center py-8">
-              <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
           ) : (
             <form onSubmit={handleSave} className="space-y-4">
@@ -188,7 +188,7 @@ export default function MinhaContaPixPage() {
                     required
                   />
                   {tipoChave === 'cpf' && user?.cpf && (
-                    <span className="text-[10px] text-teal-700 block mt-1">
+                    <span className="text-[10px] text-primary block mt-1">
                       Pré-preenchido com o CPF cadastrado no seu perfil ({formatarCPF(user.cpf)}).
                     </span>
                   )}
@@ -220,8 +220,8 @@ export default function MinhaContaPixPage() {
                 </div>
               </div>
 
-              <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 text-xs text-teal-900 flex items-start gap-2 mt-4">
-                <ShieldCheck className="w-5 h-5 text-teal-700 shrink-0 mt-0.5" />
+              <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 text-xs text-slate-900 flex items-start gap-2 mt-4">
+                <ShieldCheck className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                 <div>
                   <span className="font-bold">Garantia e Segurança:</span> Seus dados bancários são
                   armazenados com segurança. Nenhuma transação bancária em tempo real ocorre no seu
@@ -231,11 +231,7 @@ export default function MinhaContaPixPage() {
               </div>
 
               <div className="pt-3 flex justify-end">
-                <Button
-                  type="submit"
-                  className="bg-teal-700 hover:bg-teal-800 text-white font-medium px-6"
-                  disabled={isSaving}
-                >
+                <Button type="submit" className="font-medium px-6" disabled={isSaving}>
                   {isSaving ? 'Salvando...' : 'Salvar Chave Pix'}
                 </Button>
               </div>

@@ -759,10 +759,7 @@ export default function MotorPrecosPage() {
               próximo. Você pode <strong>editar</strong> o valor e as horas de cada faixa
               diretamente.
             </div>
-            <Button
-              onClick={handleOpenCreateBase}
-              className="text-xs shrink-0"
-            >
+            <Button onClick={handleOpenCreateBase} className="text-xs shrink-0">
               <Plus className="w-4 h-4 mr-1.5" />
               Adicionar Faixa de Horas
             </Button>
@@ -838,10 +835,7 @@ export default function MotorPrecosPage() {
               Sobreposições de valor vinculadas a postos de trabalho (treinamento probatório,
               adicional de fim de semana ou feriado).
             </div>
-            <Button
-              onClick={handleOpenCreateExcecao}
-              className="text-xs shrink-0"
-            >
+            <Button onClick={handleOpenCreateExcecao} className="text-xs shrink-0">
               <Plus className="w-4 h-4 mr-1.5" />
               Nova Exceção por Posto
             </Button>
@@ -952,10 +946,7 @@ export default function MotorPrecosPage() {
                 <DownloadCloud className="w-4 h-4 mr-1.5 text-primary" />
                 Importar Feriados Nacionais
               </Button>
-              <Button
-                onClick={handleOpenCreateFeriado}
-                className="text-xs shrink-0"
-              >
+              <Button onClick={handleOpenCreateFeriado} className="text-xs shrink-0">
                 <Plus className="w-4 h-4 mr-1.5" />
                 Cadastrar Feriado
               </Button>
@@ -1108,10 +1099,7 @@ export default function MotorPrecosPage() {
               >
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-              >
+              <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
@@ -1245,10 +1233,7 @@ export default function MotorPrecosPage() {
               >
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-              >
+              <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
@@ -1306,11 +1291,7 @@ export default function MotorPrecosPage() {
             >
               Cancelar
             </Button>
-            <Button
-              type="button"
-              disabled={isImporting}
-              onClick={handleImportarFeriadosNacionais}
-            >
+            <Button type="button" disabled={isImporting} onClick={handleImportarFeriadosNacionais}>
               {isImporting ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
@@ -1465,10 +1446,7 @@ export default function MotorPrecosPage() {
               >
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-              >
+              <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
