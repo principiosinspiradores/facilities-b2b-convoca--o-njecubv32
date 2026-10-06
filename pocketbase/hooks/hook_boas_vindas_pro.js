@@ -135,12 +135,12 @@ onRecordAfterCreateSuccess((e) => {
 
     const mensagemDestaque =
       !isVerified && resetToken
-        ? '<p>Você foi cadastrado(a) pela equipe de gestão/RH. <strong>Clique no botão abaixo para criar sua senha e ativar seu acesso à plataforma.</strong></p>'
+        ? '<p>Você foi cadastrado(a) pela equipe de gestão/RH. <strong>Clique no botão abaixo para criar sua senha e ativar seu acesso à plataforma.</strong></p><p style="font-size: 13px; color: #047857; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 10px 14px; margin: 12px 0;"><strong>Atenção:</strong> Este link também verifica e ativa automaticamente seu e-mail ao criar sua senha — nenhuma outra confirmação é necessária.</p>'
         : '<p>Seu cadastro foi realizado com sucesso em nossa base de profissionais parceiros pela equipe de gestão/RH.</p>'
 
     const notaRodape =
       !isVerified && resetToken
-        ? '<p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 16px;">Este link de primeiro acesso é individual e seguro. Caso expire, utilize a opção "Esqueci minha senha" na tela de login.</p>'
+        ? '<p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 16px;">Este link de primeiro acesso é individual e seguro (ele define sua senha e confirma seu e-mail em uma única etapa). Caso expire, utilize a opção "Esqueci minha senha" na tela de login.</p>'
         : '<p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 16px;">Acesse com seu e-mail cadastrado e senha. Caso precise redefinir sua senha, utilize a opção "Esqueci minha senha" no login.</p>'
 
     const html = `

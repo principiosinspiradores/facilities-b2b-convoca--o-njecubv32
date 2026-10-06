@@ -230,39 +230,21 @@ export async function reenviarConvitePro(
     }
   }
 
-  // Se o pro ainda não é verificado (verified = false), reenviamos o link de definição de senha / primeiro acesso,
-  // e de forma complementar garantimos a solicitação de verificação em segundo plano.
+  // Se o pro ainda não é verificado (verified = false), reenviamos APENAS o link de primeiro acesso / criar senha.
+  // Não disparar requestVerification em paralelo: um segundo e-mail confunde o pro e não define senha.
+  // Ao definir a senha via token de reset, a conta é ativada e verificada (verified = true).
   try {
     await pb.collection('users').requestPasswordReset(cleanEmail)
-    // Tentar também verificação como best-effort
-    try {
-      await pb.collection('users').requestVerification(cleanEmail)
-    } catch {
-      /* intentionally ignored */
-    }
-
     return {
       type: 'first_access_link',
-      message: `Link de primeiro acesso para criação de senha enviado para ${cleanEmail}.`,
+      message: `Link de primeiro acesso enviado para ${cleanEmail}.`,
     }
   } catch (resetErr: any) {
-    // Se o reset falhar, tenta requestVerification como fallback
-    try {
-      await pb.collection('users').requestVerification(cleanEmail)
-      return {
-        type: 'verification_link',
-        message: `Link de verificação e ativação enviado para ${cleanEmail}.`,
-      }
-    } catch (verifErr: any) {
-      const finalMsg =
-        resetErr?.data?.data?.email?.message ||
-        resetErr?.data?.message ||
-        resetErr?.message ||
-        verifErr?.data?.data?.email?.message ||
-        verifErr?.data?.message ||
-        verifErr?.message ||
-        'Não foi possível reenviar o convite.'
-      throw new Error(finalMsg)
-    }
+    const finalMsg =
+      resetErr?.data?.data?.email?.message ||
+      resetErr?.data?.message ||
+      resetErr?.message ||
+      'Falha ao enviar link de primeiro acesso.'
+    throw new Error(finalMsg)
   }
 }

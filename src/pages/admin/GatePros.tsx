@@ -4,12 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { UserRecord, UserStatus, FuncaoRecord, UserDocument } from '@/types/facilities'
 import { formatCurrencyBRL, formatDateTimeBR } from '@/lib/formatters'
 import { listarFuncoes } from '@/services/funcoes'
-import {
-  cadastrarPro,
-  atualizarPro,
-  reenviarConvitePro,
-  reenviarVerificacaoEmail,
-} from '@/services/pros'
+import { cadastrarPro, atualizarPro, reenviarConvitePro } from '@/services/pros'
 import { formatarCPF, mascararCPF, validarCPF } from '@/lib/cpf'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -567,42 +562,16 @@ export default function GateProsPage() {
     }
   }
 
-  // Reenviar verificação de e-mail (específico para verified = false)
-  const handleResendVerification = async (email: string, proId: string) => {
-    setActionLoadingId(`verif-${proId}`)
-    try {
-      await reenviarVerificacaoEmail(email)
-      toast({
-        title: 'E-mail de verificação enviado!',
-        description: `Link de ativação e verificação de conta enviado para ${email}.`,
-      })
-    } catch (err: any) {
-      console.error(err)
-      toast({
-        title: 'Erro ao reenviar verificação',
-        description:
-          err?.data?.data?.email?.message ||
-          err?.data?.message ||
-          err?.message ||
-          'Não foi possível enviar o e-mail de verificação.',
-        variant: 'destructive',
-      })
-    } finally {
-      setActionLoadingId(null)
-    }
-  }
-
-  // Reenviar e-mail de convite / verificação geral
+  // Reenviar convite / link de primeiro acesso para o pro
   const handleResendInvite = async (pro: UserRecord) => {
     setActionLoadingId(`invite-${pro.id}`)
     try {
       const outcome = await reenviarConvitePro(pro.email, pro.verified)
-      let desc = outcome.message
-      if (outcome.type === 'first_access_link') {
-        desc = `Link de primeiro acesso para criação de senha enviado para ${pro.email}.`
-      } else if (outcome.type === 'access_link') {
-        desc = `Link de acesso enviado com sucesso para ${pro.email}.`
-      }
+      const desc =
+        outcome.type === 'first_access_link'
+          ? `Link de primeiro acesso enviado para ${pro.email}.`
+          : `Link de acesso enviado para ${pro.email}.`
+
       toast({
         title: 'Convite reenviado!',
         description: desc,
@@ -997,30 +966,15 @@ export default function GateProsPage() {
                         )}
 
                         <td className="py-3 px-2 text-right space-x-1 whitespace-nowrap">
-                          {/* Botão Reenviar verificação (para pros com verified = false) */}
-                          {!p.verified && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              title="Reenviar e-mail de verificação para o pro"
-                              disabled={actionLoadingId === `verif-${p.id}`}
-                              className="text-amber-700 border-amber-300 bg-amber-50/50 hover:bg-amber-100 text-xs h-8 px-2"
-                              onClick={() => handleResendVerification(p.email, p.id)}
-                            >
-                              <RefreshCw
-                                className={`w-3.5 h-3.5 mr-1 text-amber-600 ${
-                                  actionLoadingId === `verif-${p.id}` ? 'animate-spin' : ''
-                                }`}
-                              />
-                              Reenviar verificação
-                            </Button>
-                          )}
-
-                          {/* Reenviar convite de ativação */}
+                          {/* Botão único de Reenviar Convite (link de primeiro acesso / criar senha) */}
                           <Button
                             variant="outline"
                             size="sm"
-                            title="Reenviar convite de ativação por e-mail"
+                            title={
+                              !p.verified
+                                ? 'Reenviar link de primeiro acesso para criação de senha'
+                                : 'Reenviar link de acesso por e-mail'
+                            }
                             disabled={actionLoadingId === `invite-${p.id}`}
                             className="text-slate-700 border-slate-200 hover:bg-slate-100 text-xs h-8 px-2"
                             onClick={() => handleResendInvite(p)}
@@ -1425,21 +1379,17 @@ export default function GateProsPage() {
                     </div>
                   </div>
 
-                  {!selectedPro?.verified && selectedPro?.email && (
+                  {selectedPro?.email && (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={actionLoadingId === `verif-${selectedPro.id}`}
-                      className="text-amber-800 border-amber-300 bg-amber-50 hover:bg-amber-100 text-xs h-8 px-2.5 shrink-0"
-                      onClick={() => handleResendVerification(selectedPro.email, selectedPro.id)}
+                      disabled={actionLoadingId === `invite-${selectedPro.id}`}
+                      className="text-slate-700 border-slate-200 hover:bg-slate-100 text-xs h-8 px-2.5 shrink-0"
+                      onClick={() => handleResendInvite(selectedPro)}
                     >
-                      <RefreshCw
-                        className={`w-3.5 h-3.5 mr-1.5 text-amber-700 ${
-                          actionLoadingId === `verif-${selectedPro.id}` ? 'animate-spin' : ''
-                        }`}
-                      />
-                      Reenviar verificação
+                      <Mail className="w-3.5 h-3.5 mr-1 text-primary" />
+                      Reenviar Convite
                     </Button>
                   )}
                 </div>
