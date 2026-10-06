@@ -155,7 +155,38 @@ routerAdd('GET', '/backend/v1/calcular-diaria/{escalaId}/{proId}', (e) => {
     }
   } catch (_) {}
 
-  // 2b. Fim de semana (se não foi treinamento)
+  // 2a.1 Exceções vigentes específicas do posto (teste e camareira)
+  // Checadas por período de vigência (vigencia_inicio e vigencia_fim)
+  if (!valorExcecao) {
+    try {
+      const outrasExcecoes = $app.findRecordsByFilter(
+        'pricing_rules',
+        "(tipo = 'teste' || tipo = 'camareira') && posto = '" + posto.id + "'",
+        '-created',
+        20,
+        0,
+      )
+
+      for (let i = 0; i < outrasExcecoes.length; i++) {
+        const oe = outrasExcecoes[i]
+        const tipoOe = oe.getString('tipo')
+        const vi = (oe.getString('vigencia_inicio') || '').slice(0, 10)
+        const vf = (oe.getString('vigencia_fim') || '').slice(0, 10)
+
+        const dentroInicio = !vi || escalaData >= vi
+        const dentroFim = !vf || escalaData <= vf
+
+        if (dentroInicio && dentroFim) {
+          valorExcecao = oe.getFloat('valor')
+          const rotuloTipo = tipoOe === 'teste' ? 'teste' : 'camareira'
+          captionExcecao = 'exceção ' + rotuloTipo
+          break
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 2b. Fim de semana (se não foi treinamento/teste/camareira)
   if (!valorExcecao && isWeekend) {
     try {
       const fdsRules = $app.findRecordsByFilter(

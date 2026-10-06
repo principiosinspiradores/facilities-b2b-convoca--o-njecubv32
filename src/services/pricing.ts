@@ -195,6 +195,26 @@ export async function estimarDiariaParaData(
       }
     }
 
+    // Exceções vigentes do posto: teste e camareira
+    const dataIsoDia = dataStr.slice(0, 10)
+    const outrasExcecoes = await pb.collection('pricing_rules').getFullList({
+      filter: `(tipo = "teste" || tipo = "camareira") && posto = "${postoId}"`,
+      sort: '-created',
+    })
+    for (const oe of outrasExcecoes) {
+      const vi = oe.vigencia_inicio ? oe.vigencia_inicio.slice(0, 10) : ''
+      const vf = oe.vigencia_fim ? oe.vigencia_fim.slice(0, 10) : ''
+      const dentroInicio = !vi || dataIsoDia >= vi
+      const dentroFim = !vf || dataIsoDia <= vf
+      if (dentroInicio && dentroFim) {
+        const rotulo = oe.tipo === 'teste' ? 'teste' : 'camareira'
+        return {
+          valor: oe.valor,
+          regra: `exceção ${rotulo}`,
+        }
+      }
+    }
+
     // Fim de semana
     if (isWeekend) {
       const fdsRules = await pb.collection('pricing_rules').getFullList({

@@ -39,18 +39,24 @@ import {
   Tag,
   AlertTriangle,
   DownloadCloud,
+  Search,
+  Check,
 } from 'lucide-react'
 
 const TIPO_EXCECAO_LABELS: Record<string, string> = {
   treinamento: 'Treinamento',
   fim_semana: 'Fim de Semana',
   feriado: 'Feriado',
+  teste: 'Teste',
+  camareira: 'Camareira',
 }
 
 const TIPO_EXCECAO_BADGES: Record<string, string> = {
   treinamento: 'bg-amber-50 text-amber-800 border-amber-200',
   fim_semana: 'bg-indigo-50 text-indigo-800 border-indigo-200',
   feriado: 'bg-rose-50 text-rose-800 border-rose-200',
+  teste: 'bg-cyan-50 text-cyan-800 border-cyan-200',
+  camareira: 'bg-purple-50 text-purple-800 border-purple-200',
 }
 
 export default function MotorPrecosPage() {
@@ -71,10 +77,13 @@ export default function MotorPrecosPage() {
   // Modal Exceção de Posto
   const [modalExcecaoOpen, setModalExcecaoOpen] = useState(false)
   const [editingExcecaoId, setEditingExcecaoId] = useState<string | null>(null)
-  const [tipoExcecao, setTipoExcecao] = useState<'treinamento' | 'fim_semana' | 'feriado'>(
-    'treinamento',
-  )
+  const [tipoExcecao, setTipoExcecao] = useState<
+    'treinamento' | 'fim_semana' | 'feriado' | 'teste' | 'camareira'
+  >('treinamento')
   const [postoId, setPostoId] = useState('')
+  const [selectedPostoIds, setSelectedPostoIds] = useState<string[]>([])
+  const [postoSearchQuery, setPostoSearchQuery] = useState('')
+  const [isLoadingPostosModal, setIsLoadingPostosModal] = useState(false)
   const [valorExcecao, setValorExcecao] = useState(130)
   const [diasTreinamento, setDiasTreinamento] = useState(10)
   const [vigenciaInicio, setVigenciaInicio] = useState('2025-01-01')
@@ -217,21 +226,44 @@ export default function MotorPrecosPage() {
   }
 
   // Abertura de Modal Exceção para Criação ou Edição
-  const handleOpenCreateExcecao = () => {
+  const handleOpenCreateExcecao = async () => {
     setEditingExcecaoId(null)
     setTipoExcecao('treinamento')
-    setPostoId(postos[0]?.id || '')
     setValorExcecao(130)
     setDiasTreinamento(10)
     setVigenciaInicio(new Date().toISOString().slice(0, 10))
     setVigenciaFim(new Date(new Date().getFullYear(), 11, 31).toISOString().slice(0, 10))
+    setPostoSearchQuery('')
+
+    // Recarrega postos atualizados do banco ao abrir o modal de criação
+    setIsLoadingPostosModal(true)
     setModalExcecaoOpen(true)
+    try {
+      const freshPostos = await pb.collection('postos').getFullList<PostoRecord>({
+        sort: 'nome',
+      })
+      setPostos(freshPostos)
+      // Se tiver pelo menos um posto, seleciona o primeiro por padrão
+      setSelectedPostoIds(freshPostos.length > 0 ? [freshPostos[0].id] : [])
+      setPostoId(freshPostos[0]?.id || '')
+    } catch (err) {
+      console.error('Erro ao recarregar postos:', err)
+      setSelectedPostoIds(postos.length > 0 ? [postos[0].id] : [])
+      setPostoId(postos[0]?.id || '')
+    } finally {
+      setIsLoadingPostosModal(false)
+    }
   }
 
   const handleOpenEditExcecao = (exc: PricingRuleRecord) => {
     setEditingExcecaoId(exc.id)
-    setTipoExcecao((exc.tipo as 'treinamento' | 'fim_semana' | 'feriado') || 'treinamento')
+    setTipoExcecao(
+      (exc.tipo as 'treinamento' | 'fim_semana' | 'feriado' | 'teste' | 'camareira') ||
+        'treinamento',
+    )
     setPostoId(exc.posto || '')
+    setSelectedPostoIds(exc.posto ? [exc.posto] : [])
+    setPostoSearchQuery('')
     setValorExcecao(exc.valor)
     setDiasTreinamento(exc.dias || 10)
     setVigenciaInicio(exc.vigencia_inicio ? exc.vigencia_inicio.slice(0, 10) : '')
@@ -239,16 +271,43 @@ export default function MotorPrecosPage() {
     setModalExcecaoOpen(true)
   }
 
-  // Salvar Exceção (Criar ou Atualizar)
+  const toggleSelectPosto = (id: string) => {
+    setSelectedPostoIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    )
+  }
+
+  const toggleSelectAllFilteredPostos = (filteredIds: string[]) => {
+    const allSelected = filteredIds.every((id) => selectedPostoIds.includes(id))
+    if (allSelected) {
+      setSelectedPostoIds((prev) => prev.filter((id) => !filteredIds.includes(id)))
+    } else {
+      setSelectedPostoIds((prev) => Array.from(new Set([...prev, ...filteredIds])))
+    }
+  }
+
+  // Salvar Exceção (Criar para múltiplos postos ou Atualizar única)
   const handleSaveExcecao = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!postoId) {
-      toast({
-        title: 'Selecione o posto',
-        description: 'É necessário vincular a exceção a um posto de trabalho.',
-        variant: 'destructive',
-      })
-      return
+
+    if (editingExcecaoId) {
+      if (!postoId) {
+        toast({
+          title: 'Selecione o posto',
+          description: 'É necessário vincular a exceção a um posto de trabalho.',
+          variant: 'destructive',
+        })
+        return
+      }
+    } else {
+      if (selectedPostoIds.length === 0) {
+        toast({
+          title: 'Selecione ao menos um posto',
+          description: 'Marque pelo menos um posto de trabalho para aplicar a exceção.',
+          variant: 'destructive',
+        })
+        return
+      }
     }
 
     const valorNum = Number(valorExcecao)
@@ -263,30 +322,74 @@ export default function MotorPrecosPage() {
 
     setIsSubmitting(true)
     try {
-      const payload: Record<string, unknown> = {
-        tipo: tipoExcecao,
-        posto: postoId,
-        valor: valorNum,
-        dias: tipoExcecao === 'treinamento' ? Number(diasTreinamento) || 10 : null,
-        vigencia_inicio: vigenciaInicio ? new Date(vigenciaInicio).toISOString() : null,
-        vigencia_fim: vigenciaFim ? new Date(vigenciaFim).toISOString() : null,
-      }
+      const tipoLabel = TIPO_EXCECAO_LABELS[tipoExcecao] || tipoExcecao
 
       if (editingExcecaoId) {
+        // Edição de exceção existente continua single-posto
+        const payload: Record<string, unknown> = {
+          tipo: tipoExcecao,
+          posto: postoId,
+          valor: valorNum,
+          dias: tipoExcecao === 'treinamento' ? Number(diasTreinamento) || 10 : null,
+          vigencia_inicio: vigenciaInicio ? new Date(vigenciaInicio).toISOString() : null,
+          vigencia_fim: vigenciaFim ? new Date(vigenciaFim).toISOString() : null,
+        }
+
         await pb.collection('pricing_rules').update(editingExcecaoId, payload)
         toast({
           title: 'Exceção atualizada!',
-          description: `Regra de ${TIPO_EXCECAO_LABELS[tipoExcecao] || tipoExcecao} atualizada com sucesso.`,
+          description: `Regra de ${tipoLabel} atualizada com sucesso.`,
         })
+        setModalExcecaoOpen(false)
+        loadAll()
       } else {
-        await pb.collection('pricing_rules').create(payload)
-        toast({
-          title: 'Exceção vinculada ao posto!',
-          description: `Regra de ${TIPO_EXCECAO_LABELS[tipoExcecao] || tipoExcecao} cadastrada com sucesso.`,
-        })
+        // Criação de exceções para múltiplos postos
+        const postosParaCriar = selectedPostoIds
+        let sucessos = 0
+        let falhas = 0
+
+        for (const pId of postosParaCriar) {
+          try {
+            const payload: Record<string, unknown> = {
+              tipo: tipoExcecao,
+              posto: pId,
+              valor: valorNum,
+              dias: tipoExcecao === 'treinamento' ? Number(diasTreinamento) || 10 : null,
+              vigencia_inicio: vigenciaInicio ? new Date(vigenciaInicio).toISOString() : null,
+              vigencia_fim: vigenciaFim ? new Date(vigenciaFim).toISOString() : null,
+            }
+            await pb.collection('pricing_rules').create(payload)
+            sucessos++
+          } catch (err) {
+            console.error(`Falha ao criar exceção para posto ${pId}:`, err)
+            falhas++
+          }
+        }
+
+        if (falhas === 0) {
+          toast({
+            title: `${sucessos} ${sucessos === 1 ? 'exceção criada' : 'exceções criadas'}!`,
+            description: `${sucessos} ${
+              sucessos === 1 ? 'registro criado' : 'registros criados'
+            } com tipo "${tipoLabel}".`,
+          })
+          setModalExcecaoOpen(false)
+        } else if (sucessos > 0) {
+          toast({
+            title: 'Criação parcial com alertas',
+            description: `${sucessos} exceções criadas com sucesso, mas ${falhas} falharam.`,
+            variant: 'destructive',
+          })
+          setModalExcecaoOpen(false)
+        } else {
+          toast({
+            title: 'Erro ao salvar exceções',
+            description: `Não foi possível criar as exceções para os ${falhas} postos selecionados.`,
+            variant: 'destructive',
+          })
+        }
+        loadAll()
       }
-      setModalExcecaoOpen(false)
-      loadAll()
     } catch (err) {
       console.error(err)
       toast({
@@ -298,6 +401,18 @@ export default function MotorPrecosPage() {
       setIsSubmitting(false)
     }
   }
+
+  // Filtro de postos para o multiselect do modal
+  const filteredPostosModal = React.useMemo(() => {
+    if (!postoSearchQuery.trim()) return postos
+    const query = postoSearchQuery.toLowerCase()
+    return postos.filter((p) => {
+      const nomeMatch = (p.nome || '').toLowerCase().includes(query)
+      const funcaoMatch = (p.funcao || '').toLowerCase().includes(query)
+      const cidadeMatch = (p.endereco?.cidade || '').toLowerCase().includes(query)
+      return nomeMatch || funcaoMatch || cidadeMatch
+    })
+  }, [postos, postoSearchQuery])
 
   // Lista de localidades extraídas dos postos cadastrados
   const postosLocalidades = React.useMemo(() => {
@@ -1127,33 +1242,155 @@ export default function MotorPrecosPage() {
               <DialogDescription>
                 {editingExcecaoId
                   ? 'Atualize o posto, tipo, valor e período de vigência desta exceção.'
-                  : 'Vincule regras pontuais de treinamento ou turnos diferenciados a um posto.'}
+                  : 'Vincule regras de treinamento, fins de semana, feriados, testes ou camareira a um ou mais postos.'}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Posto de Trabalho *
-                </label>
-                <Select value={postoId} onValueChange={setPostoId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o posto..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {postos.length === 0 ? (
-                      <SelectItem value="nenhum" disabled>
-                        Nenhum posto cadastrado
-                      </SelectItem>
-                    ) : (
-                      postos.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.nome} {p.funcao ? `(${p.funcao})` : ''}
+              {/* Seleção de Postos: Single na edição, Múltipla com busca na criação */}
+              {editingExcecaoId ? (
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Posto de Trabalho *
+                  </label>
+                  <Select value={postoId} onValueChange={setPostoId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o posto..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {postos.length === 0 ? (
+                        <SelectItem value="nenhum" disabled>
+                          Nenhum posto cadastrado
                         </SelectItem>
-                      ))
+                      ) : (
+                        postos.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.nome} {p.funcao ? `(${p.funcao})` : ''}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-700 block">
+                      Postos de Trabalho *{' '}
+                      <span className="font-normal text-slate-500">
+                        ({selectedPostoIds.length}{' '}
+                        {selectedPostoIds.length === 1
+                          ? 'posto selecionado'
+                          : 'postos selecionados'}
+                        )
+                      </span>
+                    </label>
+                    {isLoadingPostosModal && (
+                      <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                        Atualizando postos...
+                      </span>
                     )}
-                  </SelectContent>
-                </Select>
-              </div>
+                  </div>
+
+                  {/* Campo de busca de postos */}
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <Input
+                      type="text"
+                      placeholder="Buscar posto por nome, função ou cidade..."
+                      value={postoSearchQuery}
+                      onChange={(e) => setPostoSearchQuery(e.target.value)}
+                      className="pl-8 text-xs h-8"
+                    />
+                  </div>
+
+                  {/* Ações rápidas de seleção */}
+                  <div className="flex items-center justify-between text-[11px] pt-0.5">
+                    <span className="text-slate-500">
+                      Mostrando {filteredPostosModal.length} de {postos.length} postos
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          toggleSelectAllFilteredPostos(filteredPostosModal.map((p) => p.id))
+                        }
+                        className="text-primary hover:underline font-medium cursor-pointer"
+                      >
+                        {filteredPostosModal.length > 0 &&
+                        filteredPostosModal.every((p) => selectedPostoIds.includes(p.id))
+                          ? 'Desmarcar visíveis'
+                          : 'Marcar todos visíveis'}
+                      </button>
+                      {selectedPostoIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPostoIds([])}
+                          className="text-slate-400 hover:text-rose-600 hover:underline cursor-pointer"
+                        >
+                          Limpar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Lista de postos com checkboxes */}
+                  <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-1.5 space-y-1 bg-slate-50/50">
+                    {filteredPostosModal.length === 0 ? (
+                      <div className="text-center py-4 text-xs text-slate-400">
+                        {postos.length === 0
+                          ? 'Nenhum posto cadastrado.'
+                          : 'Nenhum posto corresponde à busca.'}
+                      </div>
+                    ) : (
+                      filteredPostosModal.map((p) => {
+                        const isSelected = selectedPostoIds.includes(p.id)
+                        return (
+                          <div
+                            key={p.id}
+                            onClick={() => toggleSelectPosto(p.id)}
+                            className={`flex items-center justify-between p-2 rounded-md text-xs cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-primary/10 text-primary-950 font-medium border border-primary/20'
+                                : 'bg-white hover:bg-slate-100 text-slate-700 border border-transparent'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0 pr-2">
+                              <div
+                                className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border transition-colors ${
+                                  isSelected
+                                    ? 'bg-primary border-primary text-white'
+                                    : 'border-slate-300 bg-white'
+                                }`}
+                              >
+                                {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                              <div className="truncate">
+                                <span className="font-semibold">{p.nome}</span>
+                                {p.funcao && (
+                                  <span className="text-slate-500 font-normal ml-1">
+                                    • {p.funcao}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {p.endereco?.cidade && (
+                              <span className="text-[10px] text-slate-400 shrink-0 font-normal">
+                                {p.endereco.cidade}/{p.endereco.uf}
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                  <span className="text-[11px] text-slate-400 block">
+                    Ao salvar, uma regra de exceção individual idêntica será gerada para cada posto
+                    marcado.
+                  </span>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
@@ -1167,6 +1404,8 @@ export default function MotorPrecosPage() {
                       <SelectItem value="treinamento">Treinamento</SelectItem>
                       <SelectItem value="fim_semana">Fim de Semana</SelectItem>
                       <SelectItem value="feriado">Feriado</SelectItem>
+                      <SelectItem value="teste">Teste</SelectItem>
+                      <SelectItem value="camareira">Camareira</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1241,6 +1480,8 @@ export default function MotorPrecosPage() {
                   </>
                 ) : editingExcecaoId ? (
                   'Salvar Alterações'
+                ) : selectedPostoIds.length > 1 ? (
+                  `Salvar ${selectedPostoIds.length} Exceções`
                 ) : (
                   'Salvar Exceção'
                 )}

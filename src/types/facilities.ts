@@ -191,6 +191,8 @@ export type PricingRuleTipo =
   | 'feriado'
   | 'negociado'
   | 'multa_falta'
+  | 'teste'
+  | 'camareira'
 
 export interface PricingRuleRecord {
   id: string
