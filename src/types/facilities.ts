@@ -37,6 +37,7 @@ export interface UserRecord {
         regiao?: string
       }
   verified?: boolean
+  ultimo_acesso?: string
   created: string
   updated: string
 }

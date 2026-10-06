@@ -23,6 +23,8 @@ import {
 } from '@/components/ui/dialog'
 import { toast } from '@/hooks/use-toast'
 import { formatarCPF, validarCPF } from '@/lib/cpf'
+import { formatDateTimeBR } from '@/lib/formatters'
+import { reenviarVerificacaoEmail } from '@/services/pros'
 import {
   Users,
   Shield,
@@ -30,11 +32,14 @@ import {
   Edit2,
   Trash2,
   CheckCircle,
-  Eye,
-  KeyRound,
+  CheckCircle2,
   Building2,
   Briefcase,
   AlertCircle,
+  AlertTriangle,
+  Clock,
+  RefreshCw,
+  Mail,
 } from 'lucide-react'
 
 export function UserAccessManagement() {
@@ -56,6 +61,7 @@ export function UserAccessManagement() {
   const [role, setRole] = useState<UserRole>('pro')
   const [status, setStatus] = useState<UserStatus>('ativo')
   const [cpfError, setCpfError] = useState('')
+  const [resendingId, setResendingId] = useState<string | null>(null)
 
   const loadUsers = async () => {
     setIsLoading(true)
@@ -128,6 +134,30 @@ export function UserAccessManagement() {
       if (newRole !== 'pro' && !digits) {
         setCpfError('')
       }
+    }
+  }
+
+  const handleResendUserVerification = async (user: UserRecord) => {
+    setResendingId(user.id)
+    try {
+      await reenviarVerificacaoEmail(user.email)
+      toast({
+        title: 'Verificação reenviada!',
+        description: `Link de ativação enviado com sucesso para ${user.email}.`,
+      })
+    } catch (err: any) {
+      console.error(err)
+      toast({
+        title: 'Erro ao reenviar verificação',
+        description:
+          err?.data?.data?.email?.message ||
+          err?.data?.message ||
+          err?.message ||
+          'Não foi possível enviar o e-mail de verificação.',
+        variant: 'destructive',
+      })
+    } finally {
+      setResendingId(null)
     }
   }
 
@@ -498,7 +528,8 @@ export function UserAccessManagement() {
                 <tr>
                   <th className="py-2.5 px-3">Nome / E-mail</th>
                   <th className="py-2.5 px-3">Perfil (Role)</th>
-                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3">Status & Ativação</th>
+                  <th className="py-2.5 px-3">Último Acesso</th>
                   <th className="py-2.5 px-3 text-right">Ações</th>
                 </tr>
               </thead>
@@ -533,28 +564,71 @@ export function UserAccessManagement() {
                         )}
                       </td>
                       <td className="py-2.5 px-3">
-                        {u.status === 'ativo' && (
-                          <span className="inline-flex items-center gap-1 font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px]">
-                            <CheckCircle className="w-3 h-3" /> Ativo
-                          </span>
-                        )}
-                        {u.status === 'teste' && (
-                          <span className="inline-flex items-center gap-1 font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-[11px]">
-                            Teste
-                          </span>
-                        )}
-                        {u.status === 'suspenso' && (
-                          <span className="inline-flex items-center gap-1 font-medium text-rose-700 bg-rose-50 px-2 py-0.5 rounded text-[11px]">
-                            Suspenso
-                          </span>
-                        )}
-                        {u.status === 'bloqueado' && (
-                          <span className="inline-flex items-center gap-1 font-medium text-slate-700 bg-slate-200 px-2 py-0.5 rounded text-[11px]">
-                            Bloqueado
-                          </span>
-                        )}
+                        <div className="flex flex-col gap-1 items-start">
+                          <div>
+                            {u.status === 'ativo' && (
+                              <span className="inline-flex items-center gap-1 font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px]">
+                                <CheckCircle className="w-3 h-3" /> Ativo
+                              </span>
+                            )}
+                            {u.status === 'teste' && (
+                              <span className="inline-flex items-center gap-1 font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-[11px]">
+                                Teste
+                              </span>
+                            )}
+                            {u.status === 'suspenso' && (
+                              <span className="inline-flex items-center gap-1 font-medium text-rose-700 bg-rose-50 px-2 py-0.5 rounded text-[11px]">
+                                Suspenso
+                              </span>
+                            )}
+                            {u.status === 'bloqueado' && (
+                              <span className="inline-flex items-center gap-1 font-medium text-slate-700 bg-slate-200 px-2 py-0.5 rounded text-[11px]">
+                                Bloqueado
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Badge E-mail verificado / não verificado */}
+                          {u.verified ? (
+                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[10px] font-medium flex items-center gap-1">
+                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                              E-mail verificado
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-amber-50 text-amber-800 border-amber-300 text-[10px] font-medium flex items-center gap-1">
+                              <AlertTriangle className="w-2.5 h-2.5 text-amber-600" />
+                              E-mail não verificado
+                            </Badge>
+                          )}
+                        </div>
                       </td>
-                      <td className="py-2.5 px-3 text-right space-x-1">
+                      <td className="py-2.5 px-3">
+                        <div className="text-[11px] text-slate-600 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span>
+                            {u.ultimo_acesso ? formatDateTimeBR(u.ultimo_acesso) : 'Nunca acessou'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3 text-right space-x-1 whitespace-nowrap">
+                        {!u.verified && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={resendingId === u.id}
+                            className="h-7 px-2 text-amber-700 border-amber-300 bg-amber-50/50 hover:bg-amber-100 text-[11px]"
+                            onClick={() => handleResendUserVerification(u)}
+                            title="Reenviar e-mail de ativação e verificação"
+                          >
+                            <RefreshCw
+                              className={`w-3 h-3 mr-1 text-amber-600 ${
+                                resendingId === u.id ? 'animate-spin' : ''
+                              }`}
+                            />
+                            Reenviar verificação
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           variant="ghost"

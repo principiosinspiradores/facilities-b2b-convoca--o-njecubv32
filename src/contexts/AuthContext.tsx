@@ -58,7 +58,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [])
 
   const login = async (email: string, pass: string) => {
-    await pb.collection('users').authWithPassword(email, pass)
+    const authData = await pb.collection('users').authWithPassword(email, pass)
+    // Tenta também registrar client-side caso o hook backend não tenha persistido antes da resposta
+    try {
+      const nowIso = new Date().toISOString()
+      if (authData.record?.id) {
+        await pb.collection('users').update(authData.record.id, {
+          ultimo_acesso: nowIso,
+        })
+      }
+    } catch (_) {
+      // Ignora silenciosamente caso o usuário não tenha permissão de update ou já tenha sido atualizado pelo hook
+    }
     syncUser()
   }
 

@@ -2,9 +2,14 @@ import React, { useState, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { UserRecord, UserStatus, FuncaoRecord, UserDocument } from '@/types/facilities'
-import { formatCurrencyBRL } from '@/lib/formatters'
+import { formatCurrencyBRL, formatDateTimeBR } from '@/lib/formatters'
 import { listarFuncoes } from '@/services/funcoes'
-import { cadastrarPro, atualizarPro, reenviarConvitePro } from '@/services/pros'
+import {
+  cadastrarPro,
+  atualizarPro,
+  reenviarConvitePro,
+  reenviarVerificacaoEmail,
+} from '@/services/pros'
 import { formatarCPF, mascararCPF, validarCPF } from '@/lib/cpf'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -562,7 +567,32 @@ export default function GateProsPage() {
     }
   }
 
-  // Reenviar e-mail de convite / verificação
+  // Reenviar verificação de e-mail (específico para verified = false)
+  const handleResendVerification = async (email: string, proId: string) => {
+    setActionLoadingId(`verif-${proId}`)
+    try {
+      await reenviarVerificacaoEmail(email)
+      toast({
+        title: 'E-mail de verificação enviado!',
+        description: `Link de ativação e verificação de conta enviado para ${email}.`,
+      })
+    } catch (err: any) {
+      console.error(err)
+      toast({
+        title: 'Erro ao reenviar verificação',
+        description:
+          err?.data?.data?.email?.message ||
+          err?.data?.message ||
+          err?.message ||
+          'Não foi possível enviar o e-mail de verificação.',
+        variant: 'destructive',
+      })
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  // Reenviar e-mail de convite / verificação geral
   const handleResendInvite = async (pro: UserRecord) => {
     setActionLoadingId(`invite-${pro.id}`)
     try {
@@ -777,7 +807,7 @@ export default function GateProsPage() {
                     <th className="pb-3 px-2">CPF</th>
                     <th className="pb-3 px-2">Função(ões)</th>
                     <th className="pb-3 px-2">Região</th>
-                    <th className="pb-3 px-2">Status Gate</th>
+                    <th className="pb-3 px-2">Status & Acesso</th>
                     <th className="pb-3 px-2">Documentos</th>
                     <th className="pb-3 px-2">Período de Teste</th>
                     {isAdmin && <th className="pb-3 px-2">Precificação</th>}
@@ -853,24 +883,60 @@ export default function GateProsPage() {
                         </td>
 
                         <td className="py-3 px-2">
-                          {isAtivo && (
-                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
-                              Ativo
-                            </Badge>
-                          )}
-                          {isTeste && (
-                            <Badge className="bg-amber-100 text-amber-800 border-amber-200">
-                              Em Teste
-                            </Badge>
-                          )}
-                          {isSuspenso && (
-                            <Badge className="bg-rose-100 text-rose-800 border-rose-200">
-                              Suspenso
-                            </Badge>
-                          )}
-                          {isBloqueado && (
-                            <Badge className="bg-slate-800 text-white">Bloqueado</Badge>
-                          )}
+                          <div className="flex flex-col gap-1 items-start">
+                            <div className="flex items-center gap-1">
+                              {isAtivo && (
+                                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[10px]">
+                                  Ativo
+                                </Badge>
+                              )}
+                              {isTeste && (
+                                <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px]">
+                                  Em Teste
+                                </Badge>
+                              )}
+                              {isSuspenso && (
+                                <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-[10px]">
+                                  Suspenso
+                                </Badge>
+                              )}
+                              {isBloqueado && (
+                                <Badge className="bg-slate-800 text-white text-[10px]">
+                                  Bloqueado
+                                </Badge>
+                              )}
+                            </div>
+
+                            {/* Badge de Verificação de E-mail */}
+                            {p.verified ? (
+                              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[10px] font-medium flex items-center gap-1">
+                                <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                                E-mail verificado
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-amber-50 text-amber-800 border-amber-300 text-[10px] font-medium flex items-center gap-1">
+                                <AlertTriangle className="w-2.5 h-2.5 text-amber-600" />
+                                E-mail não verificado
+                              </Badge>
+                            )}
+
+                            {/* Registro de Último Acesso */}
+                            <div
+                              className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5"
+                              title={
+                                p.ultimo_acesso
+                                  ? `Último login em ${formatDateTimeBR(p.ultimo_acesso)}`
+                                  : 'Profissional ainda não acessou o sistema'
+                              }
+                            >
+                              <Clock className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                              <span>
+                                {p.ultimo_acesso
+                                  ? `Último acesso: ${formatDateTimeBR(p.ultimo_acesso)}`
+                                  : 'Nunca acessou'}
+                              </span>
+                            </div>
+                          </div>
                         </td>
 
                         <td className="py-3 px-2">
@@ -928,6 +994,25 @@ export default function GateProsPage() {
                         )}
 
                         <td className="py-3 px-2 text-right space-x-1 whitespace-nowrap">
+                          {/* Botão Reenviar verificação (para pros com verified = false) */}
+                          {!p.verified && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              title="Reenviar e-mail de verificação para o pro"
+                              disabled={actionLoadingId === `verif-${p.id}`}
+                              className="text-amber-700 border-amber-300 bg-amber-50/50 hover:bg-amber-100 text-xs h-8 px-2"
+                              onClick={() => handleResendVerification(p.email, p.id)}
+                            >
+                              <RefreshCw
+                                className={`w-3.5 h-3.5 mr-1 text-amber-600 ${
+                                  actionLoadingId === `verif-${p.id}` ? 'animate-spin' : ''
+                                }`}
+                              />
+                              Reenviar verificação
+                            </Button>
+                          )}
+
                           {/* Reenviar convite de ativação */}
                           <Button
                             variant="outline"
@@ -1305,6 +1390,58 @@ export default function GateProsPage() {
             </DialogHeader>
 
             <div className="space-y-4 py-3">
+              {/* Painel de Ativação do Pro: Verificação de E-mail & Último Acesso */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="space-y-1">
+                    <div className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+                      Status de Ativação da Conta
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {selectedPro?.verified ? (
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs font-medium flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          E-mail verificado
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-xs font-medium flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                          E-mail não verificado
+                        </Badge>
+                      )}
+
+                      <div className="text-xs text-slate-600 flex items-center gap-1 bg-white px-2 py-1 rounded border border-slate-200">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        <span>
+                          {selectedPro?.ultimo_acesso
+                            ? `Último acesso: ${formatDateTimeBR(selectedPro.ultimo_acesso)}`
+                            : 'Nunca acessou'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {!selectedPro?.verified && selectedPro?.email && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={actionLoadingId === `verif-${selectedPro.id}`}
+                      className="text-amber-800 border-amber-300 bg-amber-50 hover:bg-amber-100 text-xs h-8 px-2.5 shrink-0"
+                      onClick={() => handleResendVerification(selectedPro.email, selectedPro.id)}
+                    >
+                      <RefreshCw
+                        className={`w-3.5 h-3.5 mr-1.5 text-amber-700 ${
+                          actionLoadingId === `verif-${selectedPro.id}` ? 'animate-spin' : ''
+                        }`}
+                      />
+                      Reenviar verificação
+                    </Button>
+                  )}
+                </div>
+              </div>
+
               {/* Status do Gate e Período de Teste */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
                 <div>

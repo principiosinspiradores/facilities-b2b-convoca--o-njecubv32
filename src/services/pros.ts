@@ -112,7 +112,10 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
   // Criação do registro no PocketBase. Caso ocorra erro 400 ou validação de hook,
   // o ClientResponseError é propagado intacto com err.data.data por campo e err.message.
   const created = await pb.collection('users').create<UserRecord>(payload)
-
+  const freshCreated = await pb
+    .collection('users')
+    .getOne<UserRecord>(created.id)
+    .catch(() => created)
   // O e-mail de boas-vindas com dados completos e botão de login é disparado
   // de forma assíncrona pelo hook server-side hook_boas_vindas_pro.
   // Aqui no frontend, solicitamos o token nativo de verificação do PocketBase em modo tolerante:
@@ -120,11 +123,11 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
   let verificationMessage: string | undefined = undefined
 
   // Se o registro criado já vier verificado (ou se o backend tratar como verificado)
-  if (created.verified) {
+  if (freshCreated.verified) {
     verificationOutcome = 'already_verified'
   } else {
     try {
-      await pb.collection('users').requestVerification(created.email)
+      await pb.collection('users').requestVerification(freshCreated.email)
     } catch (mailErr: any) {
       console.warn('Aviso: falha ao solicitar verificação de e-mail do PocketBase:', mailErr)
       const errStatus = mailErr?.status || mailErr?.response?.status
@@ -153,7 +156,7 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
     }
   }
 
-  return { record: created, verificationOutcome, verificationMessage }
+  return { record: freshCreated, verificationOutcome, verificationMessage }
 }
 
 /**
@@ -195,6 +198,14 @@ export async function atualizarPro(id: string, dados: AtualizarProPayload): Prom
  * faz o fallback para requestPasswordReset.
  * Só lança erro se ambas as tentativas falharem de fato, preservando a mensagem real do backend.
  */
+/**
+ * Solicita reenvio do e-mail de verificação para o usuário (pro/empresa/admin).
+ */
+export async function reenviarVerificacaoEmail(email: string): Promise<void> {
+  const cleanEmail = email.trim()
+  await pb.collection('users').requestVerification(cleanEmail)
+}
+
 export async function reenviarConvitePro(
   email: string,
   verified?: boolean,
