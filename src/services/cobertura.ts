@@ -279,6 +279,43 @@ export function detectarAlertasCobertura(
     }
   }
 
+  // Enriquecer os alertas com o contexto de grupo de vagas (posto/data/turno)
+  // Agrupar escalas do mesmo posto, data e turno para indicar vagas pendentes (ex: "2 de 5 vagas abertas")
+  const contagemGrupo = new Map<string, { total: number; cobertas: number }>()
+  for (const esc of escalas) {
+    if (esc.status === 'concluida' || esc.status === 'cancelada') continue
+    const d = (esc.data || '').slice(0, 10)
+    const chave = `${esc.posto}_${d}_${esc.turno_inicio}_${esc.turno_fim}`
+    const atual = contagemGrupo.get(chave) || { total: 0, cobertas: 0 }
+    atual.total++
+
+    const convs = convocacoes.filter((c) => c.escala === esc.id)
+    const isCoberta =
+      convs.some((c) => c.status === 'aceita' || c.status === 'coberta') ||
+      esc.status === 'aceita' ||
+      esc.status === 'coberta'
+    if (isCoberta) {
+      atual.cobertas++
+    }
+    contagemGrupo.set(chave, atual)
+  }
+
+  for (const alerta of alertas) {
+    const d = (alerta.escala.data || '').slice(0, 10)
+    const chave = `${alerta.posto.id}_${d}_${alerta.escala.turno_inicio}_${alerta.escala.turno_fim}`
+    const infoGrupo = contagemGrupo.get(chave)
+    if (infoGrupo && infoGrupo.total > 1) {
+      alerta.totalVagas = infoGrupo.total
+      alerta.vagasCobertas = infoGrupo.cobertas
+      alerta.vagasAbertas = Math.max(0, infoGrupo.total - infoGrupo.cobertas)
+      alerta.situacaoAtual = `${alerta.vagasAbertas} de ${alerta.totalVagas} vagas abertas no turno. ${alerta.situacaoAtual}`
+    } else {
+      alerta.totalVagas = 1
+      alerta.vagasCobertas = 0
+      alerta.vagasAbertas = 1
+    }
+  }
+
   // Ordenar alertas por urgência:
   // 1º turnos das próximas 24h primeiro
   // 2º dataHoraTurno mais próxima

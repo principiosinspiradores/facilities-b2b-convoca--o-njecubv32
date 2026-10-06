@@ -37,26 +37,92 @@ onRecordUpdate((e) => {
       }
     }
 
-    // 3. Cancelar outras convocações pendentes para esta mesma escala
-    // "Se o pro fixo aceitar, os demais pros elegíveis não recebem a convocação daquele dia."
+    // 3. Gestão de vagas múltiplas e cancelamento de convocações pendentes
+    // Identificar se a escala faz parte de um grupo de mesmo posto, data e turno
     try {
-      const outrasConvs = $app.findRecordsByFilter(
-        'convocacoes',
-        "escala = '" + escalaId + "' && id != '" + record.id + "' && status = 'pendente'",
-        '-created',
-        50,
-        0,
-      )
-      for (let i = 0; i < outrasConvs.length; i++) {
-        const c = outrasConvs[i]
-        c.set('status', 'cancelada')
-        $app.save(c)
+      if (escala) {
+        const postoId = escala.getString('posto')
+        const dataEscala = escala.getString('data').slice(0, 10)
+        const turnoInicio = escala.getString('turno_inicio')
+        const turnoFim = escala.getString('turno_fim')
+
+        // Buscar todas as escalas deste mesmo posto, data e turno
+        const escalasDoGrupo = $app.findRecordsByFilter(
+          'escalas',
+          "posto = '" +
+            postoId +
+            "' && data ~ '" +
+            dataEscala +
+            "' && turno_inicio = '" +
+            turnoInicio +
+            "' && turno_fim = '" +
+            turnoFim +
+            "' && status != 'cancelada'",
+          'created',
+          100,
+          0,
+        )
+
+        const totalVagas = escalasDoGrupo.length
+
+        // Contar quantas escalas já estão com status 'aceita' ou 'coberta' (ou 'concluida')
+        let totalCobertas = 0
+        const escalaIdsGrupo = []
+        for (let i = 0; i < escalasDoGrupo.length; i++) {
+          const esc = escalasDoGrupo[i]
+          escalaIdsGrupo.push(esc.id)
+          const st = esc.getString('status')
+          if (st === 'aceita' || st === 'coberta' || st === 'concluida') {
+            totalCobertas++
+          }
+        }
+
+        // Se é posto com 1 vaga OU se o grupo preencheu todas as vagas (totalCobertas >= totalVagas):
+        // Cancelar convocações pendentes restantes com aviso "vaga preenchida"
+        if (totalCobertas >= totalVagas) {
+          for (let g = 0; g < escalaIdsGrupo.length; g++) {
+            const escId = escalaIdsGrupo[g]
+            const outrasConvs = $app.findRecordsByFilter(
+              'convocacoes',
+              "escala = '" + escId + "' && status = 'pendente'",
+              '-created',
+              50,
+              0,
+            )
+            for (let i = 0; i < outrasConvs.length; i++) {
+              const c = outrasConvs[i]
+              // Não alterar a convocação que acabou de ser aceita
+              if (c.id === record.id) continue
+              c.set('status', 'cancelada')
+              c.set('regra_aplicada', 'Vaga já preenchida')
+              $app.save(c)
+            }
+          }
+        } else {
+          // Grupo ainda tem vagas abertas!
+          // Cancelar outras convocações pendentes apenas desta escala específica (para não ter 2 aceites na mesma escala)
+          // Mas manter as convocações das outras escalas abertas do grupo
+          const outrasConvsDestaEscala = $app.findRecordsByFilter(
+            'convocacoes',
+            "escala = '" + escalaId + "' && id != '" + record.id + "' && status = 'pendente'",
+            '-created',
+            50,
+            0,
+          )
+          for (let i = 0; i < outrasConvsDestaEscala.length; i++) {
+            const c = outrasConvsDestaEscala[i]
+            // Se o grupo ainda tem vagas, o pro pode ser transferido ou ver como cancelada na escala
+            c.set('status', 'cancelada')
+            c.set('regra_aplicada', 'Vaga já preenchida')
+            $app.save(c)
+          }
+        }
       }
     } catch (err) {
-      console.log('Erro ao cancelar outras convocações da mesma escala:', err)
+      console.log('Erro ao gerenciar cancelamento de convocações pendentes por vagas:', err)
     }
 
-    // Notificação por e-mail: Confirmação de aceite
+    // 4. Notificação por e-mail: Confirmação de aceite
     try {
       const proUser = $app.findRecordById('users', proId)
       const proEmail = proUser.email()
@@ -120,7 +186,7 @@ onRecordUpdate((e) => {
       return
     }
 
-    // 4. Buscar settings para período de garantia (Freelancers ou Fixa por Hora)
+    // 5. Buscar settings para período de garantia (Freelancers ou Fixa por Hora)
     let guaranteeDays = 7
     let provider = 'mercadopago'
     try {
@@ -131,7 +197,7 @@ onRecordUpdate((e) => {
       }
     } catch (_) {}
 
-    // 5. Criar ou atualizar payout status=retido (escrow contábil)
+    // 6. Criar ou atualizar payout status=retido (escrow contábil)
     let payoutRecord
     try {
       const payoutsCol = $app.findCollectionByNameOrId('payouts')
@@ -152,7 +218,7 @@ onRecordUpdate((e) => {
 
       $app.save(payoutRecord)
 
-      // 6. Log em payment_events
+      // 7. Log em payment_events
       const eventsCol = $app.findCollectionByNameOrId('payment_events')
       const event = new Record(eventsCol)
       event.set('payout', payoutRecord.id)

@@ -905,10 +905,17 @@ export default function CoberturaPage() {
 
                       {/* Nome do Posto & Endereço */}
                       <div>
-                        <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                          <Building2 className="w-4 h-4 text-primary shrink-0" />
-                          <span>{posto.nome}</span>
-                        </h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                            <Building2 className="w-4 h-4 text-primary shrink-0" />
+                            <span>{posto.nome}</span>
+                          </h3>
+                          {alerta.totalVagas && alerta.totalVagas > 1 && (
+                            <Badge className="bg-primary/10 text-primary border-primary/20 text-xs font-bold">
+                              {alerta.vagasAbertas} de {alerta.totalVagas} vagas abertas
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                           <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           <span>

@@ -64,6 +64,7 @@ export default function PostosPage() {
   const [nome, setNome] = useState('')
   const [funcao, setFuncao] = useState<PostoFuncao>('Porteiro')
   const [cargaHoraria, setCargaHoraria] = useState(8)
+  const [vagas, setVagas] = useState(1)
   const [status, setStatus] = useState<'ativo' | 'inativo'>('ativo')
   const [vigenciaInicio, setVigenciaInicio] = useState('')
   const [vigenciaFim, setVigenciaFim] = useState('')
@@ -135,6 +136,7 @@ export default function PostosPage() {
     const primeiraAtiva = funcoesCatalogo.find((f) => f.ativo)?.nome || 'Porteiro'
     setFuncao(primeiraAtiva)
     setCargaHoraria(8)
+    setVagas(1)
     setStatus('ativo')
     setVigenciaInicio('2025-01-01')
     setVigenciaFim('2026-12-31')
@@ -167,6 +169,7 @@ export default function PostosPage() {
     setNome(posto.nome)
     setFuncao(posto.funcao || 'Porteiro')
     setCargaHoraria(posto.carga_horaria || 8)
+    setVagas(posto.vagas && posto.vagas > 0 ? posto.vagas : 1)
     setStatus(posto.status)
     setVigenciaInicio((posto.vigencia_inicio || '').slice(0, 10))
     setVigenciaFim((posto.vigencia_fim || '').slice(0, 10))
@@ -296,6 +299,7 @@ export default function PostosPage() {
         nome: nome.trim(),
         funcao,
         carga_horaria: Number(cargaHoraria),
+        vagas: Math.max(1, Number(vagas) || 1),
         status,
         vigencia_inicio: vigenciaInicio ? new Date(vigenciaInicio).toISOString() : null,
         vigencia_fim: vigenciaFim ? new Date(vigenciaFim).toISOString() : null,
@@ -436,7 +440,11 @@ export default function PostosPage() {
                   <div className="flex items-center gap-2 text-slate-600 text-xs">
                     <Clock className="w-4 h-4 text-primary shrink-0" />
                     <span>
-                      Carga Horária Padrão: <strong>{p.carga_horaria}h / turno</strong>
+                      Carga Horária: <strong>{p.carga_horaria}h / turno</strong> &bull; Vagas por
+                      turno:{' '}
+                      <strong className="text-primary">
+                        {p.vagas || 1} {(p.vagas || 1) > 1 ? 'vagas' : 'vaga'}
+                      </strong>
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-slate-600 text-xs">
@@ -697,10 +705,10 @@ export default function PostosPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Carga Horária (horas) *
+                    Carga Horária (h) *
                   </label>
                   <Input
                     type="number"
@@ -708,6 +716,20 @@ export default function PostosPage() {
                     onChange={(e) => setCargaHoraria(Number(e.target.value))}
                     min={1}
                     max={24}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Vagas por Turno *
+                  </label>
+                  <Input
+                    type="number"
+                    value={vagas}
+                    onChange={(e) => setVagas(Math.max(1, Number(e.target.value) || 1))}
+                    min={1}
+                    max={100}
+                    placeholder="1"
                     required
                   />
                 </div>

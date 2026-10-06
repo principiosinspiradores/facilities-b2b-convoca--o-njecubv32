@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-06T22:38:40.281Z",
+  "generatedAt": "2026-10-06T22:53:06.322Z",
   "collections": [
     {
       "name": "users",
@@ -250,6 +250,12 @@
           "type": "number",
           "required": false,
           "system": false
+        },
+        {
+          "name": "vagas",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -334,6 +340,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "vagas",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

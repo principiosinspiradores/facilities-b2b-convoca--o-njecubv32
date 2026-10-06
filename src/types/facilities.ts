@@ -76,6 +76,7 @@ export interface PostoRecord {
   funcao: PostoFuncao
   endereco: Endereco
   carga_horaria: number
+  vagas?: number
   vigencia_inicio?: string
   vigencia_fim?: string
   requisitos?: string
@@ -151,6 +152,7 @@ export interface EscalaRecord {
   turno_inicio: string
   turno_fim: string
   status: EscalaStatus
+  vagas?: number
   multa_aplicada?: boolean
   valor_diaria?: number
   created: string
@@ -158,6 +160,20 @@ export interface EscalaRecord {
   expand?: {
     posto?: PostoRecord
   }
+}
+
+export interface GrupoEscalasItem {
+  id: string // Identificador único do grupo (ex: postoId_data_turnoInicio_turnoFim)
+  postoId: string
+  posto: PostoRecord
+  data: string
+  turno_inicio: string
+  turno_fim: string
+  totalVagas: number
+  escalas: EscalaRecord[]
+  vagasCobertas: number
+  vagasAbertas: number
+  statusGrupo: 'totalmente_coberto' | 'parcialmente_coberto' | 'aberto' | 'cancelado'
 }
 
 export type ConvocacaoStatus =
@@ -432,6 +448,9 @@ export interface ItemAlertaCobertura {
   gravidade: 'alta' | 'media'
   tempoAbertoFormatado: string
   tempoAbertoMinutos: number
+  totalVagas?: number
+  vagasAbertas?: number
+  vagasCobertas?: number
   proFalta?: UserRecord
   proFixo?: UserRecord
   convocacoesAtivas: ConvocacaoRecord[]

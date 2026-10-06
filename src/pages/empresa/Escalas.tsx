@@ -44,6 +44,9 @@ import {
   UserX,
   Palmtree,
   RefreshCw,
+  ChevronDown,
+  ChevronRight,
+  Zap,
 } from 'lucide-react'
 
 export default function EscalasPage() {
@@ -79,8 +82,10 @@ export default function EscalasPage() {
   // Modal Convocar Pros
   const [modalConvocar, setModalConvocar] = useState(false)
   const [selectedEscala, setSelectedEscala] = useState<EscalaRecord | null>(null)
+  const [selectedGrupoParaConvocar, setSelectedGrupoParaConvocar] = useState<any | null>(null)
   const [selectedProIds, setSelectedProIds] = useState<string[]>([])
   const [isSendingConvocacoes, setIsSendingConvocacoes] = useState(false)
+  const [gruposExpandidos, setGruposExpandidos] = useState<Record<string, boolean>>({})
 
   // Filtros de período e visualização
   const [filtroPeriodo, setFiltroPeriodo] = useState<
@@ -233,16 +238,26 @@ export default function EscalasPage() {
     }
   }, [])
 
-  // Filtragem e Ordenação por proximidade
-  // Regra:
-  // - "Esta semana": turnos da semana, do dia atual em diante (hojeStr até semanaFimStr)
-  // - "Hoje": data == hojeStr
-  // - "Este mês": do dia atual em diante neste mês (ou todo o mês)
-  // - "Personalizado": entre dataDe e dataAte
-  // - "Todos": todas as escalas
-  // Ordenação: do dia atual para frente (mais próximo primeiro, ascendente a partir de hoje),
-  // com turnos passados acessíveis ao final (ou via Todos / Personalizado)
-  const { escalasFiltradas, totalTurnosFiltrados, textoPeriodoResumo } = useMemo(() => {
+  // Agrupamento de escalas idênticas do mesmo posto, data e turno
+  // Tipagem interna para itens da listagem agrupada
+  interface EscalaAgrupadaItem {
+    id: string // grupo_postoId_data_turnoIni_turnoFim
+    chaveGrupo: string
+    isGrupoMultiVagas: boolean
+    totalVagas: number
+    vagasCobertas: number
+    escalas: EscalaRecord[]
+    // Para acesso direto às propriedades comuns
+    primeiraEscala: EscalaRecord
+    posto?: PostoRecord
+    data: string
+    turno_inicio: string
+    turno_fim: string
+    statusGeral: 'aberta' | 'convocada' | 'aceita' | 'coberta' | 'falta' | 'cancelada' | 'concluida'
+  }
+
+  // Filtragem, Ordenação e Agrupamento
+  const { gruposFiltrados, totalTurnosFiltrados, textoPeriodoResumo } = useMemo(() => {
     const { hojeStr, semanaInicioStr, semanaFimStr, mesInicioStr, mesFimStr } = periodosCalculados
 
     let textoResumo = 'em todos os períodos'
@@ -256,8 +271,6 @@ export default function EscalasPage() {
         if (dataStr !== hojeStr) return false
       } else if (filtroPeriodo === 'semana') {
         textoResumo = 'nesta semana'
-        // Mostrar turnos da semana atual do dia de hoje para frente
-        // (ou turnos da semana se o gestor olhar a semana: hojeStr <= dataStr <= semanaFimStr)
         if (dataStr < hojeStr || dataStr > semanaFimStr) return false
       } else if (filtroPeriodo === 'mes') {
         textoResumo = 'neste mês'
@@ -307,9 +320,7 @@ export default function EscalasPage() {
       return true
     })
 
-    // Ordenação:
-    // "do dia atual para frente (mais próximo primeiro, ascendente a partir de hoje),
-    // com turnos passados acessíveis ao final ou via filtro Todos/Personalizado"
+    // Ordenação do dia atual para frente
     filtradas.sort((a, b) => {
       const dataA = (a.data || '').slice(0, 10)
       const dataB = (b.data || '').slice(0, 10)
@@ -317,28 +328,86 @@ export default function EscalasPage() {
       const isFuturoA = dataA >= hojeStr
       const isFuturoB = dataB >= hojeStr
 
-      // Se um é futuro (hoje em diante) e outro é passado:
       if (isFuturoA && !isFuturoB) return -1
       if (!isFuturoA && isFuturoB) return 1
 
-      // Se ambos são futuros (>= hoje): ordem ascendente (mais próximo primeiro)
       if (isFuturoA && isFuturoB) {
         if (dataA !== dataB) return dataA.localeCompare(dataB)
         return (a.turno_inicio || '').localeCompare(b.turno_inicio || '')
       }
 
-      // Se ambos são passados (< hoje): ordem descendente (passado mais recente primeiro)
       if (dataA !== dataB) return dataB.localeCompare(dataA)
       return (b.turno_inicio || '').localeCompare(a.turno_inicio || '')
     })
 
+    // Agrupamento: mapear escalas idênticas do mesmo posto/dia/turno
+    const mapGrupos = new Map<string, EscalaRecord[]>()
+    for (const esc of filtradas) {
+      const d = (esc.data || '').slice(0, 10)
+      const chave = `${esc.posto}_${d}_${esc.turno_inicio}_${esc.turno_fim}`
+      if (!mapGrupos.has(chave)) {
+        mapGrupos.set(chave, [])
+      }
+      mapGrupos.get(chave)!.push(esc)
+    }
+
+    const listaGrupos: EscalaAgrupadaItem[] = []
+    for (const [chave, arrEscalas] of mapGrupos.entries()) {
+      const primeira = arrEscalas[0]
+      const posto = primeira.expand?.posto
+      // Total de vagas do grupo: ou o número de escalas criadas para o turno ou o campo vagas
+      const totalVagas = Math.max(arrEscalas.length, primeira.vagas || 1)
+      const isMulti = totalVagas > 1 || arrEscalas.length > 1
+
+      // Contar quantas escalas já têm pro aceito/coberto
+      let cobertas = 0
+      for (const esc of arrEscalas) {
+        const convs = convocacoes.filter((c) => c.escala === esc.id)
+        const temAceito = convs.some((c) => c.status === 'aceita' || c.status === 'coberta')
+        if (
+          temAceito ||
+          esc.status === 'aceita' ||
+          esc.status === 'coberta' ||
+          esc.status === 'concluida'
+        ) {
+          cobertas++
+        }
+      }
+
+      let stGeral: EscalaAgrupadaItem['statusGeral'] = 'aberta'
+      if (cobertas >= totalVagas && totalVagas > 0) {
+        stGeral = 'aceita'
+      } else if (cobertas > 0) {
+        stGeral = 'convocada'
+      } else {
+        const algumConvocado = arrEscalas.some((e) => e.status === 'convocada')
+        if (algumConvocado) stGeral = 'convocada'
+      }
+
+      listaGrupos.push({
+        id: chave,
+        chaveGrupo: chave,
+        isGrupoMultiVagas: isMulti,
+        totalVagas,
+        vagasCobertas: cobertas,
+        escalas: arrEscalas,
+        primeiraEscala: primeira,
+        posto,
+        data: (primeira.data || '').slice(0, 10),
+        turno_inicio: primeira.turno_inicio,
+        turno_fim: primeira.turno_fim,
+        statusGeral: stGeral,
+      })
+    }
+
     return {
-      escalasFiltradas: filtradas,
+      gruposFiltrados: listaGrupos,
       totalTurnosFiltrados: filtradas.length,
       textoPeriodoResumo: textoResumo,
     }
   }, [
     escalas,
+    convocacoes,
     periodosCalculados,
     filtroPeriodo,
     dataDeCustom,
@@ -526,6 +595,7 @@ export default function EscalasPage() {
             data: isoDate,
             turno_inicio: horaIni,
             turno_fim: horaFim,
+            vagas: Math.max(1, postoAlvo.vagas || 1),
             status: 'convocada',
             multa_aplicada: false,
             valor_diaria: valorDiariaCalculada,
@@ -744,6 +814,8 @@ export default function EscalasPage() {
     const end = (postoObj?.endereco as any) || {}
     const proFixoId = postoObj?.pro_fixo
     const proFixoObj = pros.find((p) => p.id === proFixoId)
+    // Vagas por turno: se posto tiver vagas > 1 (especialmente postos freelancers com múltiplas vagas)
+    const vagasPorTurno = Math.max(1, postoObj?.vagas || 1)
 
     let criadas = 0
     let convsDisparadas = 0
@@ -772,32 +844,34 @@ export default function EscalasPage() {
           regraCalculada = c.regra
         }
 
-        // Criar registro na coleção 'escalas'
-        // Formatar para início do dia ISO UTC
+        // Criar N registros de escala para o mesmo dia/turno conforme o número de vagas
         const isoDate = new Date(`${d}T12:00:00Z`).toISOString()
 
-        const novaEscala = await pb.collection('escalas').create<EscalaRecord>({
-          posto: selectedPostoId,
-          data: isoDate,
-          turno_inicio: turnoInicio,
-          turno_fim: turnoFim,
-          status: proFixoId ? 'convocada' : 'aberta',
-          multa_aplicada: false,
-          valor_diaria: vDiaria,
-        })
-        criadas++
-
-        // 2. Se o posto tem pro fixa, a convocação vai DIRETA e PRIORITÁRIA para ela
-        if (proFixoId && proFixoObj) {
-          await pb.collection('convocacoes').create({
-            escala: novaEscala.id,
-            pro: proFixoId,
-            status: 'pendente',
+        for (let vagaIdx = 0; vagaIdx < vagasPorTurno; vagaIdx++) {
+          const novaEscala = await pb.collection('escalas').create<EscalaRecord>({
+            posto: selectedPostoId,
+            data: isoDate,
+            turno_inicio: turnoInicio,
+            turno_fim: turnoFim,
+            vagas: vagasPorTurno,
+            status: proFixoId && vagaIdx === 0 ? 'convocada' : 'aberta',
+            multa_aplicada: false,
             valor_diaria: vDiaria,
-            regra_aplicada: regraCalculada,
-            data_convocacao: nowIso,
           })
-          convsDisparadas++
+          criadas++
+
+          // 2. Se o posto tem pro fixa, a primeira vaga é designada prioritariamente para ela
+          if (proFixoId && proFixoObj && vagaIdx === 0) {
+            await pb.collection('convocacoes').create({
+              escala: novaEscala.id,
+              pro: proFixoId,
+              status: 'pendente',
+              valor_diaria: vDiaria,
+              regra_aplicada: regraCalculada,
+              data_convocacao: nowIso,
+            })
+            convsDisparadas++
+          }
         }
       }
 
@@ -835,8 +909,23 @@ export default function EscalasPage() {
 
   const openConvocarModal = (escala: EscalaRecord) => {
     setSelectedEscala(escala)
+    setSelectedGrupoParaConvocar(null)
     setSelectedProIds([])
     setModalConvocar(true)
+  }
+
+  const openConvocarGrupoModal = (grupo: any) => {
+    setSelectedGrupoParaConvocar(grupo)
+    setSelectedEscala(grupo.primeiraEscala)
+    setSelectedProIds([])
+    setModalConvocar(true)
+  }
+
+  const toggleExpandirGrupo = (grupoId: string) => {
+    setGruposExpandidos((prev) => ({
+      ...prev,
+      [grupoId]: !prev[grupoId],
+    }))
   }
 
   const handleToggleProSelection = (proId: string) => {
@@ -844,6 +933,103 @@ export default function EscalasPage() {
       setSelectedProIds(selectedProIds.filter((id) => id !== proId))
     } else {
       setSelectedProIds([...selectedProIds, proId])
+    }
+  }
+
+  // Convocar elegíveis restantes até preencher o total necessário
+  const handleConvocarAtePreencher = async (grupo: any) => {
+    // Escalas abertas no grupo que ainda não têm pro aceito
+    const escalasAbertas = grupo.escalas.filter((esc: EscalaRecord) => {
+      const convs = convocacoes.filter((c) => c.escala === esc.id)
+      return (
+        !convs.some((c) => c.status === 'aceita' || c.status === 'coberta') &&
+        esc.status !== 'aceita' &&
+        esc.status !== 'coberta'
+      )
+    })
+
+    const vagasNecessarias = escalasAbertas.length
+    if (vagasNecessarias === 0) {
+      toast({
+        title: 'Turno já totalmente coberto',
+        description: 'Todas as vagas deste grupo já foram preenchidas.',
+      })
+      return
+    }
+
+    // Identificar todos os pros já convocados em qualquer escala deste grupo
+    const escalaIdsDoGrupo = grupo.escalas.map((e: EscalaRecord) => e.id)
+    const proIdsJaConvocados = new Set(
+      convocacoes.filter((c) => escalaIdsDoGrupo.includes(c.escala)).map((c) => c.pro),
+    )
+
+    // Pros elegíveis (ativos ou teste, exceto já convocados neste grupo)
+    const proFixoId = grupo.posto?.pro_fixo
+    const elegiveis = pros.filter(
+      (p) =>
+        (p.status === 'ativo' || p.status === 'teste') &&
+        p.id !== proFixoId &&
+        !proIdsJaConvocados.has(p.id),
+    )
+
+    if (elegiveis.length === 0) {
+      toast({
+        title: 'Nenhum profissional elegível restante',
+        description: 'Todos os profissionais ativos já foram convocados para este grupo.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // Selecionar os elegíveis necessários (pelo menos as vagas necessárias, ou quantos houver)
+    const candidatos = elegiveis.slice(0, vagasNecessarias)
+    const now = new Date().toISOString()
+    let disparadas = 0
+
+    try {
+      for (let i = 0; i < candidatos.length; i++) {
+        const proObj = candidatos[i]
+        const escalaAlvo = escalasAbertas[i % escalasAbertas.length]
+
+        let rule = 'convocação automática até preencher'
+        let val = escalaAlvo.valor_diaria || 180
+        if (proObj.status === 'teste') {
+          val = proObj.ajuda_custo || 50
+          rule = 'ajuda de custo (teste - preenchimento)'
+        } else if (proObj.valor_negociado) {
+          val = proObj.valor_negociado
+          rule = 'valor negociado (preenchimento)'
+        }
+
+        await pb.collection('convocacoes').create({
+          escala: escalaAlvo.id,
+          pro: proObj.id,
+          status: 'pendente',
+          valor_diaria: val,
+          regra_aplicada: rule,
+          data_convocacao: now,
+        })
+        disparadas++
+
+        if (escalaAlvo.status === 'aberta') {
+          await pb.collection('escalas').update(escalaAlvo.id, {
+            status: 'convocada',
+          })
+        }
+      }
+
+      toast({
+        title: 'Convocações disparadas!',
+        description: `${disparadas} elegíveis convocados automaticamente para preencher as vagas pendentes.`,
+      })
+      loadData()
+    } catch (err) {
+      console.error(err)
+      toast({
+        title: 'Erro ao convocar elegíveis',
+        description: 'Verifique os dados e tente novamente.',
+        variant: 'destructive',
+      })
     }
   }
 
@@ -859,13 +1045,29 @@ export default function EscalasPage() {
     setIsSendingConvocacoes(true)
     try {
       const now = new Date().toISOString()
+
+      // Se estamos convocando para um grupo multi-vagas, distribuir ou associar às escalas abertas do grupo
+      const escalasAlvo = selectedGrupoParaConvocar
+        ? selectedGrupoParaConvocar.escalas.filter((esc: EscalaRecord) => {
+            const convs = convocacoes.filter((c) => c.escala === esc.id)
+            return !convs.some((c) => c.status === 'aceita' || c.status === 'coberta')
+          })
+        : [selectedEscala]
+
+      const alvos = escalasAlvo.length > 0 ? escalasAlvo : [selectedEscala]
+
+      let idxEscala = 0
       for (const proId of selectedProIds) {
+        // Atribuir para uma das escalas abertas do grupo de forma distribuída
+        const escalaAtual = alvos[idxEscala % alvos.length]
+        idxEscala++
+
         // Checar se já tem convocação
-        const existing = convocacoes.find((c) => c.escala === selectedEscala.id && c.pro === proId)
+        const existing = convocacoes.find((c) => c.escala === escalaAtual.id && c.pro === proId)
         if (!existing) {
           const proObj = pros.find((p) => p.id === proId)
           let rule = 'tabela base'
-          let val = selectedEscala.valor_diaria || 180
+          let val = escalaAtual.valor_diaria || 180
           if (proObj?.status === 'teste') {
             val = proObj.ajuda_custo || 50
             rule = 'ajuda de custo (teste)'
@@ -875,20 +1077,21 @@ export default function EscalasPage() {
           }
 
           await pb.collection('convocacoes').create({
-            escala: selectedEscala.id,
+            escala: escalaAtual.id,
             pro: proId,
             status: 'pendente',
             valor_diaria: val,
             regra_aplicada: rule,
             data_convocacao: now,
           })
+
+          if (escalaAtual.status === 'aberta') {
+            await pb.collection('escalas').update(escalaAtual.id, {
+              status: 'convocada',
+            })
+          }
         }
       }
-
-      // Atualiza escala para convocada
-      await pb.collection('escalas').update(selectedEscala.id, {
-        status: 'convocada',
-      })
 
       toast({
         title: 'Convocações enviadas!',
@@ -1136,12 +1339,12 @@ export default function EscalasPage() {
         </CardContent>
       </Card>
 
-      {/* Lista de Escalas Filtradas */}
+      {/* Lista de Escalas Filtradas (Agrupadas para vagas múltiplas) */}
       {isLoading ? (
         <div className="flex justify-center py-12">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
         </div>
-      ) : escalasFiltradas.length === 0 ? (
+      ) : gruposFiltrados.length === 0 ? (
         <Card className="text-center py-12 border-dashed border-2 border-slate-200 bg-white">
           <CardContent className="space-y-3">
             <Calendar className="w-12 h-12 text-slate-300 mx-auto" />
@@ -1173,202 +1376,421 @@ export default function EscalasPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {escalasFiltradas.map((escala) => {
-            const posto = escala.expand?.posto
-            const convsDestaEscala = convocacoes.filter((c) => c.escala === escala.id)
-            const aceito = convsDestaEscala.find((c) => c.status === 'aceita')
-
-            let badgeVariant = 'bg-slate-100 text-slate-800'
-            if (escala.status === 'aceita') badgeVariant = 'bg-emerald-100 text-emerald-800'
-            if (escala.status === 'falta') badgeVariant = 'bg-red-100 text-red-800'
-            if (escala.status === 'convocada') badgeVariant = 'bg-amber-100 text-amber-800'
-
+          {gruposFiltrados.map((grupo) => {
+            const posto = grupo.posto
             const isPostoComFixa = !!posto?.pro_fixo
             const proFixoData = posto?.expand?.pro_fixo
 
+            // Se for vaga = 1 (não-grupo), mantém renderização individual idêntica
+            if (!grupo.isGrupoMultiVagas) {
+              const escala = grupo.primeiraEscala
+              const convsDestaEscala = convocacoes.filter((c) => c.escala === escala.id)
+              const aceito = convsDestaEscala.find((c) => c.status === 'aceita')
+
+              let badgeVariant = 'bg-slate-100 text-slate-800'
+              if (escala.status === 'aceita') badgeVariant = 'bg-emerald-100 text-emerald-800'
+              if (escala.status === 'falta') badgeVariant = 'bg-red-100 text-red-800'
+              if (escala.status === 'convocada') badgeVariant = 'bg-amber-100 text-amber-800'
+
+              return (
+                <Card
+                  key={escala.id}
+                  className={`border bg-white transition-shadow hover:shadow-sm ${
+                    isPostoComFixa
+                      ? 'border-l-4 border-l-primary border-slate-200'
+                      : 'border-slate-200'
+                  }`}
+                >
+                  <CardContent className="p-5">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className="bg-primary/5 text-primary border-primary/20 text-xs font-semibold"
+                          >
+                            {posto?.funcao || 'Posto'}
+                          </Badge>
+                          <Badge className={`${badgeVariant} text-xs uppercase tracking-wide`}>
+                            Status: {escala.status}
+                          </Badge>
+                          {escala.multa_aplicada && (
+                            <Badge className="bg-red-600 text-white text-xs">Multa Aplicada</Badge>
+                          )}
+
+                          {isPostoComFixa && (
+                            <Badge className="bg-primary text-primary-foreground text-xs font-medium flex items-center gap-1">
+                              <UserCheck className="w-3 h-3" />
+                              Posto c/ Profissional Fixa: {proFixoData?.name || 'Fixa vinculada'}
+                              {isAdmin && (
+                                <span>
+                                  {' '}
+                                  (
+                                  {posto?.tipo_remuneracao_fixa === 'por_hora'
+                                    ? `Por Hora - ${formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}/h`
+                                    : `Mensalista - ${formatCurrencyBRL(posto?.valor_remuneracao_fixa || 0)}/mês`}
+                                  )
+                                </span>
+                              )}
+                            </Badge>
+                          )}
+                        </div>
+
+                        <h3 className="text-lg font-bold text-slate-900 mt-1">
+                          {posto?.nome || 'Posto não especificado'}
+                        </h3>
+
+                        <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 pt-1">
+                          <span className="flex items-center gap-1 font-medium text-slate-700">
+                            <Calendar className="w-3.5 h-3.5 text-primary" />
+                            {formatDateBR(escala.data)}
+                          </span>
+                          <span className="flex items-center gap-1 font-medium text-slate-700">
+                            <Clock className="w-3.5 h-3.5 text-primary" />
+                            {escala.turno_inicio} às {escala.turno_fim} ({posto?.carga_horaria || 8}
+                            h)
+                          </span>
+                          {isAdmin && (
+                            <span>
+                              {posto?.tipo_remuneracao_fixa === 'mensal' && isPostoComFixa ? (
+                                <strong className="text-primary">
+                                  Salário Mensal (
+                                  {formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}/mês)
+                                </strong>
+                              ) : (
+                                <>
+                                  Remuneração Turno:{' '}
+                                  <strong className="text-slate-800">
+                                    {formatCurrencyBRL(escala.valor_diaria)}
+                                  </strong>
+                                </>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
+                        {isPostoComFixa && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleAbrirCoberturaPeriodo(posto?.id)}
+                            title="Abrir cobertura por período (férias/ausência da titular fixa)"
+                            className="border-amber-300 bg-amber-50/50 hover:bg-amber-100/60 text-amber-900 text-xs h-9"
+                          >
+                            <Palmtree className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                            Cobertura / Férias
+                          </Button>
+                        )}
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const proIdParaMsg = aceito?.pro || convsDestaEscala[0]?.pro || ''
+                            const convIdParaMsg = aceito?.id || convsDestaEscala[0]?.id || ''
+                            navigate(
+                              `/mensagens?escala=${escala.id}&convocacao=${convIdParaMsg}&pro=${proIdParaMsg}`,
+                            )
+                          }}
+                          className="text-primary border-primary/20 hover:bg-primary/5 text-xs h-9"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 mr-1.5 text-primary" />
+                          Mensagens
+                        </Button>
+
+                        {aceito ? (
+                          <div className="text-right bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs text-emerald-900">
+                            <div className="font-bold flex items-center gap-1 justify-end">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              Turno Coberto:
+                            </div>
+                            <div className="font-semibold text-slate-900 truncate max-w-[140px]">
+                              {aceito.expand?.pro?.name || 'Profissional'}
+                              {isPostoComFixa && aceito.pro === posto?.pro_fixo && (
+                                <span className="ml-1 text-[10px] text-primary font-bold">
+                                  (Fixa)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <Button
+                            onClick={() => openConvocarModal(escala)}
+                            className="font-medium text-xs h-9"
+                          >
+                            <Send className="w-3.5 h-3.5 mr-1.5" />
+                            Convocar ({convsDestaEscala.length})
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    {convsDestaEscala.length > 0 && (
+                      <div className="mt-4 pt-3 border-t border-slate-100">
+                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                          <span>Histórico de Convocações Deste Turno</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {convsDestaEscala.map((c) => {
+                            const isProFixoDestePosto = isPostoComFixa && c.pro === posto?.pro_fixo
+                            return (
+                              <div
+                                key={c.id}
+                                className={`flex items-center gap-2 border px-2.5 py-1 rounded text-xs ${
+                                  isProFixoDestePosto
+                                    ? 'bg-primary/5 border-primary/30 text-primary'
+                                    : 'bg-slate-50 border-slate-200 text-slate-700'
+                                }`}
+                              >
+                                <span className="font-semibold">
+                                  {c.expand?.pro?.name || 'Pro'}
+                                  {isProFixoDestePosto && ' (Fixa do Posto)'}
+                                </span>
+                                {isAdmin && (
+                                  <span className="text-slate-500">
+                                    {c.valor_diaria && c.valor_diaria > 0
+                                      ? `(${formatCurrencyBRL(c.valor_diaria)})`
+                                      : '(Fixo Mensal)'}
+                                  </span>
+                                )}
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    c.status === 'aceita'
+                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                      : c.status === 'recusada'
+                                        ? 'bg-rose-100 text-rose-800 border-rose-200'
+                                        : c.status === 'cancelada'
+                                          ? 'bg-slate-100 text-slate-600 border-slate-300'
+                                          : 'bg-amber-100 text-amber-800 border-amber-200'
+                                  }
+                                >
+                                  {c.status}
+                                </Badge>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )
+            }
+
+            // POSTOS COM MÚLTIPLAS VAGAS (ex.: Hotel Golden Park - 5 vagas)
+            // Agrupar numa única linha de grupo com contador "3/5 cobertas"
+            const isExpandido = !!gruposExpandidos[grupo.id]
+            const escalaIds = grupo.escalas.map((e) => e.id)
+            const todasConvsGrupo = convocacoes.filter((c) => escalaIds.includes(c.escala))
+            const prosAceitos = todasConvsGrupo.filter((c) => c.status === 'aceita')
+            const totalCobertas = grupo.vagasCobertas
+            const totalVagas = grupo.totalVagas
+            const isTotalmenteCoberto = totalCobertas >= totalVagas
+
             return (
               <Card
-                key={escala.id}
+                key={grupo.id}
                 className={`border bg-white transition-shadow hover:shadow-sm ${
-                  isPostoComFixa
-                    ? 'border-l-4 border-l-primary border-slate-200'
-                    : 'border-slate-200'
+                  isTotalmenteCoberto
+                    ? 'border-l-4 border-l-emerald-600 border-slate-200'
+                    : 'border-l-4 border-l-primary border-slate-200'
                 }`}
               >
                 <CardContent className="p-5">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
+                        {/* Destaque das Vagas Múltiplas */}
+                        <Badge className="bg-primary text-primary-foreground text-xs font-bold px-2.5 py-0.5">
+                          {totalVagas} vagas
+                        </Badge>
                         <Badge
                           variant="outline"
                           className="bg-primary/5 text-primary border-primary/20 text-xs font-semibold"
                         >
-                          {posto?.funcao || 'Posto'}
+                          {posto?.funcao || 'Função'}
                         </Badge>
-                        <Badge className={`${badgeVariant} text-xs uppercase tracking-wide`}>
-                          Status: {escala.status}
+                        {/* Contador de Cobertura */}
+                        <Badge
+                          className={`text-xs font-bold uppercase tracking-wide ${
+                            isTotalmenteCoberto
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              : totalCobertas > 0
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                : 'bg-slate-100 text-slate-800'
+                          }`}
+                        >
+                          {totalCobertas}/{totalVagas} cobertas
                         </Badge>
-                        {escala.multa_aplicada && (
-                          <Badge className="bg-red-600 text-white text-xs">Multa Aplicada</Badge>
-                        )}
-
-                        {/* Indicação visual de Posto com Pro Fixa */}
-                        {isPostoComFixa && (
-                          <Badge className="bg-primary text-primary-foreground text-xs font-medium flex items-center gap-1">
-                            <UserCheck className="w-3 h-3" />
-                            Posto c/ Profissional Fixa: {proFixoData?.name || 'Fixa vinculada'}
-                            {isAdmin && (
-                              <span>
-                                {' '}
-                                (
-                                {posto?.tipo_remuneracao_fixa === 'por_hora'
-                                  ? `Por Hora - ${formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}/h`
-                                  : `Mensalista - ${formatCurrencyBRL(posto?.valor_remuneracao_fixa || 0)}/mês`}
-                                )
-                              </span>
-                            )}
-                          </Badge>
-                        )}
+                        <span className="text-xs text-slate-500 font-medium">
+                          ({totalVagas - totalCobertas}{' '}
+                          {totalVagas - totalCobertas === 1 ? 'vaga restante' : 'vagas restantes'})
+                        </span>
                       </div>
 
+                      {/* Título unificado do grupo: "5 vagas — Hotel Golden Park — 08/10" */}
                       <h3 className="text-lg font-bold text-slate-900 mt-1">
-                        {posto?.nome || 'Posto não especificado'}
+                        {totalVagas} vagas — {posto?.nome || 'Posto'} — {formatDateBR(grupo.data)}
                       </h3>
 
                       <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 pt-1">
                         <span className="flex items-center gap-1 font-medium text-slate-700">
-                          <Calendar className="w-3.5 h-3.5 text-primary" />
-                          {formatDateBR(escala.data)}
-                        </span>
-                        <span className="flex items-center gap-1 font-medium text-slate-700">
                           <Clock className="w-3.5 h-3.5 text-primary" />
-                          {escala.turno_inicio} às {escala.turno_fim} ({posto?.carga_horaria || 8}h)
+                          {grupo.turno_inicio} às {grupo.turno_fim} ({posto?.carga_horaria || 8}h)
                         </span>
                         {isAdmin && (
                           <span>
-                            {posto?.tipo_remuneracao_fixa === 'mensal' && isPostoComFixa ? (
-                              <strong className="text-primary">
-                                Salário Mensal (
-                                {formatCurrencyBRL(posto.valor_remuneracao_fixa || 0)}
-                                /mês)
-                              </strong>
-                            ) : (
-                              <>
-                                Remuneração Turno:{' '}
-                                <strong className="text-slate-800">
-                                  {formatCurrencyBRL(escala.valor_diaria)}
-                                </strong>
-                              </>
+                            Remuneração Turno:{' '}
+                            <strong className="text-slate-800">
+                              {formatCurrencyBRL(grupo.primeiraEscala.valor_diaria)}/vaga
+                            </strong>{' '}
+                            (Total grupo:{' '}
+                            {formatCurrencyBRL(
+                              (grupo.primeiraEscala.valor_diaria || 0) * totalVagas,
                             )}
+                            )
+                          </span>
+                        )}
+                        {prosAceitos.length > 0 && (
+                          <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            {prosAceitos.map((c) => c.expand?.pro?.name || 'Pro').join(', ')}
                           </span>
                         )}
                       </div>
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
-                      {isPostoComFixa && (
+                      {/* Botão de Preenchimento Automático: Convocar Elegíveis até Preencher */}
+                      {!isTotalmenteCoberto && (
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleAbrirCoberturaPeriodo(posto?.id)}
-                          title="Abrir cobertura por período (férias/ausência da titular fixa)"
-                          className="border-amber-300 bg-amber-50/50 hover:bg-amber-100/60 text-amber-900 text-xs h-9"
+                          onClick={() => handleConvocarAtePreencher(grupo)}
+                          title="Convocar automaticamente todos os profissionais elegíveis restantes até completar as vagas abertas"
+                          className="bg-amber-50 hover:bg-amber-100/80 text-amber-900 border-amber-300 text-xs h-9 font-medium"
                         >
-                          <Palmtree className="w-3.5 h-3.5 mr-1 text-amber-600" />
-                          Cobertura / Férias
+                          <Zap className="w-3.5 h-3.5 mr-1 text-amber-600 fill-amber-600" />
+                          Convocar elegíveis até preencher
                         </Button>
                       )}
 
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const proIdParaMsg = aceito?.pro || convsDestaEscala[0]?.pro || ''
-                          const convIdParaMsg = aceito?.id || convsDestaEscala[0]?.id || ''
-                          navigate(
-                            `/mensagens?escala=${escala.id}&convocacao=${convIdParaMsg}&pro=${proIdParaMsg}`,
-                          )
-                        }}
-                        className="text-primary border-primary/20 hover:bg-primary/5 text-xs h-9"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5 mr-1.5 text-primary" />
-                        Mensagens
-                      </Button>
-
-                      {aceito ? (
-                        <div className="text-right bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs text-emerald-900">
-                          <div className="font-bold flex items-center gap-1 justify-end">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                            Turno Coberto:
-                          </div>
-                          <div className="font-semibold text-slate-900 truncate max-w-[140px]">
-                            {aceito.expand?.pro?.name || 'Profissional'}
-                            {isPostoComFixa && aceito.pro === posto?.pro_fixo && (
-                              <span className="ml-1 text-[10px] text-primary font-bold">
-                                (Fixa)
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
+                      {/* Botão Convocar Pros para o grupo */}
+                      {!isTotalmenteCoberto && (
                         <Button
-                          onClick={() => openConvocarModal(escala)}
+                          onClick={() => openConvocarGrupoModal(grupo)}
                           className="font-medium text-xs h-9"
                         >
                           <Send className="w-3.5 h-3.5 mr-1.5" />
-                          Convocar ({convsDestaEscala.length})
+                          Convocar ({todasConvsGrupo.length})
                         </Button>
                       )}
+
+                      {/* Botão Expandir / Recolher Escalas Individuais */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleExpandirGrupo(grupo.id)}
+                        className="text-xs text-slate-600 hover:text-slate-900 h-9"
+                      >
+                        {isExpandido ? (
+                          <>
+                            <ChevronDown className="w-4 h-4 mr-1 text-primary" />
+                            Recolher ({grupo.escalas.length})
+                          </>
+                        ) : (
+                          <>
+                            <ChevronRight className="w-4 h-4 mr-1 text-primary" />
+                            Ver Vagas ({grupo.escalas.length})
+                          </>
+                        )}
+                      </Button>
                     </div>
                   </div>
 
-                  {/* Lista de convocados */}
-                  {convsDestaEscala.length > 0 && (
-                    <div className="mt-4 pt-3 border-t border-slate-100">
-                      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
-                        <span>Histórico de Convocações Deste Turno</span>
-                        {isPostoComFixa && (
-                          <span className="text-[11px] text-primary font-normal">
-                            Prioridade da fixa: se recusar/faltar, reoferta automaticamente para
-                            freelancers.
-                          </span>
-                        )}
+                  {/* Detalhes Expandidos: Escalas Individuais e suas convocações */}
+                  {isExpandido && (
+                    <div className="mt-4 pt-4 border-t border-slate-200 space-y-3 bg-slate-50/70 p-3.5 rounded-lg">
+                      <div className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                        <span>
+                          Escalas e Vagas Individuais deste Grupo ({grupo.escalas.length} vagas)
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-normal">
+                          Cada aceite ocupa 1 vaga. Ao completar {totalVagas}/{totalVagas}, as
+                          pendentes são canceladas automaticamente.
+                        </span>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        {convsDestaEscala.map((c) => {
-                          const isProFixoDestePosto = isPostoComFixa && c.pro === posto?.pro_fixo
+
+                      <div className="space-y-2">
+                        {grupo.escalas.map((subEscala, idx) => {
+                          const convsDaSub = convocacoes.filter((c) => c.escala === subEscala.id)
+                          const subAceito = convsDaSub.find((c) => c.status === 'aceita')
+
                           return (
                             <div
-                              key={c.id}
-                              className={`flex items-center gap-2 border px-2.5 py-1 rounded text-xs ${
-                                isProFixoDestePosto
-                                  ? 'bg-primary/5 border-primary/30 text-primary'
-                                  : 'bg-slate-50 border-slate-200 text-slate-700'
-                              }`}
+                              key={subEscala.id}
+                              className="bg-white p-3 rounded-md border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
                             >
-                              <span className="font-semibold">
-                                {c.expand?.pro?.name || 'Pro'}
-                                {isProFixoDestePosto && ' (Fixa do Posto)'}
-                              </span>
-                              {isAdmin && (
-                                <span className="text-slate-500">
-                                  {c.valor_diaria && c.valor_diaria > 0
-                                    ? `(${formatCurrencyBRL(c.valor_diaria)})`
-                                    : '(Fixo Mensal)'}
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                                  Vaga #{idx + 1}
                                 </span>
-                              )}
-                              <Badge
-                                variant="outline"
-                                className={
-                                  c.status === 'aceita'
-                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                                    : c.status === 'recusada'
-                                      ? 'bg-rose-100 text-rose-800 border-rose-200'
-                                      : 'bg-amber-100 text-amber-800 border-amber-200'
-                                }
-                              >
-                                {c.status}
-                              </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    subAceito
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                      : subEscala.status === 'convocada'
+                                        ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                        : 'bg-slate-50 text-slate-600'
+                                  }
+                                >
+                                  {subAceito ? 'Coberta' : subEscala.status}
+                                </Badge>
+                                {subAceito ? (
+                                  <span className="font-semibold text-emerald-900">
+                                    Profissional: {subAceito.expand?.pro?.name || 'Pro'}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-500">
+                                    {convsDaSub.length} convocação(ões) ativa(s)
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {convsDaSub.length > 0 && (
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {convsDaSub.map((c) => (
+                                      <span
+                                        key={c.id}
+                                        className={`px-2 py-0.5 rounded text-[11px] border ${
+                                          c.status === 'aceita'
+                                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold'
+                                            : c.status === 'cancelada'
+                                              ? 'bg-slate-100 text-slate-500 border-slate-200 line-through'
+                                              : 'bg-amber-50 text-amber-800 border-amber-200'
+                                        }`}
+                                      >
+                                        {c.expand?.pro?.name || 'Pro'} ({c.status})
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {!subAceito && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => openConvocarModal(subEscala)}
+                                    className="h-7 text-xs"
+                                  >
+                                    Convocar
+                                  </Button>
+                                )}
+                              </div>
                             </div>
                           )
                         })}
@@ -1800,10 +2222,15 @@ export default function EscalasPage() {
       <Dialog open={modalConvocar} onOpenChange={setModalConvocar}>
         <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Convocar Profissionais Elegíveis</DialogTitle>
+            <DialogTitle>
+              {selectedGrupoParaConvocar
+                ? `Convocar Profissionais — ${selectedGrupoParaConvocar.totalVagas} Vagas (${selectedGrupoParaConvocar.posto?.nome || 'Posto'})`
+                : 'Convocar Profissionais Elegíveis'}
+            </DialogTitle>
             <DialogDescription>
-              Apenas profissionais cadastrados com documentos validados, status ativo ou teste podem
-              ser convocados.
+              {selectedGrupoParaConvocar
+                ? `Selecione quantos profissionais quiser. Cada aceite preenche 1 vaga do grupo. Quando as ${selectedGrupoParaConvocar.totalVagas} vagas forem atingidas, os convites restantes serão cancelados com aviso aos profissionais.`
+                : 'Apenas profissionais cadastrados com documentos validados, status ativo ou teste podem ser convocados.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -1811,17 +2238,25 @@ export default function EscalasPage() {
             <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-xs flex justify-between items-center">
               <div>
                 <div className="font-bold text-slate-800">
-                  {selectedEscala?.expand?.posto?.nome}
+                  {selectedGrupoParaConvocar
+                    ? `${selectedGrupoParaConvocar.totalVagas} Vagas — ${selectedGrupoParaConvocar.posto?.nome}`
+                    : selectedEscala?.expand?.posto?.nome}
                 </div>
                 <div className="text-slate-500">
                   Data: {formatDateBR(selectedEscala?.data)} ({selectedEscala?.turno_inicio} às{' '}
                   {selectedEscala?.turno_fim})
+                  {selectedGrupoParaConvocar && (
+                    <span className="ml-2 font-semibold text-primary">
+                      &bull; {selectedGrupoParaConvocar.vagasCobertas}/
+                      {selectedGrupoParaConvocar.totalVagas} cobertas
+                    </span>
+                  )}
                 </div>
               </div>
               {isAdmin && (
                 <div className="text-right">
                   <span className="text-primary font-bold">
-                    {formatCurrencyBRL(selectedEscala?.valor_diaria)}
+                    {formatCurrencyBRL(selectedEscala?.valor_diaria)}/diária
                   </span>
                 </div>
               )}

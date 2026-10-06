@@ -178,7 +178,12 @@ export default function ConvocacoesPage() {
   }
 
   const filteredConvocacoes = convocacoes.filter((c) => {
-    if (activeTab === 'pendentes') return c.status === 'pendente'
+    if (activeTab === 'pendentes') {
+      return (
+        c.status === 'pendente' ||
+        (c.status === 'cancelada' && c.regra_aplicada === 'Vaga já preenchida')
+      )
+    }
     return c.status === 'aceita' || c.status === 'falta'
   })
 
@@ -435,7 +440,17 @@ export default function ConvocacoesPage() {
 
                   {/* Ações */}
                   <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
-                    {conv.status === 'pendente' ? (
+                    {conv.status === 'cancelada' && conv.regra_aplicada === 'Vaga já preenchida' ? (
+                      <div className="w-full flex items-center justify-between bg-slate-100 text-slate-700 border border-slate-200 p-2.5 rounded-lg text-xs">
+                        <span className="flex items-center gap-1.5 font-semibold text-slate-600">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                          Vaga já preenchida
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Outro profissional confirmou primeiro
+                        </span>
+                      </div>
+                    ) : conv.status === 'pendente' ? (
                       <div className="flex items-center justify-between gap-2">
                         <Button
                           variant="outline"
