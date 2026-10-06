@@ -32,7 +32,7 @@ export interface CadastrarProResult {
 }
 
 export type ReenviarConviteOutcome = {
-  type: 'access_link' | 'verification_link'
+  type: 'access_link' | 'first_access_link' | 'verification_link'
   message: string
 }
 
@@ -230,30 +230,30 @@ export async function reenviarConvitePro(
     }
   }
 
-  // Se não tem confirmação de verificado, tenta primeiro requestVerification
+  // Se o pro ainda não é verificado (verified = false), reenviamos o link de definição de senha / primeiro acesso,
+  // e de forma complementar garantimos a solicitação de verificação em segundo plano.
   try {
-    await pb.collection('users').requestVerification(cleanEmail)
-    return {
-      type: 'verification_link',
-      message: `Link de ativação e verificação enviado novamente para ${cleanEmail}.`,
-    }
-  } catch (verifErr: any) {
-    const errMsg = (
-      verifErr?.data?.data?.email?.message ||
-      verifErr?.data?.message ||
-      verifErr?.message ||
-      ''
-    ).toLowerCase()
-
-    // Se falhou por já estar verificado ou erro similar, tenta link de acesso
+    await pb.collection('users').requestPasswordReset(cleanEmail)
+    // Tentar também verificação como best-effort
     try {
-      await pb.collection('users').requestPasswordReset(cleanEmail)
+      await pb.collection('users').requestVerification(cleanEmail)
+    } catch {
+      /* intentionally ignored */
+    }
+
+    return {
+      type: 'first_access_link',
+      message: `Link de primeiro acesso para criação de senha enviado para ${cleanEmail}.`,
+    }
+  } catch (resetErr: any) {
+    // Se o reset falhar, tenta requestVerification como fallback
+    try {
+      await pb.collection('users').requestVerification(cleanEmail)
       return {
-        type: 'access_link',
-        message: `Pro já verificado. Link de acesso enviado para ${cleanEmail}.`,
+        type: 'verification_link',
+        message: `Link de verificação e ativação enviado para ${cleanEmail}.`,
       }
-    } catch (resetErr: any) {
-      // Ambas falharam de verdade: mostrar erro com mensagem real do backend
+    } catch (verifErr: any) {
       const finalMsg =
         resetErr?.data?.data?.email?.message ||
         resetErr?.data?.message ||

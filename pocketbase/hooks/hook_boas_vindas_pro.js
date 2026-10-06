@@ -110,31 +110,61 @@ onRecordAfterCreateSuccess((e) => {
     } catch (_) {}
 
     const plataformaUrl = 'https://facilities-b2b-convocacao-ae810.goskip.app'
+    const isVerified = record.verified()
+
+    let resetToken = ''
+    if (!isVerified) {
+      try {
+        resetToken = record.newPasswordResetToken()
+      } catch (tokErr) {
+        console.log('Aviso ao gerar token de reset para pro:', tokErr)
+      }
+    }
+
+    const emailSubject =
+      !isVerified && resetToken
+        ? `[${senderName}] Crie seu acesso à plataforma`
+        : `[${senderName}] Boas-vindas! Seu cadastro de Profissional foi realizado`
+
+    const buttonUrl =
+      !isVerified && resetToken
+        ? `${plataformaUrl}/reset-password?token=${encodeURIComponent(resetToken)}`
+        : `${plataformaUrl}/login`
+
+    const buttonLabel = !isVerified && resetToken ? 'Criar meu acesso' : 'Acessar a plataforma'
+
+    const mensagemDestaque =
+      !isVerified && resetToken
+        ? '<p>Você foi cadastrado(a) pela equipe de gestão/RH. <strong>Clique no botão abaixo para criar sua senha e ativar seu acesso à plataforma.</strong></p>'
+        : '<p>Seu cadastro foi realizado com sucesso em nossa base de profissionais parceiros pela equipe de gestão/RH.</p>'
+
+    const notaRodape =
+      !isVerified && resetToken
+        ? '<p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 16px;">Este link de primeiro acesso é individual e seguro. Caso expire, utilize a opção "Esqueci minha senha" na tela de login.</p>'
+        : '<p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 16px;">Acesse com seu e-mail cadastrado e senha. Caso precise redefinir sua senha, utilize a opção "Esqueci minha senha" no login.</p>'
 
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 10px; background-color: #ffffff;">
         <div style="background-color: ${corPrimaria}; color: #ffffff; padding: 22px; border-radius: 8px; text-align: center;">
           <h2 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px;">${senderName}</h2>
-          <p style="margin: 6px 0 0 0; font-size: 14px; opacity: 0.95;">Bem-vindo(a) à plataforma de facilities!</p>
+          <p style="margin: 6px 0 0 0; font-size: 14px; opacity: 0.95;">${!isVerified && resetToken ? 'Primeiro Acesso do Profissional' : 'Bem-vindo(a) à plataforma de facilities!'}</p>
         </div>
         <div style="padding: 24px 4px; color: #334155; font-size: 15px; line-height: 1.6;">
           <p style="margin-top: 0;">Olá, <strong>${proName}</strong>!</p>
-          <p>Seu cadastro foi realizado com sucesso em nossa base de profissionais parceiros pela equipe de gestão/RH.</p>
+          ${mensagemDestaque}
           <div style="background-color: #f8fafc; border-left: 4px solid ${corPrimaria}; padding: 16px; margin: 20px 0; border-radius: 6px;">
             <p style="margin: 0;"><strong>E-mail de acesso:</strong> ${proEmail}</p>
             <p style="margin: 8px 0 0 0;"><strong>Função(ões):</strong> ${funcoesTexto}</p>
             <p style="margin: 8px 0 0 0;"><strong>Status inicial:</strong> Em avaliação / Gate de Documentação</p>
           </div>
           <p>Seus documentos e conformidade serão verificados pelo RH para que você seja habilitado(a) e comece a receber convocações para escalas operacionais de trabalho.</p>
-          <p style="margin-bottom: 24px; font-size: 14px; color: #64748b;">Acesse a plataforma a qualquer momento para acompanhar suas convocações, escalas confirmadas e extrato de repasses.</p>
+          <p style="margin-bottom: 24px; font-size: 14px; color: #64748b;">Pela plataforma você acompanha suas convocações em tempo real, escalas confirmadas, registro de ponto e extrato de repasses.</p>
           <div style="text-align: center; margin: 28px 0;">
-            <a href="${plataformaUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: ${corPrimaria}; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-              Acessar a plataforma
+            <a href="${buttonUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: ${corPrimaria}; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+              ${buttonLabel}
             </a>
           </div>
-          <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 16px;">
-            Caso seja o seu primeiro acesso, verifique também o e-mail de confirmação para cadastrar sua senha.
-          </p>
+          ${notaRodape}
         </div>
         <div style="border-top: 1px solid #e2e8f0; padding-top: 16px; font-size: 12px; color: #94a3b8; text-align: center;">
           Mensagem automática gerada pelo sistema ${senderName}.
@@ -145,7 +175,7 @@ onRecordAfterCreateSuccess((e) => {
     const mailer = new MailerMessage({
       from: { address: senderEmail, name: senderName },
       to: [{ address: proEmail }],
-      subject: `[${senderName}] Boas-vindas! Seu cadastro de Profissional foi realizado`,
+      subject: emailSubject,
       html: html,
     })
 

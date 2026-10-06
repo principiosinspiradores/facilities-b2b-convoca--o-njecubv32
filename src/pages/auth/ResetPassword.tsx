@@ -51,15 +51,30 @@ export default function ResetPasswordPage() {
     try {
       await pb.collection('users').confirmPasswordReset(token, password, passwordConfirm)
       toast({
-        title: 'Senha redefinida com sucesso!',
-        description: 'Você já pode acessar sua conta com a nova senha.',
+        title: 'Senha criada com sucesso!',
+        description: 'Senha criada! Faça login com seu e-mail e senha.',
       })
-      navigate('/login')
-    } catch (err) {
+      navigate('/login', {
+        replace: true,
+        state: {
+          successMessage: 'Senha criada! Faça login com seu e-mail e senha.',
+        },
+      })
+    } catch (err: any) {
       console.error(err)
+      const errorMsg = err?.data?.message || err?.message || ''
+      const isExpiredOrInvalid =
+        !token ||
+        errorMsg.toLowerCase().includes('token') ||
+        errorMsg.toLowerCase().includes('invalid') ||
+        errorMsg.toLowerCase().includes('expired') ||
+        err?.status === 400
+
       toast({
-        title: 'Erro ao redefinir senha',
-        description: 'Verifique se o link não expirou.',
+        title: 'Link expirado ou inválido',
+        description: isExpiredOrInvalid
+          ? 'Este link de primeiro acesso já foi utilizado ou expirou. Use a opção "Esqueci minha senha" na tela de login para gerar um novo link.'
+          : 'Não foi possível definir a senha. Tente novamente ou use "Esqueci minha senha".',
         variant: 'destructive',
       })
     } finally {
@@ -71,9 +86,9 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-slate-100/80">
       <Card className="w-full max-w-md border border-slate-200 shadow-xl bg-white">
         <CardHeader>
-          <CardTitle className="text-xl font-bold text-slate-900">Definir Nova Senha</CardTitle>
+          <CardTitle className="text-xl font-bold text-slate-900">Criar seu Acesso</CardTitle>
           <CardDescription>
-            Crie uma nova senha de no mínimo 8 caracteres para sua conta.
+            Defina sua senha de no mínimo 8 caracteres para ativar seu acesso à plataforma.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -112,13 +127,24 @@ export default function ResetPasswordPage() {
               </div>
             </div>
 
+            {!token && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800 space-y-1">
+                <p className="font-semibold">Nenhum token encontrado na URL.</p>
+                <p>
+                  Caso o link tenha expirado ou esteja incompleto, acesse a tela de login e clique
+                  em <strong>&quot;Esqueci a senha&quot;</strong> para receber um novo link no seu
+                  e-mail.
+                </p>
+              </div>
+            )}
+
             <Button
               type="submit"
               style={{ backgroundColor: corPrimaria }}
               className="w-full text-white font-semibold"
-              disabled={isLoading}
+              disabled={isLoading || !token}
             >
-              {isLoading ? 'Redefinindo...' : 'Salvar Nova Senha'}
+              {isLoading ? 'Salvando senha...' : 'Criar minha Senha e Ativar Acesso'}
             </Button>
           </form>
         </CardContent>

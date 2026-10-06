@@ -597,12 +597,15 @@ export default function GateProsPage() {
     setActionLoadingId(`invite-${pro.id}`)
     try {
       const outcome = await reenviarConvitePro(pro.email, pro.verified)
+      let desc = outcome.message
+      if (outcome.type === 'first_access_link') {
+        desc = `Link de primeiro acesso para criação de senha enviado para ${pro.email}.`
+      } else if (outcome.type === 'access_link') {
+        desc = `Link de acesso enviado com sucesso para ${pro.email}.`
+      }
       toast({
         title: 'Convite reenviado!',
-        description:
-          outcome.type === 'access_link'
-            ? `Link de acesso enviado com sucesso para ${pro.email}.`
-            : `Link de ativação e verificação enviado novamente para ${pro.email}.`,
+        description: desc,
       })
     } catch (err: any) {
       console.error(err)

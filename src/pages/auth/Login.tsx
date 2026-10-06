@@ -1,17 +1,19 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { toast } from '@/hooks/use-toast'
-import { Lock, Mail, ShieldAlert, ArrowRight } from 'lucide-react'
+import { Lock, Mail, ShieldAlert, ArrowRight, CheckCircle2 } from 'lucide-react'
 
 export default function LoginPage() {
   const { login } = useAuth()
   const { settings } = useSettings()
   const navigate = useNavigate()
+  const location = useLocation()
+  const successStateMessage = (location.state as any)?.successMessage
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -66,6 +68,13 @@ export default function LoginPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {successStateMessage && !errorMessage && (
+              <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{successStateMessage}</span>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
               {errorMessage && (
                 <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg flex items-center gap-2">
