@@ -48,7 +48,7 @@ const TIPO_EXCECAO_LABELS: Record<string, string> = {
   fim_semana: 'Fim de Semana',
   feriado: 'Feriado',
   teste: 'Teste',
-  camareira: 'Camareira',
+  camareira: 'Recorrente',
 }
 
 const TIPO_EXCECAO_BADGES: Record<string, string> = {
@@ -1242,7 +1242,7 @@ export default function MotorPrecosPage() {
               <DialogDescription>
                 {editingExcecaoId
                   ? 'Atualize o posto, tipo, valor e período de vigência desta exceção.'
-                  : 'Vincule regras de treinamento, fins de semana, feriados, testes ou camareira a um ou mais postos.'}
+                  : 'Vincule regras de treinamento, fins de semana, feriados, testes ou recorrente a um ou mais postos.'}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -1405,7 +1405,7 @@ export default function MotorPrecosPage() {
                       <SelectItem value="fim_semana">Fim de Semana</SelectItem>
                       <SelectItem value="feriado">Feriado</SelectItem>
                       <SelectItem value="teste">Teste</SelectItem>
-                      <SelectItem value="camareira">Camareira</SelectItem>
+                      <SelectItem value="camareira">Recorrente</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
