@@ -48,6 +48,10 @@ import {
   CloudUpload,
   Smartphone,
   CheckCheck,
+  Share,
+  PlusSquare,
+  Sparkles,
+  Download,
 } from 'lucide-react'
 
 export default function PontoProPage() {
@@ -63,9 +67,17 @@ export default function PontoProPage() {
   )
   const [isSyncing, setIsSyncing] = useState(false)
 
-  // Suporte a instalação PWA
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
-  const [pwaInstalled, setPwaInstalled] = useState(false)
+  // Suporte avançado a instalação PWA (1 clique Android + guia iPhone)
+  const {
+    canInstallNatively,
+    isInstalled: pwaInstalledHook,
+    isIos,
+    promptInstall,
+  } = useInstallPrompt()
+  const [modalIosOpen, setModalIosOpen] = useState(false)
+  const [modalDesktopOpen, setModalDesktopOpen] = useState(false)
+  const [pwaInstalledLocal, setPwaInstalledLocal] = useState(false)
+  const pwaInstalled = pwaInstalledHook || pwaInstalledLocal
 
   // Modal de Registro
   const [modalRegistroOpen, setModalRegistroOpen] = useState(false)
@@ -93,51 +105,28 @@ export default function PontoProPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  // Monitorar evento beforeinstallprompt do PWA
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (e: any) => {
-      e.preventDefault()
-      setDeferredPrompt(e)
-    }
-
-    const handleAppInstalled = () => {
-      setPwaInstalled(true)
-      setDeferredPrompt(null)
-      toast({
-        title: 'App instalado com sucesso!',
-        description: 'Agora você pode acessar o ponto direto da tela inicial mesmo offline.',
-      })
-    }
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-    window.addEventListener('appinstalled', handleAppInstalled)
-
-    // Se já estiver rodando standalone (PWA instalado)
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      setPwaInstalled(true)
-    }
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-      window.removeEventListener('appinstalled', handleAppInstalled)
-    }
-  }, [])
-
   const handleInstallPwa = async () => {
-    if (!deferredPrompt) {
-      toast({
-        title: 'Como instalar',
-        description:
-          'No navegador do celular, toque no menu de opções (três pontos ou compartilhar) e selecione "Adicionar à tela de início".',
-      })
+    // 1. Se houver deferredPrompt disponível (Android / Chrome / Edge), instalação nativa em 1 clique
+    if (canInstallNatively) {
+      const outcome = await promptInstall()
+      if (outcome === 'accepted') {
+        setPwaInstalledLocal(true)
+        toast({
+          title: 'App instalado com sucesso!',
+          description: 'O ícone do Ponto Digital já está na sua tela inicial.',
+        })
+      }
       return
     }
-    deferredPrompt.prompt()
-    const { outcome } = await deferredPrompt.userChoice
-    if (outcome === 'accepted') {
-      setPwaInstalled(true)
+
+    // 2. Se estiver no iPhone / iPad (Safari) -> abrir guia visual ilustrado e simples
+    if (isIos) {
+      setModalIosOpen(true)
+      return
     }
-    setDeferredPrompt(null)
+
+    // 3. Em desktops ou outros navegadores -> instruções práticas
+    setModalDesktopOpen(true)
   }
 
   // Recarregar pontos pendentes do IndexedDB
@@ -724,16 +713,20 @@ export default function PontoProPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Botão de Instalar PWA */}
-          {!pwaInstalled && (
+          {/* Botão de Instalar PWA ou Selo de App Instalado */}
+          {pwaInstalled ? (
+            <Badge className="bg-emerald-50 text-emerald-800 border-emerald-300 gap-1.5 px-3 py-1.5 text-xs font-semibold">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              App instalado
+            </Badge>
+          ) : (
             <Button
               onClick={handleInstallPwa}
-              variant="outline"
               size="sm"
-              className="text-xs border-primary/30 text-primary hover:bg-primary/10"
+              className="text-xs bg-primary hover:bg-primary/90 text-white font-semibold shadow-xs"
             >
-              <Smartphone className="w-3.5 h-3.5 mr-1.5 text-primary" />
-              Instalar App PWA
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              Instalar App de Ponto
             </Button>
           )}
 
@@ -1735,6 +1728,126 @@ export default function PontoProPage() {
                 </Button>
               )
             })()}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL GUIA VISUAL: INSTALAÇÃO NO IPHONE / IPAD (SAFARI) */}
+      <Dialog open={modalIosOpen} onOpenChange={setModalIosOpen}>
+        <DialogContent className="max-w-md p-6 bg-white rounded-2xl">
+          <DialogHeader className="text-center sm:text-left space-y-2">
+            <div className="mx-auto sm:mx-0 w-12 h-12 rounded-2xl bg-teal-50 border border-teal-200 flex items-center justify-center text-primary shadow-xs">
+              <Smartphone className="w-6 h-6 text-teal-700" />
+            </div>
+            <DialogTitle className="text-lg font-bold text-slate-900">
+              Instalar Ponto Digital no iPhone
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Siga estes 3 passos simples no Safari para abrir o ponto com 1 toque na tela de início:
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-3">
+            {/* Passo 1 */}
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+              <div className="w-7 h-7 rounded-full bg-teal-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                1
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                  Toque em Compartilhar
+                  <span className="inline-flex items-center justify-center p-1 rounded bg-slate-200/80 text-blue-600">
+                    <Share className="w-3.5 h-3.5" />
+                  </span>
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Na barra inferior do Safari (no rodapé da tela do iPhone), toque no ícone com o quadrado e a seta para cima.
+                </p>
+              </div>
+            </div>
+
+            {/* Passo 2 */}
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+              <div className="w-7 h-7 rounded-full bg-teal-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                2
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                  Role e toque em "Adicionar à Tela de Início"
+                  <span className="inline-flex items-center justify-center p-1 rounded bg-slate-200/80 text-slate-700">
+                    <PlusSquare className="w-3.5 h-3.5" />
+                  </span>
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Role as opções da lista para baixo até encontrar e clicar em <strong className="text-slate-700 font-semibold">Adicionar à Tela de Início</strong>.
+                </p>
+              </div>
+            </div>
+
+            {/* Passo 3 */}
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+              <div className="w-7 h-7 rounded-full bg-teal-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                3
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-slate-800">
+                  Toque em <strong className="text-primary font-bold">"Adicionar"</strong> no canto superior direito
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Pronto! O ícone do Ponto Digital aparecerá como um app nativo na sua tela inicial, pronto para bater ponto offline e online.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              className="w-full bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold py-2"
+              onClick={() => setModalIosOpen(false)}
+            >
+              Entendi, vou adicionar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL GUIA DESKTOP / OUTROS NAVEGADORES */}
+      <Dialog open={modalDesktopOpen} onOpenChange={setModalDesktopOpen}>
+        <DialogContent className="max-w-md p-6 bg-white rounded-2xl">
+          <DialogHeader className="text-center sm:text-left space-y-2">
+            <div className="mx-auto sm:mx-0 w-12 h-12 rounded-2xl bg-teal-50 border border-teal-200 flex items-center justify-center text-primary shadow-xs">
+              <Smartphone className="w-6 h-6 text-teal-700" />
+            </div>
+            <DialogTitle className="text-lg font-bold text-slate-900">
+              Instalar Aplicativo de Ponto
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Instale o Ponto Digital diretamente no seu dispositivo:
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs text-slate-600">
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
+              <p className="font-semibold text-slate-800">No celular Android (Chrome):</p>
+              <p className="text-[11px] text-slate-500">
+                Abra este endereço no Google Chrome. Se a janela de 1 clique não abrir de imediato, toque nos 3 pontinhos do Chrome e selecione <strong className="text-slate-700">"Instalar aplicativo"</strong>.
+              </p>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
+              <p className="font-semibold text-slate-800">No computador (Chrome / Edge):</p>
+              <p className="text-[11px] text-slate-500">
+                Clique no ícone de instalação <strong className="text-slate-700">⊕</strong> na barra de endereços do seu navegador para fixar o app na área de trabalho.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              className="w-full bg-primary hover:bg-primary/90 text-white text-xs font-semibold"
+              onClick={() => setModalDesktopOpen(false)}
+            >
+              Fechar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

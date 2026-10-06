@@ -1,4 +1,5 @@
 /* Main entry point for the application - renders the root React component */
+import './hooks/useInstallPrompt'
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './main.css'
