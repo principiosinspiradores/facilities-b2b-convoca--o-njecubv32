@@ -221,12 +221,45 @@ export default function MinhasEscalasPage() {
                   )}
 
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                    <div>
-                      <div className="text-xs text-slate-400">Valor da diária</div>
-                      <div className="text-base font-bold text-primary">
-                        {formatCurrencyBRL(conv.valor_diaria)}
-                      </div>
-                    </div>
+                    {(() => {
+                      const isFixaDoPosto = posto?.pro_fixo === user?.id
+                      const forma = posto?.forma_de_contratacao || posto?.tipo_remuneracao_fixa
+                      const isMensalista =
+                        isFixaDoPosto && (forma === 'mensalista' || forma === 'mensal')
+                      const isHorista =
+                        isFixaDoPosto && (forma === 'horista' || forma === 'por_hora')
+
+                      if (isMensalista) {
+                        return (
+                          <div>
+                            <div className="text-xs text-slate-400">Tipo de Contrato</div>
+                            <Badge className="bg-primary/10 text-primary border border-primary/20 text-xs font-semibold mt-1">
+                              Contrato Mensal Fixo — Remuneração Salarial
+                            </Badge>
+                          </div>
+                        )
+                      }
+
+                      if (isHorista) {
+                        return (
+                          <div>
+                            <div className="text-xs text-slate-400">Tipo de Contrato</div>
+                            <Badge className="bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold mt-1">
+                              Contrato Horista
+                            </Badge>
+                          </div>
+                        )
+                      }
+
+                      return (
+                        <div>
+                          <div className="text-xs text-slate-400">Valor da diária</div>
+                          <div className="text-base font-bold text-primary">
+                            {formatCurrencyBRL(conv.valor_diaria)}
+                          </div>
+                        </div>
+                      )
+                    })()}
 
                     {conv.status === 'aceita' && (
                       <div className="flex items-center gap-2">

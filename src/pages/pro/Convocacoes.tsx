@@ -116,15 +116,29 @@ export default function ConvocacoesPage() {
   const handleAceitar = async (conv: ConvocacaoRecord) => {
     setActionLoading(conv.id)
     try {
+      const escala = conv.expand?.escala
+      const posto = escala?.expand?.posto
+      const isFixaDoPosto = posto?.pro_fixo === user?.id
+      const forma = posto?.forma_de_contratacao || posto?.tipo_remuneracao_fixa
+      const isMensalista = isFixaDoPosto && (forma === 'mensalista' || forma === 'mensal')
+      const isHorista = isFixaDoPosto && (forma === 'horista' || forma === 'por_hora')
+
       await pb.collection('convocacoes').update(conv.id, {
         status: 'aceita',
         valor_diaria: conv.valor_diaria,
         regra_aplicada: conv.regra_aplicada,
       })
 
+      let toastDesc = `Escrow de ${formatCurrencyBRL(conv.valor_diaria)} provisionado. Seu turno está confirmado.`
+      if (isMensalista) {
+        toastDesc = 'Contrato Mensal Fixo. Seu turno está confirmado na sua escala.'
+      } else if (isHorista) {
+        toastDesc = 'Contrato Horista. Seu turno está confirmado na sua escala.'
+      }
+
       toast({
         title: 'Convocação aceita com sucesso!',
-        description: `Escrow de ${formatCurrencyBRL(conv.valor_diaria)} provisionado. Seu turno está confirmado.`,
+        description: toastDesc,
       })
       loadConvocacoes()
     } catch (err) {
@@ -341,43 +355,18 @@ export default function ConvocacoesPage() {
                           isFixaDoPosto && (forma === 'horista' || forma === 'por_hora')
 
                         if (isMensalista) {
-                          const salMensal =
-                            posto?.salario_mensal !== undefined
-                              ? Number(posto.salario_mensal)
-                              : Number(posto?.valor_remuneracao_fixa || 0)
                           return (
-                            <div className="space-y-1">
-                              <Badge className="bg-primary/10 text-primary border border-primary/20 text-xs font-semibold py-1 px-2.5">
-                                Contrato Mensal Fixo — Remuneração Salarial
-                              </Badge>
-                              <div className="text-[11px] font-semibold text-slate-600">
-                                {formatCurrencyBRL(salMensal)}/mês (sem diária/escrow)
-                              </div>
-                            </div>
+                            <Badge className="bg-primary/10 text-primary border border-primary/20 text-xs font-semibold py-1 px-2.5">
+                              Contrato Mensal Fixo — Remuneração Salarial
+                            </Badge>
                           )
                         }
 
                         if (isHorista) {
-                          const vHora =
-                            posto?.valor_hora !== undefined
-                              ? Number(posto.valor_hora)
-                              : Number(posto?.valor_remuneracao_fixa || 0)
-                          const carga = posto?.carga_horaria || 8
                           return (
-                            <div>
-                              <div className="text-2xl font-black text-primary tabular-nums">
-                                {formatCurrencyBRL(conv.valor_diaria || vHora * carga)}
-                              </div>
-                              <div
-                                className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded inline-block mt-0.5 max-w-[210px] truncate"
-                                title={
-                                  conv.regra_aplicada ||
-                                  `profissional fixa horista (R$ ${vHora.toFixed(2)}/h × ${carga}h)`
-                                }
-                              >
-                                {conv.regra_aplicada || `R$ ${vHora.toFixed(2)}/h × ${carga}h`}
-                              </div>
-                            </div>
+                            <Badge className="bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold py-1 px-2.5">
+                              Contrato Horista
+                            </Badge>
                           )
                         }
 
@@ -479,17 +468,36 @@ export default function ConvocacoesPage() {
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                           Turno confirmado no seu calendário
                         </span>
-                        {posto?.pro_fixo === user?.id &&
-                        (posto.forma_de_contratacao === 'mensalista' ||
-                          posto.tipo_remuneracao_fixa === 'mensal') ? (
-                          <span className="text-[11px] bg-primary/10 text-primary px-2 py-0.5 rounded font-bold border border-primary/20">
-                            Contrato Mensal Fixo
-                          </span>
-                        ) : (
-                          <span className="text-[11px] bg-emerald-200/60 text-emerald-900 px-2 py-0.5 rounded font-bold">
-                            Escrow Provisionado
-                          </span>
-                        )}
+                        {(() => {
+                          const isFixaDoPosto = posto?.pro_fixo === user?.id
+                          const forma = posto?.forma_de_contratacao || posto?.tipo_remuneracao_fixa
+                          const isMensalista =
+                            isFixaDoPosto && (forma === 'mensalista' || forma === 'mensal')
+                          const isHorista =
+                            isFixaDoPosto && (forma === 'horista' || forma === 'por_hora')
+
+                          if (isMensalista) {
+                            return (
+                              <span className="text-[11px] bg-primary/10 text-primary px-2 py-0.5 rounded font-bold border border-primary/20">
+                                Contrato Mensal Fixo
+                              </span>
+                            )
+                          }
+
+                          if (isHorista) {
+                            return (
+                              <span className="text-[11px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-bold border border-blue-200">
+                                Contrato Horista
+                              </span>
+                            )
+                          }
+
+                          return (
+                            <span className="text-[11px] bg-emerald-200/60 text-emerald-900 px-2 py-0.5 rounded font-bold">
+                              Escrow Provisionado
+                            </span>
+                          )
+                        })()}
                       </div>
                     )}
 

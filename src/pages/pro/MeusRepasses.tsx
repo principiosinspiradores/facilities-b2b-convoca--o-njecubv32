@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/contexts/AuthContext'
-import { PayoutRecord, DisputaRecord } from '@/types/facilities'
+import { PayoutRecord, DisputaRecord, PostoRecord } from '@/types/facilities'
 import { formatCurrencyBRL, formatDateBR, formatDateTimeBR } from '@/lib/formatters'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -29,6 +29,7 @@ import {
 export default function MeusRepassesPage() {
   const { user } = useAuth()
   const [payouts, setPayouts] = useState<PayoutRecord[]>([])
+  const [postosFixosPro, setPostosFixosPro] = useState<PostoRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   // Modal de abertura de disputa
@@ -41,11 +42,20 @@ export default function MeusRepassesPage() {
     if (!user) return
     setIsLoading(true)
     try {
-      const records = await pb.collection('payouts').getFullList<PayoutRecord>({
-        filter: `pro = "${user.id}"`,
-        sort: '-created',
-        expand: 'escala,escala.posto',
-      })
+      const [records, postosFixos] = await Promise.all([
+        pb.collection('payouts').getFullList<PayoutRecord>({
+          filter: `pro = "${user.id}"`,
+          sort: '-created',
+          expand: 'escala,escala.posto',
+        }),
+        pb
+          .collection('postos')
+          .getFullList<PostoRecord>({
+            filter: `pro_fixo = "${user.id}"`,
+          })
+          .catch(() => []),
+      ])
+      setPostosFixosPro(postosFixos)
       setPayouts(records)
     } catch (err) {
       console.error(err)
@@ -108,26 +118,98 @@ export default function MeusRepassesPage() {
     }
   }
 
-  const totalRetido = payouts
+  const payoutsFreelancer = payouts.filter((pay) => {
+    const posto = pay.expand?.escala?.expand?.posto
+    const isFixaDoPosto = posto?.pro_fixo === user?.id
+    const forma = posto?.forma_de_contratacao || posto?.tipo_remuneracao_fixa
+    const isFixo =
+      isFixaDoPosto &&
+      (forma === 'mensalista' || forma === 'mensal' || forma === 'horista' || forma === 'por_hora')
+    return !isFixo
+  })
+
+  const totalRetido = payoutsFreelancer
     .filter((p) => p.status === 'retido')
     .reduce((acc, p) => acc + (p.valor || 0), 0)
-  const totalPago = payouts
+  const totalPago = payoutsFreelancer
     .filter((p) => p.status === 'pago')
     .reduce((acc, p) => acc + (p.valor || 0), 0)
-  const totalDisputa = payouts
+  const totalDisputa = payoutsFreelancer
     .filter((p) => p.status === 'disputa')
     .reduce((acc, p) => acc + (p.valor || 0), 0)
+
+  const postoMensalistaFixo = postosFixosPro.find(
+    (p) => p.forma_de_contratacao === 'mensalista' || p.tipo_remuneracao_fixa === 'mensal',
+  )
+  const postoHoristaFixo = postosFixosPro.find(
+    (p) => p.forma_de_contratacao === 'horista' || p.tipo_remuneracao_fixa === 'por_hora',
+  )
+  const isProFixo = Boolean(postoMensalistaFixo || postoHoristaFixo)
 
   return (
     <div className="space-y-6">
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Meus Repasses (Escrow Lógico)</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold text-slate-900">Meus Repasses (Escrow Lógico)</h1>
+            {postoMensalistaFixo && (
+              <Badge className="bg-primary/10 text-primary border border-primary/20 text-xs font-semibold py-1 px-2.5">
+                Contrato Mensal Fixo — Remuneração Salarial
+              </Badge>
+            )}
+            {postoHoristaFixo && !postoMensalistaFixo && (
+              <Badge className="bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold py-1 px-2.5">
+                Contrato Horista
+              </Badge>
+            )}
+          </div>
           <p className="text-slate-500 text-sm mt-1">
-            Transparência contábil de ponta a ponta: do aceite à liquidação na sua chave Pix.
+            {isProFixo
+              ? 'Acompanhamento do regime de remuneração e repasses de diárias complementares.'
+              : 'Transparência contábil de ponta a ponta: do aceite à liquidação na sua chave Pix.'}
           </p>
         </div>
       </div>
+
+      {/* Banner informativo para profissionais fixas */}
+      {postoMensalistaFixo && (
+        <Card className="border border-primary/20 bg-primary/5">
+          <CardContent className="p-4 flex items-start gap-3">
+            <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+            <div className="space-y-1 text-xs">
+              <div className="font-bold text-slate-900 text-sm">
+                Vínculo com Posto Fixo ({postoMensalistaFixo.nome})
+              </div>
+              <p className="text-slate-600 leading-relaxed">
+                Você possui vínculo de <strong>Contrato Mensal Fixo — Remuneração Salarial</strong>.
+                Seus turnos no posto fixo são apurados via folha salarial de Facilities e não geram
+                repasses avulsos de escrow/diária aqui. Caso realize turnos adicionais avulsos em
+                outros postos como freelancer, as respectivas diárias em garantia aparecerão
+                listadas abaixo.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {postoHoristaFixo && !postoMensalistaFixo && (
+        <Card className="border border-blue-200 bg-blue-50/60">
+          <CardContent className="p-4 flex items-start gap-3">
+            <CheckCircle2 className="w-5 h-5 text-blue-700 shrink-0 mt-0.5" />
+            <div className="space-y-1 text-xs">
+              <div className="font-bold text-slate-900 text-sm">
+                Vínculo com Posto Fixo ({postoHoristaFixo.nome})
+              </div>
+              <p className="text-slate-600 leading-relaxed">
+                Você possui vínculo de <strong>Contrato Horista</strong>. Suas horas e turnos no
+                posto são apurados via registro de ponto para liquidação contratual. Caso realize
+                turnos avulsos adicionais fora do contrato fixo, as respectivas diárias em escrow
+                aparecerão listadas abaixo.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cards de Resumo */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -220,6 +302,12 @@ export default function MeusRepassesPage() {
                 <tbody className="divide-y divide-slate-100">
                   {payouts.map((pay) => {
                     const posto = pay.expand?.escala?.expand?.posto
+                    const isFixaDoPosto = posto?.pro_fixo === user?.id
+                    const forma = posto?.forma_de_contratacao || posto?.tipo_remuneracao_fixa
+                    const isMensalista =
+                      isFixaDoPosto && (forma === 'mensalista' || forma === 'mensal')
+                    const isHorista = isFixaDoPosto && (forma === 'horista' || forma === 'por_hora')
+
                     const isRetido = pay.status === 'retido'
                     const isPago = pay.status === 'pago'
                     const isDisputa = pay.status === 'disputa'
@@ -227,13 +315,35 @@ export default function MeusRepassesPage() {
                     return (
                       <tr key={pay.id} className="hover:bg-slate-50/80">
                         <td className="py-3.5 font-medium text-slate-800">
-                          {posto?.nome || 'Posto Desconhecido'}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span>{posto?.nome || 'Posto Desconhecido'}</span>
+                            {isMensalista && (
+                              <Badge className="bg-primary/10 text-primary border border-primary/20 text-[10px] font-semibold">
+                                Contrato Mensal Fixo
+                              </Badge>
+                            )}
+                            {isHorista && (
+                              <Badge className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-semibold">
+                                Contrato Horista
+                              </Badge>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3.5 text-slate-600">
                           {formatDateBR(pay.expand?.escala?.data)}
                         </td>
                         <td className="py-3.5 font-bold text-primary tabular-nums">
-                          {formatCurrencyBRL(pay.valor)}
+                          {isMensalista ? (
+                            <span className="text-xs font-semibold text-slate-500">
+                              Salário Mensal
+                            </span>
+                          ) : isHorista ? (
+                            <span className="text-xs font-semibold text-slate-500">
+                              Contrato Horista
+                            </span>
+                          ) : (
+                            formatCurrencyBRL(pay.valor)
+                          )}
                         </td>
                         <td className="py-3.5">
                           {isRetido && (
@@ -312,7 +422,17 @@ export default function MeusRepassesPage() {
                 </div>
                 <div>
                   <strong className="text-slate-700">Valor do Repasse:</strong>{' '}
-                  {formatCurrencyBRL(selectedPayout?.valor)}
+                  {(() => {
+                    const p = selectedPayout?.expand?.escala?.expand?.posto
+                    const isFixaDoPosto = p?.pro_fixo === user?.id
+                    const forma = p?.forma_de_contratacao || p?.tipo_remuneracao_fixa
+                    const isMensalista =
+                      isFixaDoPosto && (forma === 'mensalista' || forma === 'mensal')
+                    const isHorista = isFixaDoPosto && (forma === 'horista' || forma === 'por_hora')
+                    if (isMensalista) return 'Contrato Mensal Fixo'
+                    if (isHorista) return 'Contrato Horista'
+                    return formatCurrencyBRL(selectedPayout?.valor)
+                  })()}
                 </div>
               </div>
 
