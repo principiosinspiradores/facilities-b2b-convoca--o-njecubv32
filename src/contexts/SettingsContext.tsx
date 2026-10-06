@@ -100,6 +100,12 @@ export function applyTheme(
   // manter também --primary-custom / --secondary-custom para retrocompatibilidade
   root.style.setProperty('--primary-custom', corPrimaria)
   root.style.setProperty('--secondary-custom', corSecundaria)
+
+  // Atualizar meta theme-color para navegadores móveis e status bar refletirem o tema white label
+  const metaThemeColor = document.querySelector('meta[name="theme-color"]')
+  if (metaThemeColor) {
+    metaThemeColor.setAttribute('content', corPrimaria)
+  }
 }
 
 const defaultSettings: SettingsRecord = {
