@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/hooks/use-toast'
+import { useInstallPrompt } from '@/hooks/useInstallPrompt'
 import {
   Dialog,
   DialogContent,
@@ -1743,7 +1744,8 @@ export default function PontoProPage() {
               Instalar Ponto Digital no iPhone
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
-              Siga estes 3 passos simples no Safari para abrir o ponto com 1 toque na tela de início:
+              Siga estes 3 passos simples no Safari para abrir o ponto com 1 toque na tela de
+              início:
             </DialogDescription>
           </DialogHeader>
 
@@ -1761,7 +1763,8 @@ export default function PontoProPage() {
                   </span>
                 </p>
                 <p className="text-[11px] text-slate-500">
-                  Na barra inferior do Safari (no rodapé da tela do iPhone), toque no ícone com o quadrado e a seta para cima.
+                  Na barra inferior do Safari (no rodapé da tela do iPhone), toque no ícone com o
+                  quadrado e a seta para cima.
                 </p>
               </div>
             </div>
@@ -1779,7 +1782,11 @@ export default function PontoProPage() {
                   </span>
                 </p>
                 <p className="text-[11px] text-slate-500">
-                  Role as opções da lista para baixo até encontrar e clicar em <strong className="text-slate-700 font-semibold">Adicionar à Tela de Início</strong>.
+                  Role as opções da lista para baixo até encontrar e clicar em{' '}
+                  <strong className="text-slate-700 font-semibold">
+                    Adicionar à Tela de Início
+                  </strong>
+                  .
                 </p>
               </div>
             </div>
@@ -1791,10 +1798,12 @@ export default function PontoProPage() {
               </div>
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-slate-800">
-                  Toque em <strong className="text-primary font-bold">"Adicionar"</strong> no canto superior direito
+                  Toque em <strong className="text-primary font-bold">"Adicionar"</strong> no canto
+                  superior direito
                 </p>
                 <p className="text-[11px] text-slate-500">
-                  Pronto! O ícone do Ponto Digital aparecerá como um app nativo na sua tela inicial, pronto para bater ponto offline e online.
+                  Pronto! O ícone do Ponto Digital aparecerá como um app nativo na sua tela inicial,
+                  pronto para bater ponto offline e online.
                 </p>
               </div>
             </div>
@@ -1830,13 +1839,16 @@ export default function PontoProPage() {
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
               <p className="font-semibold text-slate-800">No celular Android (Chrome):</p>
               <p className="text-[11px] text-slate-500">
-                Abra este endereço no Google Chrome. Se a janela de 1 clique não abrir de imediato, toque nos 3 pontinhos do Chrome e selecione <strong className="text-slate-700">"Instalar aplicativo"</strong>.
+                Abra este endereço no Google Chrome. Se a janela de 1 clique não abrir de imediato,
+                toque nos 3 pontinhos do Chrome e selecione{' '}
+                <strong className="text-slate-700">"Instalar aplicativo"</strong>.
               </p>
             </div>
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
               <p className="font-semibold text-slate-800">No computador (Chrome / Edge):</p>
               <p className="text-[11px] text-slate-500">
-                Clique no ícone de instalação <strong className="text-slate-700">⊕</strong> na barra de endereços do seu navegador para fixar o app na área de trabalho.
+                Clique no ícone de instalação <strong className="text-slate-700">⊕</strong> na barra
+                de endereços do seu navegador para fixar o app na área de trabalho.
               </p>
             </div>
           </div>
