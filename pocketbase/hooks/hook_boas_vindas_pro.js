@@ -109,7 +109,33 @@ onRecordAfterCreateSuccess((e) => {
       }
     } catch (_) {}
 
-    const plataformaUrl = 'https://facilities-b2b-convocacao-ae810.goskip.app'
+    // URL base da plataforma: prioriza SITE_URL env ou appURL das configurações do PocketBase, com fallback fixo para produção
+    let plataformaUrl = 'https://app.housekeeping.com.br'
+    try {
+      const siteEnv = $os.getenv('SITE_URL')
+      if (siteEnv && siteEnv.indexOf('http') === 0 && siteEnv.indexOf('goskip.app') === -1) {
+        plataformaUrl = siteEnv.replace(/\/$/, '')
+      } else {
+        const pbSettings = $app.settings()
+        if (
+          pbSettings &&
+          pbSettings.meta &&
+          pbSettings.meta.appURL &&
+          pbSettings.meta.appURL.indexOf('goskip.app') === -1
+        ) {
+          plataformaUrl = pbSettings.meta.appURL.replace(/\/$/, '')
+        }
+      }
+    } catch (_) {}
+
+    // Garantir que nunca aponte para www ou preview
+    if (
+      plataformaUrl.indexOf('www.housekeeping.com.br') !== -1 ||
+      plataformaUrl.indexOf('goskip.app') !== -1
+    ) {
+      plataformaUrl = 'https://app.housekeeping.com.br'
+    }
+
     const isVerified = record.verified()
 
     let resetToken = ''
