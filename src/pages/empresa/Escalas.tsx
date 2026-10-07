@@ -1103,6 +1103,24 @@ export default function EscalasPage() {
     }
   }
 
+  // Recalcular valor quando altera horários de início/fim no modal de edição
+  const handleEditHorarioChange = async (novoInicio: string, novoFim: string) => {
+    setEditTurnoInicio(novoInicio)
+    setEditTurnoFim(novoFim)
+    if (!escalaParaEditar || !editData) return
+
+    setCalculandoEditDiaria(true)
+    try {
+      const calc = await calcularValorEdicao(escalaParaEditar, editData, novoInicio, novoFim)
+      setEditValorDiaria(calc.valor)
+      setEditRegraCalculada(calc.regra)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setCalculandoEditDiaria(false)
+    }
+  }
+
   // Salvar edição da escala
   const handleSalvarEdicaoEscala = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -2037,6 +2055,87 @@ export default function EscalasPage() {
                           Mensagens
                         </Button>
 
+                        {/* Recalcular valores (apenas freelancer, apenas sem aceite) */}
+                        {!isPostoComFixa && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={
+                                      escalaTemAceite(escala) || recalculandoId === escala.id
+                                    }
+                                    onClick={() => handleRecalcularEscalaIndividual(escala)}
+                                    className="text-slate-600 hover:text-slate-900 text-xs h-9"
+                                  >
+                                    <Calculator
+                                      className={`w-3.5 h-3.5 mr-1 text-slate-500 ${recalculandoId === escala.id ? 'animate-spin' : ''}`}
+                                    />
+                                    Recalcular
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {escalaTemAceite(escala)
+                                  ? 'Escala com aceite confirmado não pode ter valor recalculado'
+                                  : 'Recalcular diária pelo motor com a base atual do posto e exceções da data'}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+
+                        {/* Editar Escala */}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={escalaTemAceite(escala)}
+                                  onClick={() => handleAbrirEditarEscala(escala)}
+                                  className="text-slate-700 hover:text-slate-900 text-xs h-9"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5 mr-1 text-slate-500" />
+                                  Editar
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {escalaTemAceite(escala)
+                                ? 'Escalas com aceite/cobertas não podem ser editadas'
+                                : 'Editar data, horários e observações desta escala'}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        {/* Excluir Escala */}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={escalaTemAceite(escala)}
+                                  onClick={() => handleAbrirExcluirEscala(escala)}
+                                  className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800 text-xs h-9"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 mr-1 text-rose-500" />
+                                  Excluir
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {escalaTemAceite(escala)
+                                ? 'Escalas com convocação aceita não podem ser excluídas'
+                                : 'Excluir esta escala e cancelar convocações pendentes'}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
                         {aceito ? (
                           <div className="text-right bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs text-emerald-900">
                             <div className="font-bold flex items-center gap-1 justify-end">
@@ -2201,6 +2300,67 @@ export default function EscalasPage() {
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
+                      {/* Recalcular valores do Grupo (apenas freelancer, apenas se tiver vagas sem aceite) */}
+                      {!isPostoComFixa && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={isTotalmenteCoberto || recalculandoId === grupo.id}
+                                  onClick={() => handleRecalcularGrupoMultiVagas(grupo)}
+                                  className="text-slate-600 hover:text-slate-900 text-xs h-9"
+                                >
+                                  <Calculator
+                                    className={`w-3.5 h-3.5 mr-1 text-slate-500 ${recalculandoId === grupo.id ? 'animate-spin' : ''}`}
+                                  />
+                                  Recalcular valores
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {isTotalmenteCoberto
+                                ? 'Turno já totalmente coberto: valores não podem ser recalculados'
+                                : 'Recalcular diária de todas as vagas sem aceite com base nas regras vigentes'}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+
+                      {/* Atalho no Grupo: Excluir turno inteiro (apenas se nenhuma vaga tiver aceite) */}
+                      {(() => {
+                        const temAlgumAceiteNoGrupo =
+                          grupo.vagasCobertas > 0 ||
+                          grupo.escalas.some((e: EscalaRecord) => escalaTemAceite(e))
+                        return (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={temAlgumAceiteNoGrupo}
+                                    onClick={() => handleAbrirExcluirTurnoInteiro(grupo)}
+                                    className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800 text-xs h-9"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 mr-1 text-rose-500" />
+                                    Excluir turno inteiro
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {temAlgumAceiteNoGrupo
+                                  ? 'Não é possível excluir o turno pois uma ou mais vagas já possuem aceite'
+                                  : 'Excluir todas as vagas deste turno e cancelar convocações pendentes'}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )
+                      })()}
+
                       {/* Botão de Preenchimento Automático: Convocar Elegíveis até Preencher */}
                       {!isTotalmenteCoberto && (
                         <Button
@@ -2327,6 +2487,87 @@ export default function EscalasPage() {
                                     Convocar
                                   </Button>
                                 )}
+
+                                {/* Ações por vaga na visão expandida: Recalcular, Editar, Excluir */}
+                                <div className="flex items-center gap-1 border-l pl-1.5 border-slate-200">
+                                  {!isPostoComFixa && (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span>
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              disabled={
+                                                escalaTemAceite(subEscala) ||
+                                                recalculandoId === subEscala.id
+                                              }
+                                              onClick={() =>
+                                                handleRecalcularEscalaIndividual(subEscala)
+                                              }
+                                              className="h-7 w-7 p-0 text-slate-600 hover:text-slate-900"
+                                            >
+                                              <Calculator
+                                                className={`w-3.5 h-3.5 ${recalculandoId === subEscala.id ? 'animate-spin' : ''}`}
+                                              />
+                                            </Button>
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {escalaTemAceite(subEscala)
+                                            ? 'Vaga já coberta (valor bloqueado)'
+                                            : 'Recalcular valor desta vaga'}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            disabled={escalaTemAceite(subEscala)}
+                                            onClick={() => handleAbrirEditarEscala(subEscala)}
+                                            className="h-7 w-7 p-0 text-slate-600 hover:text-slate-900"
+                                          >
+                                            <Edit2 className="w-3.5 h-3.5" />
+                                          </Button>
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        {escalaTemAceite(subEscala)
+                                          ? 'Vaga já coberta não pode ser editada'
+                                          : 'Editar esta vaga'}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            disabled={escalaTemAceite(subEscala)}
+                                            onClick={() => handleAbrirExcluirEscala(subEscala)}
+                                            className="h-7 w-7 p-0 text-rose-600 hover:text-rose-800 hover:bg-rose-50"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </Button>
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        {escalaTemAceite(subEscala)
+                                          ? 'Vaga já coberta não pode ser excluída'
+                                          : 'Excluir esta vaga'}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                </div>
                               </div>
                             </div>
                           )
@@ -3223,6 +3464,364 @@ export default function EscalasPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Editar Escala */}
+      <Dialog
+        open={modalEditarEscala}
+        onOpenChange={(open) => {
+          if (!isSavingEdit) {
+            setModalEditarEscala(open)
+            if (!open) setEscalaParaEditar(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          {escalaParaEditar && (
+            <form onSubmit={handleSalvarEdicaoEscala}>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-slate-900">
+                  <Edit2 className="w-5 h-5 text-primary" />
+                  Editar Escala de Trabalho
+                </DialogTitle>
+                <DialogDescription>
+                  Altere a data, horários do turno e observações operacionais. O valor da diária é
+                  recalculado automaticamente pelo motor de preços do posto.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-4">
+                {/* Resumo do Posto */}
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs space-y-1">
+                  <div className="font-semibold text-slate-800 text-sm">
+                    {escalaParaEditar.expand?.posto?.nome || 'Posto'}
+                  </div>
+                  <div className="text-slate-500 flex flex-wrap gap-2">
+                    <span>
+                      Função:{' '}
+                      <strong>{escalaParaEditar.expand?.posto?.funcao || 'Operacional'}</strong>
+                    </span>
+                    <span>•</span>
+                    <span>
+                      Carga Horária:{' '}
+                      <strong>{escalaParaEditar.expand?.posto?.carga_horaria || 8}h</strong>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Data */}
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Data do Turno *
+                  </label>
+                  <Input
+                    type="date"
+                    value={editData}
+                    onChange={(e) => handleEditDataChange(e.target.value)}
+                    required
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Ao alterar a data, a diária é recalculada considerando regras de fim de semana,
+                    feriados e exceções vigentes.
+                  </p>
+                </div>
+
+                {/* Horários do Turno */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Início do Turno *
+                    </label>
+                    <Input
+                      type="time"
+                      value={editTurnoInicio}
+                      onChange={(e) => handleEditHorarioChange(e.target.value, editTurnoFim)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Término do Turno *
+                    </label>
+                    <Input
+                      type="time"
+                      value={editTurnoFim}
+                      onChange={(e) => handleEditHorarioChange(editTurnoInicio, e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Valor Recalculado em Tempo Real (Não Digitável para Freelancer) */}
+                <div className="bg-emerald-50/70 border border-emerald-200 rounded-lg p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                      <Calculator className="w-4 h-4 text-emerald-700" />
+                      Valor da Diária (Recalculado pelo Motor)
+                    </label>
+                    {calculandoEditDiaria && (
+                      <span className="text-[11px] text-emerald-700 flex items-center gap-1">
+                        <RefreshCw className="w-3 h-3 animate-spin" /> Recalculando...
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-black text-emerald-900">
+                      {formatCurrencyBRL(editValorDiaria)}
+                    </span>
+                    {editRegraCalculada && (
+                      <Badge
+                        variant="outline"
+                        className="text-[11px] bg-white text-emerald-800 border-emerald-300"
+                      >
+                        Regra: {editRegraCalculada}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-emerald-800/90 leading-relaxed">
+                    Para freelancers a diária não é digitável manualmente — ela reflete a base atual
+                    do posto e as regras tarifárias da data. Ao salvar, convocações pendentes serão
+                    atualizadas com este novo valor.
+                  </p>
+                </div>
+
+                {/* Observação */}
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Observação Interna / Operacional
+                  </label>
+                  <Textarea
+                    placeholder="Instruções sobre uniforme, ponto de encontro, detalhes operacionais..."
+                    value={editObservacao}
+                    onChange={(e) => setEditObservacao(e.target.value)}
+                    rows={3}
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isSavingEdit}
+                  onClick={() => {
+                    setModalEditarEscala(false)
+                    setEscalaParaEditar(null)
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={
+                    isSavingEdit ||
+                    calculandoEditDiaria ||
+                    !editData ||
+                    !editTurnoInicio ||
+                    !editTurnoFim
+                  }
+                  className="font-medium"
+                >
+                  {isSavingEdit ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Salvando Alterações...
+                    </>
+                  ) : (
+                    'Salvar Alterações'
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Confirmar Exclusão de Escala Individual */}
+      <Dialog
+        open={modalExcluirEscala}
+        onOpenChange={(open) => {
+          if (!isDeletingEscala) {
+            setModalExcluirEscala(open)
+            if (!open) setEscalaParaExcluir(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          {escalaParaExcluir && (
+            <div>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-rose-700">
+                  <AlertTriangle className="w-5 h-5 text-rose-600" />
+                  Excluir Escala de Trabalho
+                </DialogTitle>
+                <DialogDescription>
+                  Esta ação não pode ser desfeita. A escala será permanentemente removida da grade
+                  operacional.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="py-4 space-y-3 text-xs">
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1">
+                  <div className="font-bold text-slate-800 text-sm">
+                    {escalaParaExcluir.expand?.posto?.nome || 'Posto'}
+                  </div>
+                  <div className="text-slate-600 flex items-center gap-2">
+                    <Calendar className="w-3.5 h-3.5 text-primary" />
+                    <span>{formatDateBR(escalaParaExcluir.data)}</span>
+                    <span>•</span>
+                    <Clock className="w-3.5 h-3.5 text-primary" />
+                    <span>
+                      {escalaParaExcluir.turno_inicio} às {escalaParaExcluir.turno_fim}
+                    </span>
+                  </div>
+                  <div className="text-slate-500 pt-0.5">
+                    Valor: <strong>{formatCurrencyBRL(escalaParaExcluir.valor_diaria)}</strong>
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-amber-800">
+                    <Info className="w-4 h-4 text-amber-600" />
+                    Impacto nas Convocações
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    Todas as convocações <strong>pendentes</strong> vinculadas a esta vaga serão
+                    automaticamente canceladas e os profissionais serão notificados pelo canal de
+                    mensagens sobre o cancelamento da escala.
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isDeletingEscala}
+                  onClick={() => {
+                    setModalExcluirEscala(false)
+                    setEscalaParaExcluir(null)
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={isDeletingEscala}
+                  onClick={handleConfirmarExcluirEscala}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-medium"
+                >
+                  {isDeletingEscala ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Excluindo Escala...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4 mr-1.5" />
+                      Confirmar Exclusão
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Confirmar Exclusão de Turno Inteiro (Grupo Multi-Vagas) */}
+      <Dialog
+        open={modalExcluirTurnoInteiro}
+        onOpenChange={(open) => {
+          if (!isDeletingTurnoInteiro) {
+            setModalExcluirTurnoInteiro(open)
+            if (!open) setGrupoParaExcluirTurno(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          {grupoParaExcluirTurno && (
+            <div>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-rose-700">
+                  <AlertTriangle className="w-5 h-5 text-rose-600" />
+                  Excluir Turno Inteiro
+                </DialogTitle>
+                <DialogDescription>
+                  Você está prestes a excluir todas as vagas ({grupoParaExcluirTurno.escalas.length}{' '}
+                  vaga(s)) deste turno no posto.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="py-4 space-y-3 text-xs">
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1">
+                  <div className="font-bold text-slate-800 text-sm">
+                    {grupoParaExcluirTurno.posto?.nome || 'Posto'}
+                  </div>
+                  <div className="text-slate-600 flex items-center gap-2">
+                    <Calendar className="w-3.5 h-3.5 text-primary" />
+                    <span>{formatDateBR(grupoParaExcluirTurno.data)}</span>
+                    <span>•</span>
+                    <Clock className="w-3.5 h-3.5 text-primary" />
+                    <span>
+                      {grupoParaExcluirTurno.turno_inicio} às {grupoParaExcluirTurno.turno_fim}
+                    </span>
+                  </div>
+                  <div className="text-slate-700 font-medium pt-1">
+                    Total: <strong>{grupoParaExcluirTurno.escalas.length} vaga(s)</strong>
+                  </div>
+                </div>
+
+                <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-rose-900 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-rose-800">
+                    <Info className="w-4 h-4 text-rose-600" />
+                    Aviso Importante
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    Nenhuma vaga deste turno possui aceite confirmado. Todas as convocações
+                    pendentes de todas as vagas deste grupo serão canceladas e os profissionais
+                    serão comunicados automaticamente.
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isDeletingTurnoInteiro}
+                  onClick={() => {
+                    setModalExcluirTurnoInteiro(false)
+                    setGrupoParaExcluirTurno(null)
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={isDeletingTurnoInteiro}
+                  onClick={handleConfirmarExcluirTurnoInteiro}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-medium"
+                >
+                  {isDeletingTurnoInteiro ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Excluindo Turno...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4 mr-1.5" />
+                      Excluir Todas as Vagas
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
