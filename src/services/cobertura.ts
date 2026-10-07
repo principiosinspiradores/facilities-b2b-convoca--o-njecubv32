@@ -452,9 +452,16 @@ export async function executarConvocacaoManual(params: {
     throw new Error('Nenhum profissional elegível selecionado para convocação.')
   }
 
-  // 2. Determinar diária estimada pelo motor para freelancers
+  // 2. Determinar diária estimada pelo motor para freelancers (respeitando valor_diaria_base do posto)
   const dataIso = escala.data ? escala.data.slice(0, 10) : new Date().toISOString().slice(0, 10)
-  const estimativa = await estimarDiariaParaData(posto.id, dataIso, carga, end.cidade, end.uf)
+  const estimativa = await estimarDiariaParaData(
+    posto.id,
+    dataIso,
+    carga,
+    end.cidade,
+    end.uf,
+    posto.valor_diaria_base,
+  )
 
   const nowIso = new Date().toISOString()
   let criadas = 0

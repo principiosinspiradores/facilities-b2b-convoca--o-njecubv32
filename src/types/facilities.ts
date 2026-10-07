@@ -85,6 +85,7 @@ export interface PostoRecord {
   forma_de_contratacao?: FormaDeContratacao
   salario_mensal?: number
   valor_hora?: number
+  valor_diaria_base?: number
   tipo_remuneracao_fixa?: TipoRemuneracaoFixa
   valor_remuneracao_fixa?: number
   raio_geocerca_m?: number

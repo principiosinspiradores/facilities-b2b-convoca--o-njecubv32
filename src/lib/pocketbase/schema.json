@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T15:04:01.953Z",
+  "generatedAt": "2026-10-07T15:35:52.833Z",
   "collections": [
     {
       "name": "users",
@@ -265,6 +265,12 @@
         },
         {
           "name": "longitude",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_diaria_base",
           "type": "number",
           "required": false,
           "system": false

@@ -112,6 +112,15 @@ export async function calcularDiariaEngine(
       }
     }
 
+    const postoValorDiariaBase = Number(posto?.valor_diaria_base || 0)
+    if (postoValorDiariaBase > 0) {
+      return {
+        valor: postoValorDiariaBase,
+        regra_aplicada: `diária base do posto (${carga}h)`,
+        is_fixa: false,
+      }
+    }
+
     const valorBase = carga <= 4 ? 130 : carga <= 6 ? 160 : 180
     return {
       valor: valorBase,
@@ -129,7 +138,9 @@ export async function calcularDiariaEngine(
 
 /**
  * Calcula a diária de freelancer em determinado posto e data considerando regras base,
- * fim de semana e feriados (para cálculo dinâmico em lote)
+ * fim de semana e feriados (para cálculo dinâmico em lote).
+ * Se valorDiariaBasePosto for fornecido ou se o posto tiver valor_diaria_base > 0,
+ * substitui a tabela global do Motor de Preços pela diária base do posto.
  */
 export async function estimarDiariaParaData(
   postoId: string,
@@ -137,6 +148,7 @@ export async function estimarDiariaParaData(
   cargaHoraria: number,
   cidadePosto?: string,
   ufPosto?: string,
+  valorDiariaBasePosto?: number,
 ): Promise<{ valor: number; regra: string }> {
   try {
     const parts = dataStr.slice(0, 10).split('-')
@@ -149,23 +161,48 @@ export async function estimarDiariaParaData(
     let valorBase = cargaHoraria <= 4 ? 130 : cargaHoraria <= 6 ? 160 : 180
     let regraBase = `tabela base (${cargaHoraria}h)`
 
-    const baseRules = await pb.collection('pricing_rules').getFullList({
-      filter: `tipo = "base"`,
-      sort: 'faixa_horas',
-    })
-    if (baseRules.length > 0) {
-      let chosen = baseRules[0]
-      for (const r of baseRules) {
-        if (r.faixa_horas === cargaHoraria) {
-          chosen = r
-          break
+    // Se o valor_diaria_base do posto não foi passado pelo chamador, buscar do posto
+    let baseDoPosto =
+      typeof valorDiariaBasePosto === 'number' && valorDiariaBasePosto > 0
+        ? valorDiariaBasePosto
+        : undefined
+
+    if (baseDoPosto === undefined && postoId) {
+      try {
+        const postoRecord = await pb.collection('postos').getOne(postoId, {
+          fields: 'id,valor_diaria_base,carga_horaria',
+        })
+        const vdb = Number(postoRecord.valor_diaria_base || 0)
+        if (vdb > 0) {
+          baseDoPosto = vdb
         }
-        if (r.faixa_horas && r.faixa_horas < cargaHoraria) {
-          chosen = r
-        }
+      } catch {
+        /* intentionally ignored */
       }
-      valorBase = chosen.valor
-      regraBase = `tabela base (${chosen.faixa_horas}h)`
+    }
+
+    if (baseDoPosto && baseDoPosto > 0) {
+      valorBase = baseDoPosto
+      regraBase = `diária base do posto (${cargaHoraria}h)`
+    } else {
+      const baseRules = await pb.collection('pricing_rules').getFullList({
+        filter: `tipo = "base"`,
+        sort: 'faixa_horas',
+      })
+      if (baseRules.length > 0) {
+        let chosen = baseRules[0]
+        for (const r of baseRules) {
+          if (r.faixa_horas === cargaHoraria) {
+            chosen = r
+            break
+          }
+          if (r.faixa_horas && r.faixa_horas < cargaHoraria) {
+            chosen = r
+          }
+        }
+        valorBase = chosen.valor
+        regraBase = `tabela base (${chosen.faixa_horas}h)`
+      }
     }
 
     // Treinamento no posto

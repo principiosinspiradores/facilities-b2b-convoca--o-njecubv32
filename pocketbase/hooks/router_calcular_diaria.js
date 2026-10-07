@@ -76,46 +76,52 @@ routerAdd('GET', '/backend/v1/calcular-diaria/{escalaId}/{proId}', (e) => {
   const dayOfWeek = dt.getUTCDay() // 0 = Dom, 6 = Sáb
   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
 
-  // 1. Tabela base
+  // 1. Tabela base (se posto tem valor_diaria_base > 0, substitui a regra global da faixa de horas)
+  const postoValorDiariaBase = posto.getFloat('valor_diaria_base') || 0
   let valorBase = 180
   let captionBase = 'tabela base (' + cargaHoraria + 'h)'
 
-  try {
-    const baseRules = $app.findRecordsByFilter(
-      'pricing_rules',
-      "tipo = 'base'",
-      'faixa_horas',
-      50,
-      0,
-    )
-    if (baseRules && baseRules.length > 0) {
-      // Procura faixa exata
-      let exact = null
-      let lower = null
-      let maxRule = baseRules[0]
+  if (postoValorDiariaBase > 0) {
+    valorBase = postoValorDiariaBase
+    captionBase = 'diária base do posto (' + cargaHoraria + 'h)'
+  } else {
+    try {
+      const baseRules = $app.findRecordsByFilter(
+        'pricing_rules',
+        "tipo = 'base'",
+        'faixa_horas',
+        50,
+        0,
+      )
+      if (baseRules && baseRules.length > 0) {
+        // Procura faixa exata
+        let exact = null
+        let lower = null
+        let maxRule = baseRules[0]
 
-      for (let i = 0; i < baseRules.length; i++) {
-        const r = baseRules[i]
-        const h = r.getInt('faixa_horas')
-        if (h === cargaHoraria) {
-          exact = r
-          break
+        for (let i = 0; i < baseRules.length; i++) {
+          const r = baseRules[i]
+          const h = r.getInt('faixa_horas')
+          if (h === cargaHoraria) {
+            exact = r
+            break
+          }
+          if (h < cargaHoraria && (!lower || h > lower.getInt('faixa_horas'))) {
+            lower = r
+          }
+          if (h > maxRule.getInt('faixa_horas')) {
+            maxRule = r
+          }
         }
-        if (h < cargaHoraria && (!lower || h > lower.getInt('faixa_horas'))) {
-          lower = r
-        }
-        if (h > maxRule.getInt('faixa_horas')) {
-          maxRule = r
+
+        const chosen = exact || lower || maxRule
+        if (chosen) {
+          valorBase = chosen.getFloat('valor')
+          captionBase = 'tabela base (' + chosen.getInt('faixa_horas') + 'h)'
         }
       }
-
-      const chosen = exact || lower || maxRule
-      if (chosen) {
-        valorBase = chosen.getFloat('valor')
-        captionBase = 'tabela base (' + chosen.getInt('faixa_horas') + 'h)'
-      }
-    }
-  } catch (_) {}
+    } catch (_) {}
+  }
 
   // 2. Exceções por posto
   let valorExcecao = null

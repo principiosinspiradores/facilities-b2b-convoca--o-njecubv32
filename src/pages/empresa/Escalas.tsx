@@ -194,8 +194,20 @@ export default function EscalasPage() {
       } else if (selectedPosto.pro_fixo && selectedPosto.tipo_remuneracao_fixa === 'por_hora') {
         const vh = selectedPosto.valor_remuneracao_fixa || 25
         setValorDiaria(vh * ch)
+      } else if (selectedPosto.valor_diaria_base && Number(selectedPosto.valor_diaria_base) > 0) {
+        // Posto freelancer com valor_diaria_base customizado
+        setValorDiaria(Number(selectedPosto.valor_diaria_base))
       } else {
-        setValorDiaria(ch <= 4 ? 130 : ch <= 6 ? 160 : 180)
+        // Fallback para tabela base global
+        const end = (selectedPosto.endereco as any) || {}
+        const dataRef = dataEscala || dataInicio || formatLocalDate(new Date())
+        estimarDiariaParaData(selectedPosto.id, dataRef, ch, end.cidade, end.uf)
+          .then((est) => {
+            setValorDiaria(est.valor)
+          })
+          .catch(() => {
+            setValorDiaria(ch <= 4 ? 130 : ch <= 6 ? 160 : 180)
+          })
       }
     }
   }, [selectedPosto])
@@ -561,6 +573,7 @@ export default function EscalasPage() {
           carga,
           end.cidade,
           end.uf,
+          postoAlvo.valor_diaria_base,
         )
         const valorDiariaCalculada = estimativa.valor || 180
 
@@ -779,13 +792,14 @@ export default function EscalasPage() {
               }
             }
 
-            // Freelancer: cálculo pelo motor de 3 camadas por dia
+            // Freelancer: cálculo pelo motor de 3 camadas por dia (usando valor_diaria_base do posto se preenchido)
             const calc = await estimarDiariaParaData(
               postoObj?.id || '',
               d,
               carga,
               end.cidade,
               end.uf,
+              postoObj?.valor_diaria_base,
             )
             return {
               dataStr: d,
@@ -838,8 +852,15 @@ export default function EscalasPage() {
             regraCalculada = `profissional fixa (R$ ${vHora.toFixed(2)}/h × ${carga}h)`
           }
         } else {
-          // Motor de 3 camadas para freelancers
-          const c = await estimarDiariaParaData(postoObj?.id || '', d, carga, end.cidade, end.uf)
+          // Motor de 3 camadas para freelancers (posto.valor_diaria_base tem precedência sobre a base global)
+          const c = await estimarDiariaParaData(
+            postoObj?.id || '',
+            d,
+            carga,
+            end.cidade,
+            end.uf,
+            postoObj?.valor_diaria_base,
+          )
           vDiaria = c.valor
           regraCalculada = c.regra
         }
@@ -2073,19 +2094,38 @@ export default function EscalasPage() {
                 {isAdmin &&
                   (!selectedPosto?.pro_fixo ||
                     selectedPosto.tipo_remuneracao_fixa === 'por_hora') && (
-                    <div>
-                      <label className="text-xs font-semibold text-slate-700 block mb-1">
-                        Valor da Diária Base (R$)
-                      </label>
+                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-slate-700 block">
+                          Diária Efetiva Estimada (R$)
+                        </label>
+                        {selectedPosto?.valor_diaria_base &&
+                        Number(selectedPosto.valor_diaria_base) > 0 ? (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-300"
+                          >
+                            Base do posto:{' '}
+                            {formatCurrencyBRL(Number(selectedPosto.valor_diaria_base))}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] text-slate-500">
+                            Tabela Global ({selectedPosto?.carga_horaria || 8}h)
+                          </Badge>
+                        )}
+                      </div>
                       <Input
                         type="number"
                         value={valorDiaria}
-                        onChange={(e) => setValorDiaria(Number(e.target.value))}
-                        required
+                        readOnly
+                        disabled
+                        className="bg-slate-100 text-xs font-semibold text-slate-700 cursor-not-allowed"
                       />
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        Para períodos, fins de semana e feriados terão o valor ajustado
-                        automaticamente pelo motor de regras em 3 camadas.
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Para freelancers, o valor final é determinado pelo{' '}
+                        <strong>Motor de Preços</strong> (diária base do posto + exceções como
+                        treinamento, fim de semana, feriado e teste). Para alterar a base deste
+                        posto, edite o cadastro do posto em <strong>Postos de Trabalho</strong>.
                       </p>
                     </div>
                   )}
