@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T15:35:52.833Z",
+  "generatedAt": "2026-10-07T19:02:11.449Z",
   "collections": [
     {
       "name": "users",
@@ -364,6 +364,12 @@
           "type": "number",
           "required": false,
           "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -380,7 +386,7 @@
         "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
         "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')",
         "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa' || pro = @request.auth.id)",
-        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'empresa')"
       },
       "fields": [
         {

@@ -156,6 +156,7 @@ export interface EscalaRecord {
   vagas?: number
   multa_aplicada?: boolean
   valor_diaria?: number
+  observacao?: string
   created: string
   updated: string
   expand?: {

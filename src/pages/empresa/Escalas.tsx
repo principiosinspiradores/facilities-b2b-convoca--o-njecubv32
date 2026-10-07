@@ -47,7 +47,12 @@ import {
   ChevronDown,
   ChevronRight,
   Zap,
+  Edit2,
+  Trash2,
+  Calculator,
 } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Textarea } from '@/components/ui/textarea'
 
 export default function EscalasPage() {
   const navigate = useNavigate()
@@ -109,6 +114,31 @@ export default function EscalasPage() {
   const [coberturaModoEnvio, setCoberturaModoEnvio] = useState<'todos' | 'especifico'>('todos')
   const [coberturaProIdsSelecionados, setCoberturaProIdsSelecionados] = useState<string[]>([])
   const [isProcessandoCobertura, setIsProcessandoCobertura] = useState(false)
+
+  // Modal Editar Escala
+  const [modalEditarEscala, setModalEditarEscala] = useState(false)
+  const [escalaParaEditar, setEscalaParaEditar] = useState<EscalaRecord | null>(null)
+  const [editData, setEditData] = useState('')
+  const [editTurnoInicio, setEditTurnoInicio] = useState('')
+  const [editTurnoFim, setEditTurnoFim] = useState('')
+  const [editObservacao, setEditObservacao] = useState('')
+  const [editValorDiaria, setEditValorDiaria] = useState(0)
+  const [editRegraCalculada, setEditRegraCalculada] = useState('')
+  const [calculandoEditDiaria, setCalculandoEditDiaria] = useState(false)
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
+
+  // Modal Confirmar Exclusão de Escala Individual
+  const [modalExcluirEscala, setModalExcluirEscala] = useState(false)
+  const [escalaParaExcluir, setEscalaParaExcluir] = useState<EscalaRecord | null>(null)
+  const [isDeletingEscala, setIsDeletingEscala] = useState(false)
+
+  // Modal Confirmar Exclusão de Turno Inteiro (Grupo Multi-Vagas)
+  const [modalExcluirTurnoInteiro, setModalExcluirTurnoInteiro] = useState(false)
+  const [grupoParaExcluirTurno, setGrupoParaExcluirTurno] = useState<any | null>(null)
+  const [isDeletingTurnoInteiro, setIsDeletingTurnoInteiro] = useState(false)
+
+  // Estado de Recálculo em Andamento
+  const [recalculandoId, setRecalculandoId] = useState<string | null>(null)
 
   const loadData = async () => {
     setIsLoading(true)
@@ -194,19 +224,31 @@ export default function EscalasPage() {
       } else if (selectedPosto.pro_fixo && selectedPosto.tipo_remuneracao_fixa === 'por_hora') {
         const vh = selectedPosto.valor_remuneracao_fixa || 25
         setValorDiaria(vh * ch)
-      } else if (selectedPosto.valor_diaria_base && Number(selectedPosto.valor_diaria_base) > 0) {
-        // Posto freelancer com valor_diaria_base customizado
-        setValorDiaria(Number(selectedPosto.valor_diaria_base))
       } else {
-        // Fallback para tabela base global
+        // Posto freelancer: estimar com base atual do posto + exceções vigentes
         const end = (selectedPosto.endereco as any) || {}
         const dataRef = dataEscala || dataInicio || formatLocalDate(new Date())
-        estimarDiariaParaData(selectedPosto.id, dataRef, ch, end.cidade, end.uf)
+        estimarDiariaParaData(
+          selectedPosto.id,
+          dataRef,
+          ch,
+          end.cidade,
+          end.uf,
+          selectedPosto.valor_diaria_base,
+        )
           .then((est) => {
             setValorDiaria(est.valor)
           })
           .catch(() => {
-            setValorDiaria(ch <= 4 ? 130 : ch <= 6 ? 160 : 180)
+            setValorDiaria(
+              selectedPosto.valor_diaria_base && Number(selectedPosto.valor_diaria_base) > 0
+                ? Number(selectedPosto.valor_diaria_base)
+                : ch <= 4
+                  ? 130
+                  : ch <= 6
+                    ? 160
+                    : 180,
+            )
           })
       }
     }
@@ -250,7 +292,6 @@ export default function EscalasPage() {
     }
   }, [])
 
-  // Agrupamento de escalas idênticas do mesmo posto, data e turno
   // Tipagem interna para itens da listagem agrupada
   interface EscalaAgrupadaItem {
     id: string // grupo_postoId_data_turnoIni_turnoFim
@@ -947,6 +988,481 @@ export default function EscalasPage() {
       ...prev,
       [grupoId]: !prev[grupoId],
     }))
+  }
+
+  // Verifica se uma escala individual possui convocação aceita ou status de coberta
+  const escalaTemAceite = (escala: EscalaRecord) => {
+    const convs = convocacoes.filter((c) => c.escala === escala.id)
+    return (
+      convs.some((c) => c.status === 'aceita' || c.status === 'coberta') ||
+      escala.status === 'aceita' ||
+      escala.status === 'coberta' ||
+      escala.status === 'concluida'
+    )
+  }
+
+  // Calcula valor da diária para uma escala em edição
+  const calcularValorEdicao = async (
+    escala: EscalaRecord,
+    novaData: string,
+    novoTurnoIni: string,
+    novoTurnoFim: string,
+  ) => {
+    const postoObj = postos.find((p) => p.id === escala.posto)
+    const ch = postoObj?.carga_horaria || 8
+    const isFixa = !!postoObj?.pro_fixo
+
+    if (isFixa) {
+      if (postoObj.tipo_remuneracao_fixa === 'mensal') {
+        return {
+          valor: 0,
+          regra: `fixa mensal (R$ ${(postoObj.valor_remuneracao_fixa || 0).toFixed(2)}/mês)`,
+        }
+      } else {
+        const vHora = postoObj.valor_remuneracao_fixa || 25
+        return {
+          valor: vHora * ch,
+          regra: `fixa por hora (R$ ${vHora.toFixed(2)}/h × ${ch}h)`,
+        }
+      }
+    }
+
+    // Freelancer: cálculo pelo motor com a base atual do posto + exceções vigentes
+    const end = (postoObj?.endereco as any) || {}
+    const c = await estimarDiariaParaData(
+      postoObj?.id || '',
+      novaData,
+      ch,
+      end.cidade,
+      end.uf,
+      postoObj?.valor_diaria_base,
+    )
+    return {
+      valor: c.valor,
+      regra: c.regra,
+    }
+  }
+
+  // Abrir modal de edição de escala
+  const handleAbrirEditarEscala = async (escala: EscalaRecord) => {
+    if (escalaTemAceite(escala)) {
+      toast({
+        title: 'Escala já coberta',
+        description: 'Escalas com convocação aceita não podem ser editadas.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const dStr = (escala.data || '').slice(0, 10)
+    setEscalaParaEditar(escala)
+    setEditData(dStr)
+    setEditTurnoInicio(escala.turno_inicio || '07:00')
+    setEditTurnoFim(escala.turno_fim || '15:00')
+    setEditObservacao(escala.observacao || '')
+    setModalEditarEscala(true)
+
+    setCalculandoEditDiaria(true)
+    try {
+      const calc = await calcularValorEdicao(
+        escala,
+        dStr,
+        escala.turno_inicio || '07:00',
+        escala.turno_fim || '15:00',
+      )
+      setEditValorDiaria(calc.valor)
+      setEditRegraCalculada(calc.regra)
+    } catch (err) {
+      console.error(err)
+      setEditValorDiaria(escala.valor_diaria || 180)
+      setEditRegraCalculada('tabela base')
+    } finally {
+      setCalculandoEditDiaria(false)
+    }
+  }
+
+  // Recalcular valor quando altera a data no modal de edição
+  const handleEditDataChange = async (novaData: string) => {
+    setEditData(novaData)
+    if (!escalaParaEditar || !novaData) return
+
+    setCalculandoEditDiaria(true)
+    try {
+      const calc = await calcularValorEdicao(
+        escalaParaEditar,
+        novaData,
+        editTurnoInicio,
+        editTurnoFim,
+      )
+      setEditValorDiaria(calc.valor)
+      setEditRegraCalculada(calc.regra)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setCalculandoEditDiaria(false)
+    }
+  }
+
+  // Salvar edição da escala
+  const handleSalvarEdicaoEscala = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!escalaParaEditar) return
+
+    if (!editData || !editTurnoInicio || !editTurnoFim) {
+      toast({
+        title: 'Preencha todos os campos obrigatórios',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsSavingEdit(true)
+    try {
+      const isoDate = new Date(`${editData}T12:00:00Z`).toISOString()
+
+      // 1. Atualizar a escala
+      await pb.collection('escalas').update(escalaParaEditar.id, {
+        data: isoDate,
+        turno_inicio: editTurnoInicio,
+        turno_fim: editTurnoFim,
+        observacao: editObservacao,
+        valor_diaria: editValorDiaria,
+      })
+
+      // 2. Atualizar convocações pendentes vinculadas (se houver) com o novo valor
+      const convs = convocacoes.filter(
+        (c) => c.escala === escalaParaEditar.id && c.status === 'pendente',
+      )
+      for (const conv of convs) {
+        const proObj = pros.find((p) => p.id === conv.pro)
+        let val = editValorDiaria
+        let rule = editRegraCalculada || 'recalculada na edição da escala'
+        if (proObj?.status === 'teste') {
+          val = proObj.ajuda_custo || 50
+          rule = 'ajuda de custo (teste)'
+        } else if (proObj?.valor_negociado) {
+          val = proObj.valor_negociado
+          rule = 'valor negociado'
+        }
+        await pb.collection('convocacoes').update(conv.id, {
+          valor_diaria: val,
+          regra_aplicada: rule,
+        })
+      }
+
+      toast({
+        title: 'Escala atualizada com sucesso!',
+        description: `Novo valor: ${formatCurrencyBRL(editValorDiaria)}. Data e horários alterados.`,
+      })
+      setModalEditarEscala(false)
+      setEscalaParaEditar(null)
+      loadData()
+    } catch (err) {
+      console.error(err)
+      toast({
+        title: 'Erro ao salvar alterações na escala',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSavingEdit(false)
+    }
+  }
+
+  // Abrir modal de exclusão de escala individual
+  const handleAbrirExcluirEscala = (escala: EscalaRecord) => {
+    if (escalaTemAceite(escala)) {
+      toast({
+        title: 'Escala já coberta',
+        description: 'Escalas com convocação aceita não podem ser excluídas.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setEscalaParaExcluir(escala)
+    setModalExcluirEscala(true)
+  }
+
+  // Confirmar exclusão de escala individual
+  const handleConfirmarExcluirEscala = async () => {
+    if (!escalaParaExcluir) return
+
+    setIsDeletingEscala(true)
+    try {
+      // 1. Identificar e tratar convocações vinculadas
+      const convs = convocacoes.filter((c) => c.escala === escalaParaExcluir.id)
+      for (const conv of convs) {
+        try {
+          // Se estiver pendente, notificar via mensagem de sistema antes de remover
+          if (conv.status === 'pendente' && conv.pro) {
+            try {
+              const postoNome = escalaParaExcluir.expand?.posto?.nome || 'o posto'
+              const dataFormatada = formatDateBR(escalaParaExcluir.data)
+              const textoAviso = `A escala programada para ${dataFormatada} no posto ${postoNome} (${escalaParaExcluir.turno_inicio} às ${escalaParaExcluir.turno_fim}) foi cancelada pela gestão.`
+              const convObj = await obterOuCriarConversaContextual(
+                escalaParaExcluir.id,
+                conv.id,
+                conv.pro,
+                textoAviso,
+              )
+              if (convObj) {
+                await enviarMensagem(convObj.id, textoAviso, undefined, true)
+              }
+            } catch (errAviso) {
+              console.warn('Não foi possível enviar mensagem de cancelamento:', errAviso)
+            }
+          }
+          await pb.collection('convocacoes').delete(conv.id)
+        } catch (errConv) {
+          console.warn('Erro ao deletar convocação:', errConv)
+        }
+      }
+
+      // 2. Excluir a escala
+      await pb.collection('escalas').delete(escalaParaExcluir.id)
+
+      toast({
+        title: 'Escala excluída com sucesso!',
+        description:
+          convs.length > 0
+            ? `${convs.length} convocação(ões) vinculada(s) foi(ram) cancelada(s)/removida(s).`
+            : 'O turno foi removido da grade operacional.',
+      })
+      setModalExcluirEscala(false)
+      setEscalaParaExcluir(null)
+      loadData()
+    } catch (err) {
+      console.error(err)
+      toast({
+        title: 'Erro ao excluir escala',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsDeletingEscala(false)
+    }
+  }
+
+  // Abrir modal de exclusão de turno inteiro (grupo multi-vagas)
+  const handleAbrirExcluirTurnoInteiro = (grupo: any) => {
+    const temAlgumAceite = grupo.escalas.some((e: EscalaRecord) => escalaTemAceite(e))
+    if (temAlgumAceite || grupo.vagasCobertas > 0) {
+      toast({
+        title: 'Turno possui vagas cobertas',
+        description:
+          'Não é possível excluir o turno inteiro pois uma ou mais vagas já possuem aceite.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setGrupoParaExcluirTurno(grupo)
+    setModalExcluirTurnoInteiro(true)
+  }
+
+  // Confirmar exclusão de turno inteiro
+  const handleConfirmarExcluirTurnoInteiro = async () => {
+    if (!grupoParaExcluirTurno) return
+
+    setIsDeletingTurnoInteiro(true)
+    try {
+      const escalaIds = grupoParaExcluirTurno.escalas.map((e: EscalaRecord) => e.id)
+      const convsDoGrupo = convocacoes.filter((c) => escalaIds.includes(c.escala))
+
+      // 1. Remover convocações vinculadas e avisar pendentes
+      for (const conv of convsDoGrupo) {
+        try {
+          if (conv.status === 'pendente' && conv.pro) {
+            try {
+              const textoAviso = `O turno programado para ${formatDateBR(grupoParaExcluirTurno.data)} no posto ${grupoParaExcluirTurno.posto?.nome || ''} foi cancelado pela gestão.`
+              const convObj = await obterOuCriarConversaContextual(
+                conv.escala,
+                conv.id,
+                conv.pro,
+                textoAviso,
+              )
+              if (convObj) {
+                await enviarMensagem(convObj.id, textoAviso, undefined, true)
+              }
+            } catch (errAviso) {
+              console.warn('Erro ao avisar cancelamento:', errAviso)
+            }
+          }
+          await pb.collection('convocacoes').delete(conv.id)
+        } catch (errConv) {
+          console.warn('Erro ao deletar convocação de grupo:', errConv)
+        }
+      }
+
+      // 2. Remover todas as escalas do grupo
+      for (const esc of grupoParaExcluirTurno.escalas) {
+        try {
+          await pb.collection('escalas').delete(esc.id)
+        } catch (errEsc) {
+          console.warn('Erro ao deletar escala do grupo:', errEsc)
+        }
+      }
+
+      toast({
+        title: 'Turno inteiro excluído!',
+        description: `${grupoParaExcluirTurno.escalas.length} vaga(s) removida(s) com sucesso.`,
+      })
+      setModalExcluirTurnoInteiro(false)
+      setGrupoParaExcluirTurno(null)
+      loadData()
+    } catch (err) {
+      console.error(err)
+      toast({
+        title: 'Erro ao excluir turno inteiro',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsDeletingTurnoInteiro(false)
+    }
+  }
+
+  // Recalcular valores de uma escala individual (apenas freelancer, sem aceite)
+  const handleRecalcularEscalaIndividual = async (escala: EscalaRecord) => {
+    if (escalaTemAceite(escala)) {
+      toast({
+        title: 'Escala já coberta',
+        description: 'Escalas com aceite não podem ter valores recalculados.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const postoObj = postos.find((p) => p.id === escala.posto)
+    if (postoObj?.pro_fixo) {
+      toast({
+        title: 'Posto com profissional fixa',
+        description: 'O recálculo pelo motor se aplica apenas a escalas de freelancers.',
+      })
+      return
+    }
+
+    setRecalculandoId(escala.id)
+    try {
+      const carga = postoObj?.carga_horaria || 8
+      const end = (postoObj?.endereco as any) || {}
+      const dStr = (escala.data || '').slice(0, 10)
+
+      const est = await estimarDiariaParaData(
+        postoObj?.id || '',
+        dStr,
+        carga,
+        end.cidade,
+        end.uf,
+        postoObj?.valor_diaria_base,
+      )
+
+      await pb.collection('escalas').update(escala.id, {
+        valor_diaria: est.valor,
+      })
+
+      // Atualizar convocações pendentes vinculadas (não as aceitas!)
+      const convs = convocacoes.filter((c) => c.escala === escala.id && c.status === 'pendente')
+      for (const conv of convs) {
+        const proObj = pros.find((p) => p.id === conv.pro)
+        let val = est.valor
+        let rule = est.regra
+        if (proObj?.status === 'teste') {
+          val = proObj.ajuda_custo || 50
+          rule = 'ajuda de custo (teste)'
+        } else if (proObj?.valor_negociado) {
+          val = proObj.valor_negociado
+          rule = 'valor negociado'
+        }
+        await pb.collection('convocacoes').update(conv.id, {
+          valor_diaria: val,
+          regra_aplicada: rule,
+        })
+      }
+
+      toast({
+        title: 'Valor recalculado!',
+        description: `Novo valor: ${formatCurrencyBRL(est.valor)} (Regra: ${est.regra}).`,
+      })
+      loadData()
+    } catch (err) {
+      console.error(err)
+      toast({
+        title: 'Erro ao recalcular valor da escala',
+        variant: 'destructive',
+      })
+    } finally {
+      setRecalculandoId(null)
+    }
+  }
+
+  // Recalcular valores de um grupo multi-vagas (apenas freelancer, vagas sem aceite)
+  const handleRecalcularGrupoMultiVagas = async (grupo: any) => {
+    const postoObj =
+      grupo.posto || postos.find((p: PostoRecord) => p.id === grupo.primeiraEscala.posto)
+    if (postoObj?.pro_fixo) {
+      toast({
+        title: 'Posto com profissional fixa',
+        description: 'O recálculo pelo motor se aplica apenas a escalas de freelancers.',
+      })
+      return
+    }
+
+    setRecalculandoId(grupo.id)
+    try {
+      const carga = postoObj?.carga_horaria || 8
+      const end = (postoObj?.endereco as any) || {}
+      const dStr = (grupo.data || '').slice(0, 10)
+
+      const est = await estimarDiariaParaData(
+        postoObj?.id || '',
+        dStr,
+        carga,
+        end.cidade,
+        end.uf,
+        postoObj?.valor_diaria_base,
+      )
+
+      let vagasAtualizadas = 0
+      for (const esc of grupo.escalas) {
+        // Apenas vagas sem aceite!
+        if (!escalaTemAceite(esc)) {
+          await pb.collection('escalas').update(esc.id, {
+            valor_diaria: est.valor,
+          })
+          vagasAtualizadas++
+
+          // Atualizar convocações pendentes vinculadas
+          const convs = convocacoes.filter((c) => c.escala === esc.id && c.status === 'pendente')
+          for (const conv of convs) {
+            const proObj = pros.find((p) => p.id === conv.pro)
+            let val = est.valor
+            let rule = est.regra
+            if (proObj?.status === 'teste') {
+              val = proObj.ajuda_custo || 50
+              rule = 'ajuda de custo (teste)'
+            } else if (proObj?.valor_negociado) {
+              val = proObj.valor_negociado
+              rule = 'valor negociado'
+            }
+            await pb.collection('convocacoes').update(conv.id, {
+              valor_diaria: val,
+              regra_aplicada: rule,
+            })
+          }
+        }
+      }
+
+      toast({
+        title: 'Valores recalculados com sucesso!',
+        description: `${vagasAtualizadas} vaga(s) atualizada(s) para ${formatCurrencyBRL(est.valor)} (Regra: ${est.regra}).`,
+      })
+      loadData()
+    } catch (err) {
+      console.error(err)
+      toast({
+        title: 'Erro ao recalcular valores do grupo',
+        variant: 'destructive',
+      })
+    } finally {
+      setRecalculandoId(null)
+    }
   }
 
   const handleToggleProSelection = (proId: string) => {
