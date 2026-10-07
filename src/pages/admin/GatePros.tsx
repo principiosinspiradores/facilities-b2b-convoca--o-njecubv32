@@ -366,10 +366,10 @@ export default function GateProsPage() {
         documentos: newDocumentos,
         status: Number(newPeriodoTeste) === 0 ? 'ativo' : 'teste',
         periodo_teste_dias: Number(newPeriodoTeste) >= 0 ? Number(newPeriodoTeste) : 0,
-        ...(isAdmin
+        ajuda_custo: Number(newAjudaCusto) || 50,
+        ...(isAdmin && newValorNegociado
           ? {
-              ajuda_custo: Number(newAjudaCusto) || 50,
-              valor_negociado: newValorNegociado ? Number(newValorNegociado) : undefined,
+              valor_negociado: Number(newValorNegociado),
             }
           : {}),
       })
@@ -533,9 +533,11 @@ export default function GateProsPage() {
         documentos: editDocumentos,
       }
 
-      // Blindagem estrita: empresa NÃO altera nem salva precificação
+      // Ajuda de custo salva tanto para Admin quanto Empresa (campo padrão do teste)
+      payload.ajuda_custo = Number(editAjudaCusto) || 50
+
+      // Valor negociado é exclusivo do Admin
       if (isAdmin) {
-        payload.ajuda_custo = Number(editAjudaCusto)
         payload.valor_negociado = editValorNegociado ? Number(editValorNegociado) : null
       }
 
@@ -866,7 +868,20 @@ export default function GateProsPage() {
                               )}
                               {isTeste && (
                                 <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px]">
-                                  Em Teste
+                                  {(() => {
+                                    const diasTeste = Number(p.periodo_teste_dias) || 0
+                                    let restam = 0
+                                    if (p.created && diasTeste > 0) {
+                                      const createdMs = new Date(
+                                        p.created.replace(' ', 'T'),
+                                      ).getTime()
+                                      const diffDias = Math.floor(
+                                        (Date.now() - createdMs) / (1000 * 60 * 60 * 24),
+                                      )
+                                      restam = Math.max(0, diasTeste - diffDias)
+                                    }
+                                    return `Em Teste (restam ${restam} ${restam === 1 ? 'dia' : 'dias'})`
+                                  })()}
                                 </Badge>
                               )}
                               {isSuspenso && (
@@ -938,15 +953,45 @@ export default function GateProsPage() {
 
                         <td className="py-3 px-2 text-xs text-slate-600">
                           {isTeste ? (
-                            <span className="text-amber-800 font-medium">
-                              {p.periodo_teste_dias === 0
-                                ? 'Sem teste (ativa imediata)'
-                                : `${p.periodo_teste_dias || 10} dias probatórios`}
-                            </span>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-amber-800 font-medium">
+                                {p.periodo_teste_dias === 0
+                                  ? 'Sem teste (ativa imediata)'
+                                  : `${p.periodo_teste_dias || 10} dias probatórios`}
+                              </span>
+                              {p.periodo_teste_dias && p.periodo_teste_dias > 0 && (
+                                <span className="text-[10px] text-amber-700 font-semibold">
+                                  {(() => {
+                                    const diasTeste = Number(p.periodo_teste_dias) || 0
+                                    let restam = 0
+                                    if (p.created && diasTeste > 0) {
+                                      const createdMs = new Date(
+                                        p.created.replace(' ', 'T'),
+                                      ).getTime()
+                                      const diffDias = Math.floor(
+                                        (Date.now() - createdMs) / (1000 * 60 * 60 * 24),
+                                      )
+                                      restam = Math.max(0, diasTeste - diffDias)
+                                    }
+                                    return `restam ${restam} ${restam === 1 ? 'dia' : 'dias'}`
+                                  })()}
+                                </span>
+                              )}
+                            </div>
                           ) : (
-                            <span className="text-emerald-700 font-medium flex items-center gap-1">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Concluído
-                            </span>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-emerald-700 font-medium flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Concluído
+                              </span>
+                              {p.observacao_teste && (
+                                <span
+                                  className="text-[10px] text-slate-500"
+                                  title={p.observacao_teste}
+                                >
+                                  {p.observacao_teste}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </td>
 
@@ -1196,42 +1241,50 @@ export default function GateProsPage() {
                 </div>
               </div>
 
-              {/* Período de Teste e Precificação (Blindagem v0.0.6) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Período Probatório (Dias de Teste)
-                  </label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={90}
-                    value={newPeriodoTeste}
-                    onChange={(e) => {
-                      const val = Math.max(0, Number(e.target.value))
-                      setNewPeriodoTeste(val)
-                    }}
-                  />
-                  <span className="text-[10px] text-slate-500">
-                    {newPeriodoTeste === 0
-                      ? '0 dias = sem teste, entra ativa imediatamente'
-                      : 'Padrão: 10 dias probatórios (ou 0 = ativa imediata)'}
-                  </span>
-                </div>
-
-                {/* Blindagem Financeira: Empresa NÃO visualiza nem edita precificação */}
-                {isAdmin && (
+              {/* Período de Teste e Ajuda de Custo */}
+              <div className="p-3 bg-amber-50/50 border border-amber-200/80 rounded-lg space-y-2 pt-2 border-t">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs font-semibold text-slate-700 block mb-1">
-                      Ajuda de Custo Fixa (Teste) R$ (Admin)
+                      Período de teste (dias)
                     </label>
                     <Input
                       type="number"
+                      min={0}
+                      max={90}
+                      value={newPeriodoTeste}
+                      onChange={(e) => {
+                        const val = Math.max(0, Number(e.target.value))
+                        setNewPeriodoTeste(val)
+                      }}
+                    />
+                    <span className="text-[10px] text-slate-500 block mt-0.5">
+                      {newPeriodoTeste === 0
+                        ? '0 dias = sem teste, entra ativa imediatamente'
+                        : 'Padrão: 10 dias probatórios (ou 0 = ativa imediata)'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Ajuda de custo no teste (R$)
+                    </label>
+                    <Input
+                      type="number"
+                      min={0}
                       value={newAjudaCusto}
                       onChange={(e) => setNewAjudaCusto(Number(e.target.value))}
                     />
+                    <span className="text-[10px] text-slate-500 block mt-0.5">
+                      Padrão: R$ 50,00 por diária
+                    </span>
                   </div>
-                )}
+                </div>
+
+                <p className="text-[11px] text-amber-900 bg-amber-100/70 p-2 rounded border border-amber-200 leading-relaxed">
+                  Durante o teste, o pro recebe este valor fixo em TODAS as diárias, ignorando
+                  regras do posto. Após o período, promove automaticamente para Ativo.
+                </p>
               </div>
 
               {/* Upload e Verificação Inicial de Documentos */}
@@ -1405,53 +1458,78 @@ export default function GateProsPage() {
                 </div>
               </div>
 
-              {/* Status do Gate e Período de Teste */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Status Operacional no Gate *
-                  </label>
-                  <Select value={editStatus} onValueChange={(v) => setEditStatus(v as UserStatus)}>
-                    <SelectTrigger className="text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ativo">Ativo (Elegível a convocações)</SelectItem>
-                      <SelectItem value="teste">Teste (Período probatório)</SelectItem>
-                      {/* Empresa não pode aplicar suspensão ou bloqueio administrativo; preserva se já estiver */}
-                      <SelectItem value="suspenso" disabled={!isAdmin}>
-                        Suspenso {!isAdmin ? '(Apenas Admin)' : ''}
-                      </SelectItem>
-                      <SelectItem value="bloqueado" disabled={!isAdmin}>
-                        Bloqueado {!isAdmin ? '(Apenas Admin)' : ''}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+              {/* Status do Gate e Período de Teste com Ajuda de Custo */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Status Operacional no Gate *
+                    </label>
+                    <Select
+                      value={editStatus}
+                      onValueChange={(v) => setEditStatus(v as UserStatus)}
+                    >
+                      <SelectTrigger className="text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ativo">Ativo (Elegível a convocações)</SelectItem>
+                        <SelectItem value="teste">Teste (Período probatório)</SelectItem>
+                        {/* Empresa não pode aplicar suspensão ou bloqueio administrativo; preserva se já estiver */}
+                        <SelectItem value="suspenso" disabled={!isAdmin}>
+                          Suspenso {!isAdmin ? '(Apenas Admin)' : ''}
+                        </SelectItem>
+                        <SelectItem value="bloqueado" disabled={!isAdmin}>
+                          Bloqueado {!isAdmin ? '(Apenas Admin)' : ''}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Período de teste (dias)
+                    </label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={90}
+                      value={editPeriodoTeste}
+                      onChange={(e) => {
+                        const val = Math.max(0, Number(e.target.value))
+                        setEditPeriodoTeste(val)
+                        if (val === 0 && editStatus === 'teste') {
+                          setEditStatus('ativo')
+                        }
+                      }}
+                    />
+                    <span className="text-[10px] text-slate-500 block mt-0.5">
+                      {editPeriodoTeste === 0
+                        ? '0 dias = sem teste, entra ativa imediatamente'
+                        : 'Dias em período probatório'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Ajuda de custo no teste (R$)
+                    </label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={editAjudaCusto}
+                      onChange={(e) => setEditAjudaCusto(Number(e.target.value))}
+                    />
+                    <span className="text-[10px] text-slate-500 block mt-0.5">
+                      Valor fixo por diária no teste
+                    </span>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Dias de Teste (Probatório)
-                  </label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={90}
-                    value={editPeriodoTeste}
-                    onChange={(e) => {
-                      const val = Math.max(0, Number(e.target.value))
-                      setEditPeriodoTeste(val)
-                      if (val === 0 && editStatus === 'teste') {
-                        setEditStatus('ativo')
-                      }
-                    }}
-                  />
-                  <span className="text-[10px] text-slate-500">
-                    {editPeriodoTeste === 0
-                      ? '0 dias = sem teste, entra ativa imediatamente'
-                      : 'Dias em período probatório'}
-                  </span>
-                </div>
+                <p className="text-[11px] text-amber-900 bg-amber-100/70 p-2 rounded border border-amber-200 leading-relaxed">
+                  Durante o teste, o pro recebe este valor fixo em TODAS as diárias, ignorando
+                  regras do posto. Após o período, promove automaticamente para Ativo.
+                </p>
               </div>
 
               {/* Informações Cadastrais */}
@@ -1592,31 +1670,22 @@ export default function GateProsPage() {
 
               {/* Precificação Negociada — Exclusivo Admin (Blindagem v0.0.6) */}
               {isAdmin && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-amber-50/60 border border-amber-200 rounded-lg">
-                  <div>
-                    <label className="text-xs font-semibold text-amber-900 block mb-1">
-                      Ajuda de Custo Fixa (Teste) R$ (Admin)
-                    </label>
-                    <Input
-                      type="number"
-                      value={editAjudaCusto}
-                      onChange={(e) => setEditAjudaCusto(Number(e.target.value))}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-amber-900 block mb-1">
-                      Valor Negociado Diária R$ (Admin)
-                    </label>
-                    <Input
-                      type="number"
-                      placeholder="Ex: 190.00"
-                      value={editValorNegociado !== undefined ? editValorNegociado : ''}
-                      onChange={(e) =>
-                        setEditValorNegociado(e.target.value ? Number(e.target.value) : undefined)
-                      }
-                    />
-                  </div>
+                <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-lg">
+                  <label className="text-xs font-semibold text-amber-900 block mb-1">
+                    Valor Negociado Diária R$ (Admin)
+                  </label>
+                  <Input
+                    type="number"
+                    placeholder="Ex: 190.00"
+                    value={editValorNegociado !== undefined ? editValorNegociado : ''}
+                    onChange={(e) =>
+                      setEditValorNegociado(e.target.value ? Number(e.target.value) : undefined)
+                    }
+                  />
+                  <span className="text-[10px] text-slate-500 block mt-1">
+                    Sobrepõe a tabela dos postos quando o pro estiver Ativo. Se deixado vazio,
+                    utiliza as regras do posto.
+                  </span>
                 </div>
               )}
 

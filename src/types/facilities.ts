@@ -21,6 +21,7 @@ export interface UserRecord {
   periodo_teste_dias?: number
   ajuda_custo?: number
   valor_negociado?: number
+  observacao_teste?: string
   bloqueado_ate?: string
   telefone?: string
   cpf?: string

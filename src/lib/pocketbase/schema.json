@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T19:14:02.816Z",
+  "generatedAt": "2026-10-07T20:50:10.389Z",
   "collections": [
     {
       "name": "users",
@@ -109,6 +109,12 @@
         {
           "name": "ultimo_acesso",
           "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao_teste",
+          "type": "text",
           "required": false,
           "system": false
         }

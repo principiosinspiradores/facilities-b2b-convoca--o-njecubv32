@@ -56,6 +56,7 @@ export interface AtualizarProPayload {
   periodo_teste_dias?: number
   ajuda_custo?: number
   valor_negociado?: number
+  observacao_teste?: string
   bloqueado_ate?: string | null
 }
 
@@ -188,6 +189,7 @@ export async function atualizarPro(id: string, dados: AtualizarProPayload): Prom
   }
   if (dados.ajuda_custo !== undefined) payload.ajuda_custo = dados.ajuda_custo
   if (dados.valor_negociado !== undefined) payload.valor_negociado = dados.valor_negociado
+  if (dados.observacao_teste !== undefined) payload.observacao_teste = dados.observacao_teste
   if (dados.bloqueado_ate !== undefined) payload.bloqueado_ate = dados.bloqueado_ate
 
   return pb.collection('users').update<UserRecord>(id, payload)

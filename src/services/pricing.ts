@@ -97,9 +97,18 @@ export async function calcularDiariaEngine(
     }
 
     if (pro.status === 'teste') {
+      const diasTeste = Number(pro.periodo_teste_dias) || 0
+      let restamDias = 0
+      if (pro.created && diasTeste > 0) {
+        const createdDate = new Date(pro.created.replace(' ', 'T'))
+        const diffMs = Date.now() - createdDate.getTime()
+        const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+        restamDias = Math.max(0, diasTeste - diffDias)
+      }
+      const suffixDias = restamDias === 1 ? '1 dia' : `${restamDias} dias`
       return {
         valor: pro.ajuda_custo || 50,
-        regra_aplicada: 'ajuda de custo (teste)',
+        regra_aplicada: `ajuda de custo (teste, restam ${suffixDias})`,
         is_fixa: false,
       }
     }

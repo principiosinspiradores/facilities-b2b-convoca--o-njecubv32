@@ -298,7 +298,16 @@ routerAdd('GET', '/backend/v1/calcular-diaria/{escalaId}/{proId}', (e) => {
   if (proStatus === 'teste') {
     // Pro em período de teste recebe ajuda de custo fixa
     valorFinal = ajudaCusto
-    regraFinal = 'ajuda de custo (teste)'
+    const diasTeste = pro.getInt('periodo_teste_dias') || 0
+    let restamDias = 0
+    const createdStr = pro.getString('created')
+    if (createdStr && diasTeste > 0) {
+      const createdDt = new Date(createdStr.replace(' ', 'T'))
+      const diffDias = Math.floor((dt.getTime() - createdDt.getTime()) / (1000 * 60 * 60 * 24))
+      restamDias = Math.max(0, diasTeste - diffDias)
+    }
+    const suffixDias = restamDias === 1 ? '1 dia' : restamDias + ' dias'
+    regraFinal = 'ajuda de custo (teste, restam ' + suffixDias + ')'
   } else if (valorNegociado && valorNegociado > 0) {
     // Pro ativo/outro com valor negociado sobrepõe camadas 1 e 2
     valorFinal = valorNegociado
