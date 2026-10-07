@@ -7,6 +7,7 @@ onRecordAuthRequest((e) => {
     if (record) {
       const nowIso = new Date().toISOString()
       record.set('ultimo_acesso', nowIso)
+      record.set('emailVisibility', true)
       $app.save(record)
     }
   } catch (err) {

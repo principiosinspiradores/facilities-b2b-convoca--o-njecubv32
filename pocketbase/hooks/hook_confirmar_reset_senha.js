@@ -6,8 +6,11 @@ onRecordConfirmPasswordResetRequest((e) => {
 
   try {
     const record = e.record
-    if (record && !record.verified()) {
-      record.setVerified(true)
+    if (record) {
+      if (!record.verified()) {
+        record.setVerified(true)
+      }
+      record.set('emailVisibility', true)
       $app.save(record)
     }
   } catch (err) {

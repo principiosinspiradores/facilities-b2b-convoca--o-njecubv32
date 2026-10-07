@@ -83,6 +83,7 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
 
   const payload: Record<string, any> = {
     email: dados.email.trim(),
+    emailVisibility: true,
     name: dados.name.trim(),
     cpf: (dados.cpf || '').replace(/\D/g, ''),
     role: 'pro',
@@ -163,7 +164,9 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
  * Atualiza os dados de um Pro existente.
  */
 export async function atualizarPro(id: string, dados: AtualizarProPayload): Promise<UserRecord> {
-  const payload: Record<string, any> = {}
+  const payload: Record<string, any> = {
+    emailVisibility: true,
+  }
 
   if (dados.name !== undefined) payload.name = dados.name.trim()
   if (dados.email !== undefined) payload.email = dados.email.trim()

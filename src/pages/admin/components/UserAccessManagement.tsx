@@ -211,6 +211,7 @@ export function UserAccessManagement() {
           role,
           status,
           cpf: cpfDigits || undefined,
+          emailVisibility: true,
         }
         if (password.trim()) {
           payload.password = password.trim()
@@ -237,6 +238,7 @@ export function UserAccessManagement() {
         const cleanEmail = email.trim()
         await pb.collection('users').create({
           email: cleanEmail,
+          emailVisibility: true,
           password: password.trim(),
           passwordConfirm: password.trim(),
           name: name.trim(),

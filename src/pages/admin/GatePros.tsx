@@ -516,6 +516,7 @@ export default function GateProsPage() {
       const payload: any = {
         name: editName.trim(),
         email: editEmail.trim(),
+        emailVisibility: true,
         cpf: editCpf ? editCpf.replace(/\D/g, '') : undefined,
         telefone: editTelefone.trim(),
         funcoes: editFuncoes.length > 0 ? editFuncoes : ['Geral'],
@@ -621,6 +622,7 @@ export default function GateProsPage() {
     try {
       await pb.collection('users').update(pro.id, {
         status: newStatus,
+        emailVisibility: true,
         bloqueado_ate: !isCurrentlyBlocked
           ? new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString()
           : null,

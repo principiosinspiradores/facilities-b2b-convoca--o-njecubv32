@@ -65,6 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (authData.record?.id) {
         await pb.collection('users').update(authData.record.id, {
           ultimo_acesso: nowIso,
+          emailVisibility: true,
         })
       }
     } catch (_) {
