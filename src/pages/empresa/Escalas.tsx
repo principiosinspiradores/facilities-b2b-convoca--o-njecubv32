@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { EscalaRecord, PostoRecord, UserRecord, ConvocacaoRecord } from '@/types/facilities'
 import { formatDateBR, formatCurrencyBRL } from '@/lib/formatters'
 import { estimarDiariaParaData } from '@/services/pricing'
+import { obterOuCriarConversaContextual, enviarMensagem } from '@/services/mensagens'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -56,7 +57,7 @@ import { Textarea } from '@/components/ui/textarea'
 
 export default function EscalasPage() {
   const navigate = useNavigate()
-  const { role } = useAuth()
+  const { user, role } = useAuth()
   const isAdmin = role === 'admin'
   const [escalas, setEscalas] = useState<EscalaRecord[]>([])
   const [postos, setPostos] = useState<PostoRecord[]>([])
@@ -1216,14 +1217,20 @@ export default function EscalasPage() {
               const postoNome = escalaParaExcluir.expand?.posto?.nome || 'o posto'
               const dataFormatada = formatDateBR(escalaParaExcluir.data)
               const textoAviso = `A escala programada para ${dataFormatada} no posto ${postoNome} (${escalaParaExcluir.turno_inicio} às ${escalaParaExcluir.turno_fim}) foi cancelada pela gestão.`
-              const convObj = await obterOuCriarConversaContextual(
-                escalaParaExcluir.id,
-                conv.id,
-                conv.pro,
-                textoAviso,
-              )
+              const convObj = await obterOuCriarConversaContextual({
+                proId: conv.pro,
+                escalaId: escalaParaExcluir.id,
+                convocacaoId: conv.id,
+                tituloContexto: `Escala em ${formatDateBR(escalaParaExcluir.data)} cancelada`,
+                criadorId: user?.id || 'sistema',
+              })
               if (convObj) {
-                await enviarMensagem(convObj.id, textoAviso, undefined, true)
+                await enviarMensagem({
+                  conversaId: convObj.id,
+                  remetenteId: user?.id || 'sistema',
+                  remetenteRole: role || 'empresa',
+                  texto: textoAviso,
+                })
               }
             } catch (errAviso) {
               console.warn('Não foi possível enviar mensagem de cancelamento:', errAviso)
@@ -1231,7 +1238,15 @@ export default function EscalasPage() {
           }
           await pb.collection('convocacoes').delete(conv.id)
         } catch (errConv) {
-          console.warn('Erro ao deletar convocação:', errConv)
+          console.warn('Erro ao deletar convocação, aplicando cancelamento fallback:', errConv)
+          try {
+            await pb.collection('convocacoes').update(conv.id, {
+              status: 'cancelada',
+              regra_aplicada: 'escala excluída pela gestão',
+            })
+          } catch (errCancel) {
+            console.error('Falha ao cancelar convocação:', errCancel)
+          }
         }
       }
 
@@ -1290,14 +1305,20 @@ export default function EscalasPage() {
           if (conv.status === 'pendente' && conv.pro) {
             try {
               const textoAviso = `O turno programado para ${formatDateBR(grupoParaExcluirTurno.data)} no posto ${grupoParaExcluirTurno.posto?.nome || ''} foi cancelado pela gestão.`
-              const convObj = await obterOuCriarConversaContextual(
-                conv.escala,
-                conv.id,
-                conv.pro,
-                textoAviso,
-              )
+              const convObj = await obterOuCriarConversaContextual({
+                proId: conv.pro,
+                escalaId: conv.escala,
+                convocacaoId: conv.id,
+                tituloContexto: `Turno em ${formatDateBR(grupoParaExcluirTurno.data)} cancelado`,
+                criadorId: user?.id || 'sistema',
+              })
               if (convObj) {
-                await enviarMensagem(convObj.id, textoAviso, undefined, true)
+                await enviarMensagem({
+                  conversaId: convObj.id,
+                  remetenteId: user?.id || 'sistema',
+                  remetenteRole: role || 'empresa',
+                  texto: textoAviso,
+                })
               }
             } catch (errAviso) {
               console.warn('Erro ao avisar cancelamento:', errAviso)
@@ -1305,7 +1326,18 @@ export default function EscalasPage() {
           }
           await pb.collection('convocacoes').delete(conv.id)
         } catch (errConv) {
-          console.warn('Erro ao deletar convocação de grupo:', errConv)
+          console.warn(
+            'Erro ao deletar convocação de grupo, aplicando cancelamento fallback:',
+            errConv,
+          )
+          try {
+            await pb.collection('convocacoes').update(conv.id, {
+              status: 'cancelada',
+              regra_aplicada: 'turno inteiro excluído pela gestão',
+            })
+          } catch (errCancel) {
+            console.error('Falha ao cancelar convocação de grupo:', errCancel)
+          }
         }
       }
 
