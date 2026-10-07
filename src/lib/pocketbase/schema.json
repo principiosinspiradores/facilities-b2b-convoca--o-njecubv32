@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T14:47:57.776Z",
+  "generatedAt": "2026-10-07T15:04:01.953Z",
   "collections": [
     {
       "name": "users",
@@ -253,6 +253,18 @@
         },
         {
           "name": "vagas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "latitude",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "longitude",
           "type": "number",
           "required": false,
           "system": false

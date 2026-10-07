@@ -45,7 +45,10 @@ import {
   DollarSign,
   Briefcase,
   Navigation,
+  AlertTriangle,
+  Info,
 } from 'lucide-react'
+import { postoTemCoordenadas } from '@/services/ponto'
 
 export default function PostosPage() {
   const { role } = useAuth()
@@ -87,9 +90,11 @@ export default function PostosPage() {
   const [logradouro, setLogradouro] = useState('')
   const [numero, setNumero] = useState('')
   const [bairro, setBairro] = useState('')
-  const [cidade, setCidade] = useState('')
+  const [cidade, setCidade] = useState('Campinas')
   const [uf, setUf] = useState('SP')
   const [cep, setCep] = useState('')
+  const [latitude, setLatitude] = useState<string>('')
+  const [longitude, setLongitude] = useState<string>('')
 
   // Estado para busca e criação rápida de função inline no cadastro
   const [buscaFuncao, setBuscaFuncao] = useState('')
@@ -155,9 +160,11 @@ export default function PostosPage() {
     setLogradouro('')
     setNumero('')
     setBairro('')
-    setCidade('São Paulo')
+    setCidade('Campinas')
     setUf('SP')
     setCep('')
+    setLatitude('')
+    setLongitude('')
     setBuscaFuncao('')
     setMostrandoNovaFuncaoInline(false)
     setNomeNovaFuncaoInline('')
@@ -219,9 +226,25 @@ export default function PostosPage() {
     setLogradouro(end.logradouro || '')
     setNumero(end.numero || '')
     setBairro(end.bairro || '')
-    setCidade(end.cidade || '')
+    setCidade(end.cidade || 'Campinas')
     setUf(end.uf || 'SP')
     setCep(end.cep || '')
+
+    // Coordenadas reais do posto (ou fallback gravado no endereco)
+    const latSalva =
+      posto.latitude !== undefined && posto.latitude !== null && posto.latitude !== 0
+        ? String(posto.latitude)
+        : end.latitude || end.lat
+          ? String(end.latitude || end.lat)
+          : ''
+    const lngSalva =
+      posto.longitude !== undefined && posto.longitude !== null && posto.longitude !== 0
+        ? String(posto.longitude)
+        : end.longitude || end.lng
+          ? String(end.longitude || end.lng)
+          : ''
+    setLatitude(latSalva)
+    setLongitude(lngSalva)
 
     setBuscaFuncao('')
     setMostrandoNovaFuncaoInline(false)
@@ -323,6 +346,14 @@ export default function PostosPage() {
             : toleranciaEntradaMinutos !== undefined && Number(toleranciaEntradaMinutos) > 0
               ? Number(toleranciaEntradaMinutos)
               : 10,
+        latitude:
+          latitude.trim() !== '' && !isNaN(Number(latitude.trim().replace(',', '.')))
+            ? Number(latitude.trim().replace(',', '.'))
+            : null,
+        longitude:
+          longitude.trim() !== '' && !isNaN(Number(longitude.trim().replace(',', '.')))
+            ? Number(longitude.trim().replace(',', '.'))
+            : null,
         endereco: {
           logradouro: logradouro.trim(),
           numero: numero.trim(),
@@ -330,6 +361,12 @@ export default function PostosPage() {
           cidade: cidade.trim(),
           uf: uf.trim().toUpperCase(),
           cep: cep.trim(),
+          ...(latitude.trim() !== '' && !isNaN(Number(latitude.trim().replace(',', '.')))
+            ? { latitude: Number(latitude.trim().replace(',', '.')) }
+            : {}),
+          ...(longitude.trim() !== '' && !isNaN(Number(longitude.trim().replace(',', '.')))
+            ? { longitude: Number(longitude.trim().replace(',', '.')) }
+            : {}),
         },
       }
 
@@ -454,11 +491,31 @@ export default function PostosPage() {
                       Tol.: <strong>{p.tolerancia_entrada_minutos || 10}min</strong>
                     </span>
                   </div>
+                  {postoTemCoordenadas(p) ? (
+                    <div className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-200 flex items-center gap-1.5">
+                      <Navigation className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>
+                        Coords:{' '}
+                        <strong>
+                          {Number(p.latitude || end.latitude || end.lat).toFixed(4)},{' '}
+                          {Number(p.longitude || end.longitude || end.lng).toFixed(4)}
+                        </strong>
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-amber-800 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-300 flex items-start gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                      <span>
+                        <strong>Posto sem coordenadas</strong> — a cerca digital não funcionará
+                        corretamente (usará fallback do centro de Campinas).
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-start gap-2 text-slate-500 text-xs">
                     <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
                     <span>
                       {end.logradouro
-                        ? `${end.logradouro}, ${end.numero} - ${end.bairro}, ${end.cidade}/${end.uf}`
+                        ? `${end.logradouro}, ${end.numero} - ${end.bairro}, ${end.cidade || 'Campinas'}/${end.uf || 'SP'}`
                         : 'Endereço não informado'}
                     </span>
                   </div>
@@ -883,7 +940,7 @@ export default function PostosPage() {
                     <Input
                       value={logradouro}
                       onChange={(e) => setLogradouro(e.target.value)}
-                      placeholder="Av. Paulista"
+                      placeholder="Av. Francisco Glicério"
                     />
                   </div>
                   <div>
@@ -902,7 +959,7 @@ export default function PostosPage() {
                     <Input
                       value={bairro}
                       onChange={(e) => setBairro(e.target.value)}
-                      placeholder="Bela Vista"
+                      placeholder="Cambuí"
                     />
                   </div>
                   <div className="sm:col-span-2">
@@ -912,7 +969,7 @@ export default function PostosPage() {
                     <Input
                       value={cidade}
                       onChange={(e) => setCidade(e.target.value)}
-                      placeholder="São Paulo"
+                      placeholder="Campinas"
                       required
                     />
                   </div>
@@ -932,8 +989,83 @@ export default function PostosPage() {
                   <Input
                     value={cep}
                     onChange={(e) => setCep(e.target.value)}
-                    placeholder="01310-100"
+                    placeholder="13091-908"
                   />
+                </div>
+              </div>
+
+              {/* Bloco: Localização da cerca digital (Latitude / Longitude) */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <Navigation className="w-4 h-4 text-primary" />
+                      Localização da Cerca Digital (GPS)
+                    </h4>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      Coordenadas geográficas exatas do posto para a validação biométrica do ponto
+                      do profissional.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded text-xs text-blue-900 flex items-start gap-2">
+                  <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5 text-[11px]">
+                    <p className="font-semibold">Como obter no Google Maps:</p>
+                    <p>
+                      No computador, clique com o botão direito sobre o local exato do posto e
+                      clique no primeiro número que aparece para copiar. No celular, segure o dedo
+                      sobre o local no mapa para soltar um pin e toque nas coordenadas exibidas para
+                      copiá-las.
+                    </p>
+                  </div>
+                </div>
+
+                {(!latitude.trim() || !longitude.trim()) && (
+                  <div className="p-2.5 bg-amber-50 border border-amber-300 rounded text-xs text-amber-900 flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Posto sem coordenadas</strong> — a cerca digital não funcionará
+                      corretamente. Preencha a latitude e longitude reais para que a distância do
+                      celular da profissional seja calculada com precisão.
+                    </span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Latitude
+                    </label>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={latitude}
+                      onChange={(e) => setLatitude(e.target.value)}
+                      placeholder="Ex: -22.8687"
+                      className="bg-white text-xs font-mono"
+                    />
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      Ex: -22.9056 (graus decimais)
+                    </span>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Longitude
+                    </label>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={longitude}
+                      onChange={(e) => setLongitude(e.target.value)}
+                      placeholder="Ex: -47.0392"
+                      className="bg-white text-xs font-mono"
+                    />
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      Ex: -47.0608 (graus decimais)
+                    </span>
+                  </div>
                 </div>
               </div>
 

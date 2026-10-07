@@ -69,8 +69,8 @@ export default function GateProsPage() {
   const [newTelefone, setNewTelefone] = useState('')
   const [newCpf, setNewCpf] = useState('')
   const [newFuncoes, setNewFuncoes] = useState<string[]>([])
-  const [newRegiao, setNewRegiao] = useState('')
-  const [newCidade, setNewCidade] = useState('São Paulo')
+  const [newRegiao, setNewRegiao] = useState('Campinas e Região')
+  const [newCidade, setNewCidade] = useState('Campinas')
   const [newUf, setNewUf] = useState('SP')
   const [newLogradouro, setNewLogradouro] = useState('')
   const [newBairro, setNewBairro] = useState('')
@@ -150,8 +150,8 @@ export default function GateProsPage() {
     // Pré-selecionar a primeira função ativa se houver
     const primeiraAtiva = funcoesCatalogo.find((f) => f.ativo)?.nome || 'Limpeza'
     setNewFuncoes([primeiraAtiva])
-    setNewRegiao('Grande São Paulo')
-    setNewCidade('São Paulo')
+    setNewRegiao('Campinas e Região')
+    setNewCidade('Campinas')
     setNewUf('SP')
     setNewLogradouro('')
     setNewBairro('')
@@ -1130,6 +1130,14 @@ export default function GateProsPage() {
                   </div>
                   <div>
                     <Input
+                      placeholder="Região"
+                      className="text-xs"
+                      value={newRegiao}
+                      onChange={(e) => setNewRegiao(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Input
                       placeholder="Cidade"
                       className="text-xs"
                       value={newCidade}
@@ -1515,6 +1523,14 @@ export default function GateProsPage() {
                       className="text-xs"
                       value={editBairro}
                       onChange={(e) => setEditBairro(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Input
+                      placeholder="Região"
+                      className="text-xs"
+                      value={editRegiao}
+                      onChange={(e) => setEditRegiao(e.target.value)}
                     />
                   </div>
                   <div>

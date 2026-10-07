@@ -1661,7 +1661,7 @@ export default function MotorPrecosPage() {
                     <Input
                       value={feriadoCidade}
                       onChange={(e) => setFeriadoCidade(e.target.value)}
-                      placeholder="São Paulo"
+                      placeholder="Campinas"
                       required
                     />
                   </div>

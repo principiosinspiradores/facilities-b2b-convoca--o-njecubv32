@@ -28,40 +28,73 @@ export function calcularDistanciaMetros(
 }
 
 /**
- * Coordenadas estimadas de fallback para postos conhecidos caso o endereço seja em SP/etc
+ * Coordenadas de fallback para Campinas (Praça Carlos Gomes)
+ */
+export const COORDENADAS_FALLBACK_CAMPINAS = {
+  lat: -22.9056,
+  lng: -47.0608,
+}
+
+/**
+ * Coordenadas geográficas do posto.
+ * Prioriza SEMPRE as coordenadas reais salvas no posto (`latitude` e `longitude`).
+ * Se não informadas, recorre ao objeto `endereco` se tiver lat/lng, ou fallback de Campinas (Praça Carlos Gomes).
  */
 export function getCoordenadasPosto(posto?: PostoRecord): { lat: number; lng: number } {
-  if (posto?.latitude && posto?.longitude) {
-    return { lat: posto.latitude, lng: posto.longitude }
+  const latNum = Number(posto?.latitude)
+  const lngNum = Number(posto?.longitude)
+  if (
+    posto?.latitude !== undefined &&
+    posto?.latitude !== null &&
+    !isNaN(latNum) &&
+    latNum !== 0 &&
+    posto?.longitude !== undefined &&
+    posto?.longitude !== null &&
+    !isNaN(lngNum) &&
+    lngNum !== 0
+  ) {
+    return { lat: latNum, lng: lngNum }
   }
 
   // Tenta extrair das propriedades de endereco se existirem
   const end = posto?.endereco as
     | (Endereco & { latitude?: number; longitude?: number; lat?: number; lng?: number })
     | undefined
-  if (end?.latitude && end?.longitude) {
-    return { lat: end.latitude, lng: end.longitude }
-  }
-  if (end?.lat && end?.lng) {
-    return { lat: end.lat, lng: end.lng }
-  }
-
-  // Fallback baseado no endereço / cidade padrão da demo (Av. Paulista 1000 ou Brás)
-  if (
-    posto?.nome?.toLowerCase().includes('alfa') ||
-    (end?.logradouro && end.logradouro.toLowerCase().includes('paulista'))
-  ) {
-    return { lat: -23.561684, lng: -46.655981 } // Av. Paulista 1000
-  }
-  if (
-    posto?.nome?.toLowerCase().includes('beta') ||
-    (end?.bairro && end.bairro.toLowerCase().includes('brás'))
-  ) {
-    return { lat: -23.54358, lng: -46.62018 } // Brás
+  const endLat = Number(end?.latitude ?? end?.lat)
+  const endLng = Number(end?.longitude ?? end?.lng)
+  if (!isNaN(endLat) && endLat !== 0 && !isNaN(endLng) && endLng !== 0) {
+    return { lat: endLat, lng: endLng }
   }
 
-  // Padrão Centro São Paulo - Praça da Sé
-  return { lat: -23.55052, lng: -46.633308 }
+  // Fallback padrão para postos legados sem coordenadas: Centro de Campinas (Praça Carlos Gomes)
+  return { ...COORDENADAS_FALLBACK_CAMPINAS }
+}
+
+/**
+ * Verifica se o posto possui coordenadas reais cadastradas (diferentes de zero/nulo).
+ */
+export function postoTemCoordenadas(posto?: PostoRecord): boolean {
+  if (!posto) return false
+  const latNum = Number(posto.latitude)
+  const lngNum = Number(posto.longitude)
+  if (
+    posto.latitude !== undefined &&
+    posto.latitude !== null &&
+    !isNaN(latNum) &&
+    latNum !== 0 &&
+    posto.longitude !== undefined &&
+    posto.longitude !== null &&
+    !isNaN(lngNum) &&
+    lngNum !== 0
+  ) {
+    return true
+  }
+  const end = posto.endereco as
+    | (Endereco & { latitude?: number; longitude?: number; lat?: number; lng?: number })
+    | undefined
+  const endLat = Number(end?.latitude ?? end?.lat)
+  const endLng = Number(end?.longitude ?? end?.lng)
+  return !isNaN(endLat) && endLat !== 0 && !isNaN(endLng) && endLng !== 0
 }
 
 /**

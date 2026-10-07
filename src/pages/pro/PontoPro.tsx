@@ -8,6 +8,7 @@ import {
   getCoordenadasPosto,
   getToleranciasPosto,
   verificarHorarioTurno,
+  postoTemCoordenadas,
 } from '@/services/ponto'
 import {
   PontoPendenteItem,
@@ -885,6 +886,17 @@ export default function PontoProPage() {
                           </div>
                         </div>
 
+                        {!postoTemCoordenadas(posto) && (
+                          <div className="p-2 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-[11px] flex items-start gap-1.5">
+                            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                            <div>
+                              <strong>Posto sem coordenadas</strong> — a cerca digital não
+                              funcionará corretamente. Contate o gestor da empresa para configurar a
+                              localização exata do posto.
+                            </div>
+                          </div>
+                        )}
+
                         {/* Status dos registros */}
                         <div className="space-y-2 text-xs">
                           {/* Chegada */}
@@ -1262,6 +1274,17 @@ export default function PontoProPage() {
                 </p>
               </div>
 
+              {/* Aviso se o posto não tem coordenadas */}
+              {!postoTemCoordenadas(selectedPostoSemConv) && (
+                <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Posto sem coordenadas</strong> — a cerca digital usará localização de
+                    fallback (Centro de Campinas).
+                  </div>
+                </div>
+              )}
+
               {/* Geolocalização */}
               <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1">
                 <div className="flex justify-between items-center">
@@ -1278,7 +1301,7 @@ export default function PontoProPage() {
                 </div>
                 {userCoords ? (
                   <p className="text-primary font-medium">
-                    Coordenadas capturadas (precisão ±{Math.round(userCoords.accuracy)}m)
+                    Coordenadas capturadas (precisão ±{Math.round(userCoords.accuracy || 20)}m)
                   </p>
                 ) : (
                   <p className="text-slate-400">Capturando posição GPS...</p>
@@ -1433,6 +1456,17 @@ export default function PontoProPage() {
                 <div>
                   <strong>Modo Offline Ativo:</strong> Seu registro será gravado com a hora exata
                   deste momento no aparelho e enviado assim que a internet voltar.
+                </div>
+              </div>
+            )}
+
+            {/* Aviso quando o posto não tem coordenadas configuradas */}
+            {!postoTemCoordenadas(selectedEscala?.expand?.posto) && (
+              <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong>Posto sem coordenadas</strong> — a cerca digital não funcionará
+                  corretamente. Usando localização estimada de referência (Centro de Campinas).
                 </div>
               </div>
             )}
