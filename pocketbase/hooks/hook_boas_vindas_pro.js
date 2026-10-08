@@ -198,7 +198,7 @@ onRecordAfterCreateSuccess((e) => {
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 10px; background-color: #ffffff;">
         <div style="background-color: ${corPrimaria}; color: #ffffff; padding: 22px; border-radius: 8px; text-align: center;">
           <h2 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px;">${senderName}</h2>
-          <p style="margin: 6px 0 0 0; font-size: 14px; opacity: 0.95;">${!isVerified && resetToken ? 'Primeiro Acesso do Profissional' : 'Bem-vindo(a) à plataforma de facilities!'}</p>
+          <p style="margin: 6px 0 0 0; font-size: 14px; opacity: 0.95;">${!isVerified && conviteToken ? 'Primeiro Acesso do Profissional' : 'Bem-vindo(a) à plataforma de facilities!'}</p>
         </div>
         <div style="padding: 24px 4px; color: #334155; font-size: 15px; line-height: 1.6;">
           <p style="margin-top: 0;">Olá, <strong>${proName}</strong>!</p>

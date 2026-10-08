@@ -12,6 +12,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import { useNavigate } from 'react-router-dom'
+import { useInstallPrompt } from '@/hooks/useInstallPrompt'
+import { ModalInstalarApp } from '@/components/pro/ModalInstalarApp'
 import {
   Clock,
   MapPin,
@@ -22,11 +24,47 @@ import {
   Calendar,
   MessageSquare,
   FileText,
+  RefreshCw,
+  Download,
 } from 'lucide-react'
 
 export default function ConvocacoesPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
+
+  // Hook e estado de instalação PWA
+  const {
+    isInstalled: pwaInstalledHook,
+    canInstallNatively,
+    isIos,
+    promptInstall,
+  } = useInstallPrompt()
+  const [modalIosOpen, setModalIosOpen] = useState(false)
+  const [modalDesktopOpen, setModalDesktopOpen] = useState(false)
+  const [pwaInstalledLocal, setPwaInstalledLocal] = useState(false)
+  const pwaInstalled = pwaInstalledHook || pwaInstalledLocal
+
+  const handleInstallPwa = async () => {
+    if (canInstallNatively) {
+      const outcome = await promptInstall()
+      if (outcome === 'accepted') {
+        setPwaInstalledLocal(true)
+        toast({
+          title: 'App instalado com sucesso!',
+          description: 'O ícone já está na sua tela inicial.',
+        })
+      }
+      return
+    }
+
+    if (isIos) {
+      setModalIosOpen(true)
+      return
+    }
+
+    setModalDesktopOpen(true)
+  }
+
   const [activeTab, setActiveTab] = useState<'pendentes' | 'minhas'>('pendentes')
   const [convocacoes, setConvocacoes] = useState<ConvocacaoRecord[]>([])
   const [atestadosPro, setAtestadosPro] = useState<AtestadoRecord[]>([])
@@ -218,18 +256,49 @@ export default function ConvocacoesPage() {
           loadConvocacoes()
         }}
       />
-      {/* Header com aviso de teste/status */}
+      {/* Modais de Instalação PWA (iOS e Desktop) */}
+      <ModalInstalarApp
+        iosOpen={modalIosOpen}
+        onIosOpenChange={setModalIosOpen}
+        desktopOpen={modalDesktopOpen}
+        onDesktopOpenChange={setModalDesktopOpen}
+      />
+
+      {/* Header com botões Atualizar Lista e Instalar App */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            Minhas Convocações
-            <Badge
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-bold text-slate-900">Minhas Convocações</h1>
+
+            {/* Botão Atualizar Lista com ícone RefreshCw girando */}
+            <Button
               variant="outline"
-              className="bg-primary/5 text-primary border-primary/20 text-xs uppercase tracking-wide"
+              size="sm"
+              onClick={loadConvocacoes}
+              disabled={isLoading}
+              className="text-xs border-slate-300 hover:bg-slate-50 font-semibold"
             >
-              Marketplace Fechado
-            </Badge>
-          </h1>
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isLoading ? 'animate-spin' : ''}`} />
+              Atualizar lista
+            </Button>
+
+            {/* Botão de Instalar App ou Selo de App Instalado */}
+            {pwaInstalled ? (
+              <Badge className="bg-primary/10 text-primary border-primary/30 gap-1.5 px-3 py-1.5 text-xs font-semibold">
+                <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
+                App instalado
+              </Badge>
+            ) : (
+              <Button
+                onClick={handleInstallPwa}
+                size="sm"
+                className="text-xs bg-primary hover:bg-primary/90 text-white font-semibold shadow-xs"
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+                Instalar App
+              </Button>
+            )}
+          </div>
           <p className="text-slate-500 text-sm mt-1">
             Você foi selecionado nominalmente pela empresa de facilities. Responda com agilidade
             para garantir sua vaga.
@@ -285,14 +354,6 @@ export default function ConvocacoesPage() {
                 )}
               </TabsTrigger>
             </TabsList>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={loadConvocacoes}
-              className="text-xs text-slate-500 hover:text-slate-800"
-            >
-              Atualizar lista
-            </Button>
           </div>
         </Tabs>
       </div>

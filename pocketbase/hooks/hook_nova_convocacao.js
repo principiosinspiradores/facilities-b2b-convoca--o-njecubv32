@@ -139,64 +139,49 @@ onRecordAfterCreateSuccess((e) => {
           console.log('[PUSH] Erro ao gravar push_outbox para convocação:', outboxErr)
         }
 
-        // 2. Disparo HTTP para o push service
-        try {
-          const res = $http.send({
-            url: ep,
-            method: 'POST',
-            headers: {
-              TTL: '86400',
-              Urgency: 'high',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              title: pushTitle,
-              body: pushBody,
-              url: pushUrl,
-              icon: '/favicon.ico',
-              badge: '/favicon.ico',
-              tag: pushTag,
-            }),
-            timeout: 8,
-          })
+        // 2. Disparo HTTP assinado com VAPID para o push service
+        const pushRes = VAPID.sendPushNotification(
+          ep,
+          {
+            title: pushTitle,
+            body: pushBody,
+            url: pushUrl,
+            icon: '/favicon.ico',
+            badge: '/favicon.ico',
+            tag: pushTag,
+          },
+          { urgency: 'high', ttl: 86400 },
+        )
 
-          const status = res.statusCode
-          const raw = res.rawText ? res.rawText.slice(0, 160) : ''
-
-          if (status >= 200 && status < 300) {
-            console.log(
-              '[PUSH] Push de nova convocação enviado com sucesso (HTTP ' +
-                status +
-                ') para sub ' +
-                sub.id,
-            )
-          } else if (status === 404 || status === 410) {
-            console.log(
-              '[PUSH] Assinatura expirada (HTTP ' +
-                status +
-                ') para sub ' +
-                sub.id +
-                '. Removendo do banco.',
-            )
-            try {
-              $app.delete(sub)
-            } catch (_) {}
-          } else {
-            console.log(
-              '[PUSH] Falha HTTP ' +
-                status +
-                ' ao enviar push de convocação para sub ' +
-                sub.id +
-                ' [' +
-                ep.slice(0, 40) +
-                '...]: ' +
-                raw,
-            )
-          }
-        } catch (subErr) {
+        if (pushRes.success) {
           console.log(
-            '[PUSH] Exceção de rede ao enviar push de convocação para sub ' + sub.id + ':',
-            subErr,
+            '[PUSH] Push de nova convocação enviado com sucesso (HTTP ' +
+              pushRes.statusCode +
+              ') para sub ' +
+              sub.id,
+          )
+        } else if (pushRes.expired) {
+          console.log(
+            '[PUSH] Assinatura expirada (HTTP ' +
+              pushRes.statusCode +
+              ') para sub ' +
+              sub.id +
+              '. Removendo do banco.',
+          )
+          try {
+            $app.delete(sub)
+          } catch (_) {}
+        } else {
+          console.log(
+            '[PUSH] Falha (status ' +
+              pushRes.statusCode +
+              ', erro: ' +
+              (pushRes.error || pushRes.rawText || 'não especificado') +
+              ') ao enviar push de convocação para sub ' +
+              sub.id +
+              ' [' +
+              ep.slice(0, 40) +
+              '...]',
           )
         }
       }

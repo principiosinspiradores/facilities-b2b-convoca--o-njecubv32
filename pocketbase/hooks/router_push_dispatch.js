@@ -3,9 +3,14 @@
 
 // Obter chave VAPID pública
 routerAdd('GET', '/backend/v1/push/vapid-public-key', (e) => {
-  const pubKey =
-    $os.getenv('VAPID_PUBLIC_KEY') ||
-    'BN8vQj4x5m3nL8yR1wK6vP9zT2uO7qS5jA3dM8eX2yL9zB4cV7nP1mO6rT8uE3yL9zB4cV7nP1mO6rT8uE3yL9w'
+  const pubKey = $os.getenv('VAPID_PUBLIC_KEY')
+  if (!pubKey) {
+    return e.json(503, {
+      error: 'VAPID_NOT_CONFIGURED',
+      message:
+        'Chave pública VAPID não configurada no servidor. Cadastre o secret VAPID_PUBLIC_KEY.',
+    })
+  }
 
   return e.json(200, {
     publicKey: pubKey,
@@ -104,61 +109,48 @@ routerAdd('POST', '/backend/v1/push/test', (e) => {
       console.log('[PUSH_TEST] Erro ao salvar outbox:', outboxErr)
     }
 
-    // 2. Disparar Web Push (com payload e tickle fallback)
-    try {
-      const resp = $http.send({
-        url: endpoint,
-        method: 'POST',
-        headers: {
-          TTL: '86400',
-          Urgency: 'high',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: title,
-          body: body,
-          url: url,
-          icon: '/favicon.ico',
-          badge: '/favicon.ico',
-          tag: 'teste-' + outboxId,
-        }),
-        timeout: 8,
-      })
+    // 2. Disparar Web Push assinado com VAPID (com payload e tickle fallback)
+    const result = VAPID.sendPushNotification(
+      endpoint,
+      {
+        title: title,
+        body: body,
+        url: url,
+        icon: '/favicon.ico',
+        badge: '/favicon.ico',
+        tag: 'teste-' + outboxId,
+      },
+      { urgency: 'high', ttl: 86400 },
+    )
 
-      const status = resp.statusCode
-      const rawText = resp.rawText ? resp.rawText.slice(0, 160) : ''
-
-      if (status >= 200 && status < 300) {
-        enviados++
-        console.log('[PUSH_TEST] Sucesso (HTTP ' + status + ') para sub ' + sub.id)
-      } else if (status === 404 || status === 410) {
-        removidos++
-        console.log(
-          '[PUSH_TEST] Subscription expirada (HTTP ' +
-            status +
-            ') para sub ' +
-            sub.id +
-            '. Removendo.',
-        )
-        try {
-          $app.delete(sub)
-        } catch (_) {}
-      } else {
-        erros++
-        console.log(
-          '[PUSH_TEST] Falha HTTP ' +
-            status +
-            ' ao enviar push para sub ' +
-            sub.id +
-            ' [' +
-            endpoint.slice(0, 40) +
-            '...]: ' +
-            rawText,
-        )
-      }
-    } catch (httpErr) {
+    if (result.success) {
+      enviados++
+      console.log('[PUSH_TEST] Sucesso (HTTP ' + result.statusCode + ') para sub ' + sub.id)
+    } else if (result.expired) {
+      removidos++
+      console.log(
+        '[PUSH_TEST] Subscription expirada (HTTP ' +
+          result.statusCode +
+          ') para sub ' +
+          sub.id +
+          '. Removendo.',
+      )
+      try {
+        $app.delete(sub)
+      } catch (_) {}
+    } else {
       erros++
-      console.log('[PUSH_TEST] Exceção de rede no envio para sub ' + sub.id + ':', httpErr)
+      console.log(
+        '[PUSH_TEST] Falha (status ' +
+          result.statusCode +
+          ', erro: ' +
+          (result.error || result.rawText || 'não especificado') +
+          ') ao enviar push para sub ' +
+          sub.id +
+          ' [' +
+          endpoint.slice(0, 40) +
+          '...]',
+      )
     }
   }
 

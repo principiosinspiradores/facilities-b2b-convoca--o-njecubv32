@@ -81,61 +81,49 @@ onRecordAfterCreateSuccess((e) => {
           console.log('[PUSH] Erro ao gravar push_outbox de atraso no ponto:', outboxErr)
         }
 
-        // 2. Disparo HTTP
-        try {
-          const res = $http.send({
-            url: ep,
-            method: 'POST',
-            headers: {
-              TTL: '86400',
-              Urgency: 'normal',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              title: pushTitle,
-              body: pushBody,
-              url: pushUrl,
-              icon: '/favicon.ico',
-              badge: '/favicon.ico',
-              tag: pushTag,
-            }),
-            timeout: 8,
-          })
+        // 2. Disparo HTTP assinado com VAPID
+        const pushRes = VAPID.sendPushNotification(
+          ep,
+          {
+            title: pushTitle,
+            body: pushBody,
+            url: pushUrl,
+            icon: '/favicon.ico',
+            badge: '/favicon.ico',
+            tag: pushTag,
+          },
+          { urgency: 'normal', ttl: 86400 },
+        )
 
-          const status = res.statusCode
-          const raw = res.rawText ? res.rawText.slice(0, 160) : ''
-
-          if (status >= 200 && status < 300) {
-            console.log(
-              '[PUSH] Push de atraso no ponto entregue (HTTP ' + status + ') para sub ' + sub.id,
-            )
-          } else if (status === 404 || status === 410) {
-            console.log(
-              '[PUSH] Subscrição expirada (HTTP ' +
-                status +
-                ') para sub ' +
-                sub.id +
-                '. Removendo.',
-            )
-            try {
-              $app.delete(sub)
-            } catch (_) {}
-          } else {
-            console.log(
-              '[PUSH] Falha HTTP ' +
-                status +
-                ' ao enviar push de atraso no ponto para sub ' +
-                sub.id +
-                ' [' +
-                ep.slice(0, 40) +
-                '...]: ' +
-                raw,
-            )
-          }
-        } catch (subErr) {
+        if (pushRes.success) {
           console.log(
-            '[PUSH] Exceção ao enviar push de atraso no ponto para sub ' + sub.id + ':',
-            subErr,
+            '[PUSH] Push de atraso no ponto entregue (HTTP ' +
+              pushRes.statusCode +
+              ') para sub ' +
+              sub.id,
+          )
+        } else if (pushRes.expired) {
+          console.log(
+            '[PUSH] Subscrição expirada (HTTP ' +
+              pushRes.statusCode +
+              ') para sub ' +
+              sub.id +
+              '. Removendo.',
+          )
+          try {
+            $app.delete(sub)
+          } catch (_) {}
+        } else {
+          console.log(
+            '[PUSH] Falha (status ' +
+              pushRes.statusCode +
+              ', erro: ' +
+              (pushRes.error || pushRes.rawText || 'não especificado') +
+              ') ao enviar push de atraso no ponto para sub ' +
+              sub.id +
+              ' [' +
+              ep.slice(0, 40) +
+              '...]',
           )
         }
       }
