@@ -70,12 +70,12 @@ export default function GateProsPage() {
   const [newTelefone, setNewTelefone] = useState('')
   const [newCpf, setNewCpf] = useState('')
   const [newFuncoes, setNewFuncoes] = useState<string[]>([])
-  const [newRegiao, setNewRegiao] = useState('Campinas e Região')
   const [newCidade, setNewCidade] = useState('Campinas')
   const [newUf, setNewUf] = useState('SP')
   const [newLogradouro, setNewLogradouro] = useState('')
   const [newBairro, setNewBairro] = useState('')
   const [newCep, setNewCep] = useState('')
+  const [isSearchingCepNew, setIsSearchingCepNew] = useState(false)
   const [newPeriodoTeste, setNewPeriodoTeste] = useState(10)
   const [newAjudaCusto, setNewAjudaCusto] = useState(50)
   const [newValorNegociado, setNewValorNegociado] = useState<number | undefined>(undefined)
@@ -93,12 +93,12 @@ export default function GateProsPage() {
   const [editTelefone, setEditTelefone] = useState('')
   const [editCpf, setEditCpf] = useState('')
   const [editFuncoes, setEditFuncoes] = useState<string[]>([])
-  const [editRegiao, setEditRegiao] = useState('')
   const [editCidade, setEditCidade] = useState('')
   const [editUf, setEditUf] = useState('')
   const [editLogradouro, setEditLogradouro] = useState('')
   const [editBairro, setEditBairro] = useState('')
   const [editCep, setEditCep] = useState('')
+  const [isSearchingCepEdit, setIsSearchingCepEdit] = useState(false)
   const [editStatus, setEditStatus] = useState<UserStatus>('ativo')
   const [editPeriodoTeste, setEditPeriodoTeste] = useState(10)
   const [editAjudaCusto, setEditAjudaCusto] = useState(50)
@@ -151,7 +151,6 @@ export default function GateProsPage() {
     // Pré-selecionar a primeira função ativa se houver
     const primeiraAtiva = funcoesCatalogo.find((f) => f.ativo)?.nome || 'Limpeza'
     setNewFuncoes([primeiraAtiva])
-    setNewRegiao('Campinas e Região')
     setNewCidade('Campinas')
     setNewUf('SP')
     setNewLogradouro('')
@@ -180,9 +179,8 @@ export default function GateProsPage() {
     const funcs = Array.isArray(pro.funcoes) ? pro.funcoes : []
     setEditFuncoes(funcs.length > 0 ? funcs : ['Geral'])
 
-    // Endereço / Região
+    // Endereço
     const end = (pro.endereco_completo as any) || {}
-    setEditRegiao(end.regiao || '')
     setEditCidade(end.cidade || '')
     setEditUf(end.uf || 'SP')
     setEditLogradouro(end.logradouro || '')
@@ -205,6 +203,46 @@ export default function GateProsPage() {
           ]
     setEditDocumentos(docs)
     setEditModalOpen(true)
+  }
+
+  // Consulta automática de CEP via ViaCEP com fallback silencioso
+  const handleCepLookup = async (cepValue: string, isForCreate: boolean) => {
+    const cleanCep = (cepValue || '').replace(/\D/g, '')
+    if (cleanCep.length !== 8) return
+
+    if (isForCreate) {
+      setIsSearchingCepNew(true)
+    } else {
+      setIsSearchingCepEdit(true)
+    }
+
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`)
+      if (!response.ok) return
+      const data = await response.json()
+      if (data && !data.erro) {
+        if (isForCreate) {
+          if (data.logradouro) setNewLogradouro(data.logradouro)
+          if (data.bairro) setNewBairro(data.bairro)
+          if (data.localidade) setNewCidade(data.localidade)
+          if (data.uf) setNewUf(data.uf)
+        } else {
+          if (data.logradouro) setEditLogradouro(data.logradouro)
+          if (data.bairro) setEditBairro(data.bairro)
+          if (data.localidade) setEditCidade(data.localidade)
+          if (data.uf) setEditUf(data.uf)
+        }
+      }
+    } catch (e) {
+      // Fallback silencioso se o CEP não existir ou serviço offline
+      console.warn('Falha na consulta ViaCEP:', e)
+    } finally {
+      if (isForCreate) {
+        setIsSearchingCepNew(false)
+      } else {
+        setIsSearchingCepEdit(false)
+      }
+    }
   }
 
   // Alternar função selecionada (checkbox/toggle)
@@ -357,7 +395,6 @@ export default function GateProsPage() {
         telefone: newTelefone,
         funcoes: newFuncoes.length > 0 ? newFuncoes : ['Geral'],
         endereco_completo: {
-          regiao: newRegiao,
           logradouro: newLogradouro,
           bairro: newBairro,
           cidade: newCidade,
@@ -571,7 +608,6 @@ export default function GateProsPage() {
         telefone: editTelefone.trim(),
         funcoes: editFuncoes.length > 0 ? editFuncoes : ['Geral'],
         endereco_completo: {
-          regiao: editRegiao,
           logradouro: editLogradouro,
           bairro: editBairro,
           cidade: editCidade,
@@ -713,7 +749,7 @@ export default function GateProsPage() {
       (p.cpf && p.cpf.includes(q.replace(/\D/g, ''))) ||
       (p.telefone || '').includes(q) ||
       (Array.isArray(p.funcoes) && p.funcoes.some((f) => f.toLowerCase().includes(q))) ||
-      ((p.endereco_completo as any)?.regiao || '').toLowerCase().includes(q) ||
+      ((p.endereco_completo as any)?.bairro || '').toLowerCase().includes(q) ||
       ((p.endereco_completo as any)?.cidade || '').toLowerCase().includes(q)
 
     const matchStatus = filterStatus === 'todos' || p.status === filterStatus
@@ -782,7 +818,7 @@ export default function GateProsPage() {
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
               <Input
-                placeholder="Buscar por nome, e-mail, telefone, região..."
+                placeholder="Buscar por nome, e-mail, telefone, bairro ou cidade..."
                 className="pl-9 text-xs"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -839,7 +875,7 @@ export default function GateProsPage() {
                     <th className="pb-3 px-2">Profissional / Contato</th>
                     <th className="pb-3 px-2">CPF</th>
                     <th className="pb-3 px-2">Função(ões)</th>
-                    <th className="pb-3 px-2">Região</th>
+                    <th className="pb-3 px-2">Bairro</th>
                     <th className="pb-3 px-2">Status & Acesso</th>
                     <th className="pb-3 px-2">Documentos</th>
                     <th className="pb-3 px-2">Período de Teste</th>
@@ -862,7 +898,7 @@ export default function GateProsPage() {
                     const docsPendentes = docs.filter((d: any) => d.status === 'pendente').length
 
                     const end = (p.endereco_completo as any) || {}
-                    const regiaoTexto = end.regiao || end.bairro || end.cidade || '—'
+                    const localTexto = end.bairro || end.cidade || '—'
 
                     const funcsList =
                       Array.isArray(p.funcoes) && p.funcoes.length > 0 ? p.funcoes : ['Geral']
@@ -909,8 +945,8 @@ export default function GateProsPage() {
                         <td className="py-3 px-2 text-xs text-slate-600">
                           <div className="flex items-center gap-1">
                             <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span className="truncate max-w-[130px]" title={regiaoTexto}>
-                              {regiaoTexto}
+                            <span className="truncate max-w-[130px]" title={localTexto}>
+                              {localTexto}
                             </span>
                           </div>
                         </td>
@@ -1213,29 +1249,30 @@ export default function GateProsPage() {
                   <MapPin className="w-3.5 h-3.5 text-primary" />
                   Endereço Residencial do Pro
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div className="sm:col-span-2">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                  <div>
                     <Input
-                      placeholder="Rua, Avenida, Número..."
+                      placeholder={isSearchingCepNew ? 'Buscando...' : 'CEP (ex: 13058533)'}
+                      className="text-xs"
+                      value={newCep}
+                      onChange={(e) => setNewCep(e.target.value)}
+                      onBlur={() => handleCepLookup(newCep, true)}
+                    />
+                  </div>
+                  <div className="sm:col-span-3">
+                    <Input
+                      placeholder="Logradouro e número (ex: Rua ..., 90)"
                       className="text-xs"
                       value={newLogradouro}
                       onChange={(e) => setNewLogradouro(e.target.value)}
                     />
                   </div>
-                  <div>
+                  <div className="sm:col-span-2">
                     <Input
                       placeholder="Bairro"
                       className="text-xs"
                       value={newBairro}
                       onChange={(e) => setNewBairro(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Input
-                      placeholder="Região"
-                      className="text-xs"
-                      value={newRegiao}
-                      onChange={(e) => setNewRegiao(e.target.value)}
                     />
                   </div>
                   <div>
@@ -1252,14 +1289,6 @@ export default function GateProsPage() {
                       className="text-xs"
                       value={newUf}
                       onChange={(e) => setNewUf(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Input
-                      placeholder="CEP"
-                      className="text-xs"
-                      value={newCep}
-                      onChange={(e) => setNewCep(e.target.value)}
                     />
                   </div>
                 </div>
@@ -1672,29 +1701,30 @@ export default function GateProsPage() {
                   <MapPin className="w-3.5 h-3.5 text-primary" />
                   Endereço Residencial do Pro
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div className="sm:col-span-2">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                  <div>
                     <Input
-                      placeholder="Rua, Avenida, Número..."
+                      placeholder={isSearchingCepEdit ? 'Buscando...' : 'CEP (ex: 13058533)'}
+                      className="text-xs"
+                      value={editCep}
+                      onChange={(e) => setEditCep(e.target.value)}
+                      onBlur={() => handleCepLookup(editCep, false)}
+                    />
+                  </div>
+                  <div className="sm:col-span-3">
+                    <Input
+                      placeholder="Logradouro e número (ex: Rua ..., 90)"
                       className="text-xs"
                       value={editLogradouro}
                       onChange={(e) => setEditLogradouro(e.target.value)}
                     />
                   </div>
-                  <div>
+                  <div className="sm:col-span-2">
                     <Input
                       placeholder="Bairro"
                       className="text-xs"
                       value={editBairro}
                       onChange={(e) => setEditBairro(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Input
-                      placeholder="Região"
-                      className="text-xs"
-                      value={editRegiao}
-                      onChange={(e) => setEditRegiao(e.target.value)}
                     />
                   </div>
                   <div>
@@ -1711,14 +1741,6 @@ export default function GateProsPage() {
                       className="text-xs"
                       value={editUf}
                       onChange={(e) => setEditUf(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Input
-                      placeholder="CEP"
-                      className="text-xs"
-                      value={editCep}
-                      onChange={(e) => setEditCep(e.target.value)}
                     />
                   </div>
                 </div>
