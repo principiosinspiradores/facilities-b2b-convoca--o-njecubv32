@@ -253,6 +253,45 @@ export async function promptPushPermissionOnce(userId: string): Promise<void> {
 /**
  * Dispara envio de notificação de teste para o próprio usuário autenticado
  */
+export async function gerarChavesVapid(
+  force = false,
+): Promise<{ success: boolean; message: string; publicKey?: string; alreadyConfigured?: boolean }> {
+  try {
+    const res = await pb.send<{
+      success?: boolean
+      message?: string
+      error?: string
+      publicKey?: string
+    }>(`/backend/v1/push/gerar-vapid${force ? '?force=true' : ''}`, {
+      method: 'POST',
+    })
+
+    return {
+      success: true,
+      message: res?.message || 'Chaves VAPID geradas com sucesso!',
+      publicKey: res?.publicKey,
+    }
+  } catch (err: any) {
+    const status = err?.status || err?.statusCode
+    const data = err?.data || {}
+    if (status === 409 || data.error === 'ALREADY_CONFIGURED') {
+      return {
+        success: false,
+        alreadyConfigured: true,
+        publicKey: data.publicKey,
+        message:
+          data.message ||
+          'Chaves já existentes — regenerar invalida as inscrições atuais dos aparelhos.',
+      }
+    }
+    return {
+      success: false,
+      message:
+        err?.message || data.error || 'Erro ao comunicar com o gerador de chaves do servidor.',
+    }
+  }
+}
+
 export async function sendTestPush(): Promise<{ success: boolean; message: string }> {
   try {
     const res = await pb.send<{

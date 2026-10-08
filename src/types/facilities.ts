@@ -316,6 +316,9 @@ export interface SettingsRecord {
   empresa_mp_client_id?: string
   ultimo_snapshot_em?: string
   prazo_atestado_horas?: number
+  vapid_public_key?: string
+  vapid_private_key?: string
+  vapid_subject?: string
   created: string
   updated: string
 }

@@ -1,14 +1,27 @@
 // pocketbase/hooks/router_push_dispatch.js
 // Endpoint interno para obter configuração de VAPID e testar/disparar push diretamente
 
-// Obter chave VAPID pública
+// Obter chave VAPID pública (1º settings, 2º fallback para env)
 routerAdd('GET', '/backend/v1/push/vapid-public-key', (e) => {
-  const pubKey = $os.getenv('VAPID_PUBLIC_KEY')
+  let pubKey = ''
+  try {
+    const sList = $app.findRecordsByFilter('settings', 'id != ""', '-created', 1, 0)
+    if (sList && sList.length > 0) {
+      pubKey = sList[0].getString('vapid_public_key') || ''
+    }
+  } catch (err) {
+    console.log('[PUSH_DISPATCH] Erro ao buscar vapid_public_key em settings:', err)
+  }
+
+  if (!pubKey && typeof $os !== 'undefined' && $os.getenv) {
+    pubKey = $os.getenv('VAPID_PUBLIC_KEY') || ''
+  }
+
   if (!pubKey) {
     return e.json(503, {
       error: 'VAPID_NOT_CONFIGURED',
       message:
-        'Chave pública VAPID não configurada no servidor. Cadastre o secret VAPID_PUBLIC_KEY.',
+        'Chave pública VAPID não configurada no servidor. Gere as chaves nas Configurações ou cadastre o secret VAPID_PUBLIC_KEY.',
     })
   }
 

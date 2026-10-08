@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T21:43:31.122Z",
+  "generatedAt": "2026-10-08T22:06:53.350Z",
   "collections": [
     {
       "name": "users",
@@ -959,6 +959,24 @@
         {
           "name": "prazo_atestado_horas",
           "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vapid_public_key",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vapid_private_key",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vapid_subject",
+          "type": "text",
           "required": false,
           "system": false
         }

@@ -464,15 +464,101 @@
     }
   }
 
+  // Carrega credenciais VAPID: 1º em settings, 2º fallback em $os.getenv
+  function getVapidCredentials() {
+    let pubKey = ''
+    let privKey = ''
+    let subject = ''
+
+    try {
+      if (typeof $app !== 'undefined' && $app) {
+        const sList = $app.findRecordsByFilter('settings', 'id != ""', '-created', 1, 0)
+        if (sList && sList.length > 0) {
+          pubKey = sList[0].getString('vapid_public_key') || ''
+          privKey = sList[0].getString('vapid_private_key') || ''
+          subject = sList[0].getString('vapid_subject') || ''
+        }
+      }
+    } catch (errSettings) {
+      console.log('[VAPID] Erro ao buscar chaves em settings:', errSettings)
+    }
+
+    if (!pubKey && typeof $os !== 'undefined' && $os.getenv) {
+      pubKey = $os.getenv('VAPID_PUBLIC_KEY') || ''
+    }
+    if (!privKey && typeof $os !== 'undefined' && $os.getenv) {
+      privKey = $os.getenv('VAPID_PRIVATE_KEY') || ''
+    }
+    if (!subject && typeof $os !== 'undefined' && $os.getenv) {
+      subject = $os.getenv('VAPID_SUBJECT') || ''
+    }
+    if (!subject) {
+      subject = 'mailto:contato@housekeeping.com.br'
+    }
+
+    return {
+      publicKey: pubKey,
+      privateKey: privKey,
+      subject: subject,
+    }
+  }
+
+  // Gera par de chaves ECDSA P-256 nativo (RFC 6979 / ES256) compatível com Web Push RFC 8292
+  // Retorna { publicKey: string, privateKey: string, subject: string }
+  function generateVapidKeyPair() {
+    let privBigInt = 0n
+    let privBytes = new Uint8Array(32)
+
+    // Gerar 32 bytes aleatórios criptograficamente seguros no intervalo [1, N-1]
+    while (true) {
+      for (let i = 0; i < 32; i++) {
+        const randHex = $security.randomString(2)
+        // Usar hash seguro dos bytes para uniformidade caso a string gere hex
+        privBytes[i] = Math.floor(Math.random() * 256)
+      }
+      // Sobrescrever com entropia segura de $security.randomString
+      const randEntropia = $security.sha256($security.randomString(64) + Date.now())
+      // $security.sha256 no Goja retorna string hex de 64 chars
+      for (let i = 0; i < 32; i++) {
+        const byteVal = parseInt(randEntropia.substr(i * 2, 2), 16)
+        privBytes[i] = isNaN(byteVal) ? privBytes[i] : byteVal
+      }
+
+      privBigInt = bits2int(privBytes)
+      if (privBigInt >= 1n && privBigInt < N) {
+        break
+      }
+    }
+
+    // Ponto público = d * G
+    const pubPoint = toAffine(pointMul(privBigInt, BASE_POINT))
+    if (!pubPoint) {
+      throw new Error('Falha ao computar ponto público P-256')
+    }
+
+    // Chave pública não compactada (RFC 5480 / ANSI X9.62): 0x04 || X (32 bytes) || Y (32 bytes) = 65 bytes
+    const pubBytes = new Uint8Array(65)
+    pubBytes[0] = 0x04
+    pubBytes.set(int2octets(pubPoint.x), 1)
+    pubBytes.set(int2octets(pubPoint.y), 33)
+
+    return {
+      publicKey: bytesToBase64Url(pubBytes),
+      privateKey: bytesToBase64Url(privBytes),
+      subject: 'mailto:contato@housekeeping.com.br',
+    }
+  }
+
   // Função utilitária para despachar push assinado com VAPID
   // Retorna { success: boolean, statusCode: number, expired: boolean, error?: string }
   function sendPushNotification(endpoint, payload, options) {
-    const pubKey = $os.getenv('VAPID_PUBLIC_KEY')
-    const privKey = $os.getenv('VAPID_PRIVATE_KEY')
-    const subject = $os.getenv('VAPID_SUBJECT') || 'mailto:contato@housekeeping.com.br'
+    const creds = getVapidCredentials()
+    const pubKey = creds.publicKey
+    const privKey = creds.privateKey
+    const subject = creds.subject
 
     if (!pubKey || !privKey) {
-      console.log('[PUSH] VAPID não configurado — envio abortado')
+      console.log('[PUSH] VAPID não configurado (nem em settings nem em env) — envio abortado')
       return { success: false, statusCode: 0, expired: false, error: 'VAPID não configurado' }
     }
 
@@ -532,7 +618,11 @@
     createVapidJwt: createVapidJwt,
     getAudienceFromEndpoint: getAudienceFromEndpoint,
     sendPushNotification: sendPushNotification,
+    getVapidCredentials: getVapidCredentials,
+    generateVapidKeyPair: generateVapidKeyPair,
     sha256: sha256,
     hmacSha256: hmacSha256,
+    bytesToBase64Url: bytesToBase64Url,
+    base64UrlToBytes: base64UrlToBytes,
   }
 })(this)

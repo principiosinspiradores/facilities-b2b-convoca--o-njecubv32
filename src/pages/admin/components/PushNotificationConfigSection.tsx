@@ -21,8 +21,18 @@ import {
   subscribeToPush,
   unsubscribeFromPush,
   sendTestPush,
+  gerarChavesVapid,
 } from '@/services/pushNotifications'
 import pb from '@/lib/pocketbase/client'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { KeyRound, ShieldAlert } from 'lucide-react'
 
 export function PushNotificationConfigSection() {
   const [isSupported, setIsSupported] = useState(true)
@@ -32,6 +42,10 @@ export function PushNotificationConfigSection() {
   const [isTesting, setIsTesting] = useState(false)
   const [iosWarning, setIosWarning] = useState<string | null>(null)
   const [activeSubscriptionsCount, setActiveSubscriptionsCount] = useState<number>(0)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [vapidPublicKey, setVapidPublicKey] = useState<string | null>(null)
+  const [isGeneratingVapid, setIsGeneratingVapid] = useState(false)
+  const [modalConfirmacaoRegerar, setModalConfirmacaoRegerar] = useState(false)
 
   // Carregar status inicial
   const checkStatus = async () => {
@@ -57,12 +71,31 @@ export function PushNotificationConfigSection() {
         typeof Notification !== 'undefined' && Notification.permission === 'granted'
       setIsEnabled(Boolean(sub && permissionGranted))
 
+      const user = pb.authStore.model
+      const userIsAdmin = user?.role === 'admin'
+      setIsAdmin(userIsAdmin)
+
       // Contar inscrições do usuário no PocketBase
-      if (pb.authStore.model?.id) {
+      if (user?.id) {
         const list = await pb.collection('push_subscriptions').getList(1, 10, {
-          filter: `user = "${pb.authStore.model.id}"`,
+          filter: `user = "${user.id}"`,
         })
         setActiveSubscriptionsCount(list.totalItems)
+      }
+
+      // Verificar chaves VAPID configuradas em settings
+      try {
+        const sList = await pb.collection('settings').getList(1, 1, { sort: '-created' })
+        if (sList.items.length > 0) {
+          const s = sList.items[0] as any
+          if (s.vapid_public_key) {
+            setVapidPublicKey(s.vapid_public_key)
+          } else {
+            setVapidPublicKey(null)
+          }
+        }
+      } catch (errSet) {
+        console.warn('Erro ao ler settings para VAPID:', errSet)
       }
     } catch (err) {
       console.warn('Erro ao verificar status push:', err)
@@ -130,6 +163,42 @@ export function PushNotificationConfigSection() {
       })
     } finally {
       setIsToggling(false)
+    }
+  }
+
+  const handleGerarVapid = async (force = false) => {
+    setIsGeneratingVapid(true)
+    try {
+      const res = await gerarChavesVapid(force)
+      if (res.success) {
+        setVapidPublicKey(res.publicKey || null)
+        setModalConfirmacaoRegerar(false)
+        toast({
+          title: 'Chaves VAPID configuradas!',
+          description:
+            'Par de chaves P-256 gerado e armazenado com sucesso no Skip Cloud. O envio de push está ativo.',
+        })
+        await checkStatus()
+      } else if (res.alreadyConfigured) {
+        if (res.publicKey) {
+          setVapidPublicKey(res.publicKey)
+        }
+        setModalConfirmacaoRegerar(true)
+      } else {
+        toast({
+          title: 'Não foi possível gerar chaves',
+          description: res.message,
+          variant: 'destructive',
+        })
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Erro na geração de chaves',
+        description: err?.message || 'Tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsGeneratingVapid(false)
     }
   }
 
@@ -270,30 +339,133 @@ export function PushNotificationConfigSection() {
             </p>
           </div>
 
-          <div className="p-4 bg-white border border-slate-200 rounded-xl flex items-center justify-between gap-3">
-            <div>
-              <span className="text-xs font-semibold text-slate-800 block">Testar Notificação</span>
-              <p className="text-[11px] text-slate-400">
-                Dispara um push de verificação para confirmar entrega.
-              </p>
+          <div className="p-4 bg-white border border-slate-200 rounded-xl flex flex-col justify-between gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <span className="text-xs font-semibold text-slate-800 block">
+                  Testar Notificação
+                </span>
+                <p className="text-[11px] text-slate-400">
+                  Dispara um push de verificação para confirmar entrega.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleTestPush}
+                disabled={!isEnabled || isTesting}
+                className="text-xs shrink-0"
+              >
+                {isTesting ? (
+                  <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5 mr-1 text-primary" />
+                )}
+                Enviar Teste
+              </Button>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleTestPush}
-              disabled={!isEnabled || isTesting}
-              className="text-xs shrink-0"
-            >
-              {isTesting ? (
-                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-              ) : (
-                <Send className="w-3.5 h-3.5 mr-1 text-primary" />
-              )}
-              Enviar Teste
-            </Button>
+
+            {/* Painel do Administrador: Gerador nativo de chaves VAPID */}
+            {isAdmin && (
+              <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-primary" />
+                    <span className="text-xs font-medium text-slate-800">
+                      Chaves VAPID (ECDSA P-256)
+                    </span>
+                  </div>
+                  {vapidPublicKey ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      Chaves configuradas ✓ (pública: {vapidPublicKey.slice(0, 8)}...)
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 inline-block">
+                      Chaves VAPID não configuradas
+                    </span>
+                  )}
+                </div>
+
+                <Button
+                  type="button"
+                  variant={vapidPublicKey ? 'outline' : 'default'}
+                  size="sm"
+                  onClick={() => {
+                    if (vapidPublicKey) {
+                      setModalConfirmacaoRegerar(true)
+                    } else {
+                      handleGerarVapid(false)
+                    }
+                  }}
+                  disabled={isGeneratingVapid}
+                  className="text-xs shrink-0 h-8 gap-1.5"
+                >
+                  {isGeneratingVapid ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <KeyRound className="w-3.5 h-3.5" />
+                  )}
+                  {vapidPublicKey ? 'Regerar Chaves' : 'Gerar chaves VAPID'}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Modal de Confirmação para Regerar Chaves VAPID */}
+        <Dialog open={modalConfirmacaoRegerar} onOpenChange={setModalConfirmacaoRegerar}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mb-2">
+                <ShieldAlert className="w-5 h-5 text-amber-600" />
+              </div>
+              <DialogTitle className="text-base font-bold text-slate-900">
+                Regerar chaves VAPID?
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-600 space-y-2 pt-2">
+                <p>
+                  As chaves VAPID já estão configuradas no servidor (chave pública:{' '}
+                  <strong className="font-mono text-slate-800">
+                    {vapidPublicKey ? `${vapidPublicKey.slice(0, 12)}...` : 'existente'}
+                  </strong>
+                  ).
+                </p>
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900">
+                  <strong className="block font-semibold mb-1">Atenção ao impacto:</strong>
+                  Regerar um novo par de chaves invalida imediatamente as inscrições push ativas de
+                  todos os aparelhos já cadastrados. Os usuários precisarão reativar as notificações
+                  ao acessar novamente.
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setModalConfirmacaoRegerar(false)}
+                disabled={isGeneratingVapid}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => handleGerarVapid(true)}
+                disabled={isGeneratingVapid}
+                className="text-xs gap-1.5"
+              >
+                {isGeneratingVapid && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Confirmar e Regerar Chaves
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Resumo de Regras de Disparo */}
         <div className="p-4 bg-slate-50/70 border border-slate-200 rounded-xl space-y-2 text-xs">
