@@ -1,0 +1,15 @@
+{
+  "fileSize": 772266,
+  "width": 1024,
+  "height": 1024,
+  "bitDepth": 8,
+  "colorType": 2,
+  "uncompressedLen": 3146752,
+  "expectedLen": 3146752,
+  "chunks": [
+    "IHDR (13)",
+    "caBX (21877)",
+    "IDAT (750320)",
+    "IEND (0)"
+  ]
+}
