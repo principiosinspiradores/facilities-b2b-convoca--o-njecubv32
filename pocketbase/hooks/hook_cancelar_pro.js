@@ -27,6 +27,73 @@ onRecordUpdate((e) => {
     const proFixoId = posto ? posto.getString('pro_fixo') : ''
     const isProFixo = proFixoId && proFixoId === proId
 
+    // Notificação Push de recusa / cancelamento para os gestores (empresa e admin)
+    try {
+      const postoNome = posto ? posto.getString('nome') : 'Posto'
+      const dataEscala = escala ? escala.getString('data').slice(0, 10) : ''
+      let proNome = 'Profissional'
+      try {
+        const proUser = $app.findRecordById('users', proId)
+        proNome = proUser.getString('name') || proUser.email() || 'Profissional'
+      } catch (_) {}
+
+      const gestores = $app.findRecordsByFilter(
+        'users',
+        "(role = 'empresa' || role = 'admin') && status = 'ativo'",
+        '-created',
+        20,
+        0,
+      )
+
+      const pushTitle = isRecusaDireta ? 'Convocação recusada' : 'Turno cancelado pelo profissional'
+      const pushBody = isRecusaDireta
+        ? `${proNome} recusou a convocação para o posto ${postoNome} em ${dataEscala}.`
+        : `${proNome} cancelou o turno aceito para o posto ${postoNome} em ${dataEscala}.`
+      const pushUrl = '/cobertura'
+
+      for (let g = 0; g < gestores.length; g++) {
+        const gestorId = gestores[g].id
+        const subs = $app.findRecordsByFilter(
+          'push_subscriptions',
+          "user = '" + gestorId + "'",
+          '-created',
+          10,
+          0,
+        )
+        for (let s = 0; s < subs.length; s++) {
+          const sub = subs[s]
+          const ep = sub.getString('endpoint')
+          try {
+            const res = $http.send({
+              url: ep,
+              method: 'POST',
+              headers: {
+                TTL: '86400',
+                Urgency: 'high',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                title: pushTitle,
+                body: pushBody,
+                url: pushUrl,
+                icon: '/favicon.ico',
+                badge: '/favicon.ico',
+                tag: 'recusa-convocacao-' + record.id,
+              }),
+              timeout: 8,
+            })
+            if (res.statusCode === 404 || res.statusCode === 410) {
+              $app.delete(sub)
+            }
+          } catch (errP) {
+            console.log('[PUSH] Erro ao enviar push de recusa de convocação:', errP)
+          }
+        }
+      }
+    } catch (errPushGestores) {
+      console.log('[PUSH] Erro geral ao enviar push de recusa/cancelamento:', errPushGestores)
+    }
+
     // 0. Ler parâmetros dinâmicos de settings
     let horasBloqueio = 24
     let limiteReincidencia = 2

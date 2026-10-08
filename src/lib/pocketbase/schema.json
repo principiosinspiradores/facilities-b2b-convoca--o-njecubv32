@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T10:59:58.148Z",
+  "generatedAt": "2026-10-08T11:31:57.418Z",
   "collections": [
     {
       "name": "users",
@@ -1585,6 +1585,68 @@
         "CREATE INDEX idx_atestados_convocacao ON atestados (convocacao)",
         "CREATE INDEX idx_atestados_pro ON atestados (pro)",
         "CREATE INDEX idx_atestados_status ON atestados (status_validacao)"
+      ]
+    },
+    {
+      "name": "push_subscriptions",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && user = @request.auth.id",
+        "view": "@request.auth.id != '' && user = @request.auth.id",
+        "create": "@request.auth.id != '' && @request.body.user = @request.auth.id",
+        "update": "@request.auth.id != '' && user = @request.auth.id",
+        "delete": "@request.auth.id != '' && user = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "endpoint",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "keys_p256dh",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "keys_auth",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "useragent",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_push_sub_endpoint ON push_subscriptions (endpoint)",
+        "CREATE INDEX idx_push_sub_user ON push_subscriptions (user)"
       ]
     }
   ]

@@ -52,6 +52,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       syncUser()
     })
 
+    // Se já houver usuário logado no primeiro carregamento do app, verificar solicitação única
+    if (pb.authStore.isValid && pb.authStore.model?.id) {
+      const uid = pb.authStore.model.id
+      setTimeout(() => {
+        import('@/services/pushNotifications').then(({ promptPushPermissionOnce }) => {
+          promptPushPermissionOnce(uid).catch(() => {})
+        })
+      }, 1500)
+    }
+
     return () => {
       unsubscribe()
     }
@@ -72,6 +82,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Ignora silenciosamente caso o usuário não tenha permissão de update ou já tenha sido atualizado pelo hook
     }
     syncUser()
+
+    // Solicitar permissão de push uma única vez no primeiro acesso/login (sem insistir)
+    if (authData.record?.id) {
+      import('@/services/pushNotifications').then(({ promptPushPermissionOnce }) => {
+        promptPushPermissionOnce(authData.record.id).catch(() => {})
+      })
+    }
   }
 
   const logout = () => {

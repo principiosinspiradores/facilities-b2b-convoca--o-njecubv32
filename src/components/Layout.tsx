@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { ModalPerfilUsuario } from '@/components/ModalPerfilUsuario'
 import { useSettings } from '@/contexts/SettingsContext'
 import { getLogoUrl } from '@/services/pricing'
 import { contarNaoLidas } from '@/services/mensagens'
@@ -33,6 +34,7 @@ export default function Layout() {
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [mensagensNaoLidas, setMensagensNaoLidas] = useState(0)
+  const [perfilModalOpen, setPerfilModalOpen] = useState(false)
 
   // Atualizar contador de não lidas
   const atualizarContadorMensagens = useCallback(async () => {
@@ -193,15 +195,22 @@ export default function Layout() {
 
         {/* Perfil & Logout no rodapé da Sidebar */}
         <div className="p-3 border-t border-white/10 space-y-2 bg-black/10">
-          <div className="flex items-center gap-2.5 px-2 py-1.5">
-            <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold text-white shrink-0">
+          <button
+            type="button"
+            onClick={() => setPerfilModalOpen(true)}
+            className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left hover:bg-white/10 transition-colors cursor-pointer group"
+          >
+            <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold text-white shrink-0 group-hover:ring-2 group-hover:ring-white/40">
               {user.name ? user.name.slice(0, 1).toUpperCase() : 'U'}
             </div>
             <div className="overflow-hidden flex-1">
               <div className="text-xs font-bold text-white truncate">{user.name || user.email}</div>
-              <div className="text-[10px] text-white/70 capitalize font-medium">Perfil: {role}</div>
+              <div className="text-[10px] text-white/70 capitalize font-medium flex items-center gap-1">
+                <span>Perfil: {role}</span>
+                <span className="text-[9px] text-white/50">&bull; Notificações</span>
+              </div>
             </div>
-          </div>
+          </button>
 
           <button
             onClick={handleLogout}
@@ -315,16 +324,25 @@ export default function Layout() {
 
           {/* User info header */}
           <div className="flex items-center gap-3">
-            <div className="hidden sm:block text-right">
-              <div className="text-xs font-bold text-slate-900">{user.name || user.email}</div>
-              <div className="text-[11px] text-slate-400 font-medium capitalize">Acesso {role}</div>
-            </div>
-            <div
-              style={{ backgroundColor: corPrimaria }}
-              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-xs"
+            <button
+              type="button"
+              onClick={() => setPerfilModalOpen(true)}
+              className="flex items-center gap-2.5 p-1 rounded-lg hover:bg-slate-100 transition-colors text-left"
+              title="Abrir perfil e notificações"
             >
-              {user.name ? user.name.slice(0, 1).toUpperCase() : 'U'}
-            </div>
+              <div className="hidden sm:block text-right">
+                <div className="text-xs font-bold text-slate-900">{user.name || user.email}</div>
+                <div className="text-[11px] text-slate-400 font-medium capitalize">
+                  Acesso {role}
+                </div>
+              </div>
+              <div
+                style={{ backgroundColor: corPrimaria }}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-xs cursor-pointer hover:ring-2 hover:ring-primary/40"
+              >
+                {user.name ? user.name.slice(0, 1).toUpperCase() : 'U'}
+              </div>
+            </button>
           </div>
         </header>
 
@@ -333,6 +351,9 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Modal de Perfil & Notificações Push do Celular */}
+      <ModalPerfilUsuario open={perfilModalOpen} onOpenChange={setPerfilModalOpen} />
     </div>
   )
 }

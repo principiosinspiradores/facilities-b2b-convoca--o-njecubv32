@@ -102,6 +102,52 @@ onRecordAfterCreateSuccess((e) => {
       html: html,
     })
     $app.newMailClient().send(mailer)
+
+    // Notificação Push no celular (PWA) para o profissional convocado
+    try {
+      const pushSubs = $app.findRecordsByFilter(
+        'push_subscriptions',
+        "user = '" + proId + "'",
+        '-created',
+        20,
+        0,
+      )
+      const pushTitle = 'Nova convocação disponível'
+      const pushBody = `Nova convocação: ${postoNome}, ${dataEscala} ${turnoInicio} às ${turnoFim}`
+      const pushUrl = '/convocacoes'
+
+      for (let s = 0; s < pushSubs.length; s++) {
+        const sub = pushSubs[s]
+        const ep = sub.getString('endpoint')
+        try {
+          const res = $http.send({
+            url: ep,
+            method: 'POST',
+            headers: {
+              TTL: '86400',
+              Urgency: 'high',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              title: pushTitle,
+              body: pushBody,
+              url: pushUrl,
+              icon: '/favicon.ico',
+              badge: '/favicon.ico',
+              tag: 'nova-convocacao-' + record.id,
+            }),
+            timeout: 8,
+          })
+          if (res.statusCode === 404 || res.statusCode === 410) {
+            $app.delete(sub)
+          }
+        } catch (subErr) {
+          console.log('[PUSH] Erro ao enviar push de convocação:', subErr)
+        }
+      }
+    } catch (pushErr) {
+      console.log('[PUSH] Erro ao buscar inscrições push do pro:', pushErr)
+    }
   } catch (err) {
     console.log('Erro geral ao enviar e-mail de nova convocação:', err)
   }

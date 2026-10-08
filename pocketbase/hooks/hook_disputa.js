@@ -26,6 +26,69 @@ onRecordCreate((e) => {
       motivo: motivo,
     })
     $app.save(ev)
+
+    // Notificação Push de Disputa aberta para os administradores
+    try {
+      let proNome = 'Profissional'
+      try {
+        const proUser = $app.findRecordById('users', proId)
+        proNome = proUser.getString('name') || proUser.email() || 'Profissional'
+      } catch (_) {}
+
+      const admins = $app.findRecordsByFilter(
+        'users',
+        "role = 'admin' && status = 'ativo'",
+        '-created',
+        10,
+        0,
+      )
+
+      const pushTitle = 'Disputa de escrow aberta'
+      const pushBody = `Disputa aberta por ${proNome}: "${motivo.slice(0, 80)}". Requer mediação.`
+      const pushUrl = '/disputas'
+
+      for (let a = 0; a < admins.length; a++) {
+        const adminId = admins[a].id
+        const subs = $app.findRecordsByFilter(
+          'push_subscriptions',
+          "user = '" + adminId + "'",
+          '-created',
+          10,
+          0,
+        )
+        for (let s = 0; s < subs.length; s++) {
+          const sub = subs[s]
+          const ep = sub.getString('endpoint')
+          try {
+            const res = $http.send({
+              url: ep,
+              method: 'POST',
+              headers: {
+                TTL: '86400',
+                Urgency: 'high',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                title: pushTitle,
+                body: pushBody,
+                url: pushUrl,
+                icon: '/favicon.ico',
+                badge: '/favicon.ico',
+                tag: 'disputa-aberta-' + record.id,
+              }),
+              timeout: 8,
+            })
+            if (res.statusCode === 404 || res.statusCode === 410) {
+              $app.delete(sub)
+            }
+          } catch (errP) {
+            console.log('[PUSH] Erro ao enviar push de disputa aberta:', errP)
+          }
+        }
+      }
+    } catch (errPushDisputa) {
+      console.log('[PUSH] Erro ao enviar push de disputa aos admins:', errPushDisputa)
+    }
   } catch (err) {
     console.log('Erro ao processar criação de disputa:', err)
   }

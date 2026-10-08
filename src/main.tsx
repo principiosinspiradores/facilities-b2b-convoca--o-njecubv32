@@ -4,8 +4,8 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './main.css'
 
-// Registrar Service Worker de forma segura para PWA sem quebrar dev/HMR
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+// Registrar Service Worker de forma segura para PWA (em PROD e ambiente dev)
+if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/sw.js')

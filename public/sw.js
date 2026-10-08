@@ -1,7 +1,7 @@
-// Service worker leve para PWA com estratégia network-first
+// Service worker para PWA Facilities B2B com cache e suporte a Notificações Push
 // Não interfere com requisições de API nem quebra ambiente de dev/preview
 
-const CACHE_NAME = 'facilities-pwa-v1'
+const CACHE_NAME = 'facilities-pwa-v2'
 const PRECACHE_ASSETS = ['/', '/index.html', '/manifest.json', '/favicon.ico']
 
 // Instalação: pré-cache do shell mínimo
@@ -40,6 +40,7 @@ self.addEventListener('fetch', (event) => {
   if (
     event.request.method !== 'GET' ||
     url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/backend/') ||
     url.pathname.includes('/realtime') ||
     url.origin.includes('internal.goskip.dev') ||
     url.origin.includes('goskip.dev')
@@ -81,5 +82,69 @@ self.addEventListener('fetch', (event) => {
           headers: { 'Content-Type': 'text/plain; charset=utf-8' },
         })
       }),
+  )
+})
+
+// ==========================================
+// 🔔 GESTÃO DE NOTIFICAÇÕES PUSH (WEB PUSH)
+// ==========================================
+
+self.addEventListener('push', (event) => {
+  let data = {}
+  try {
+    if (event.data) {
+      data = event.data.json()
+    }
+  } catch (_) {
+    // Se o payload vier como texto simples
+    data = {
+      title: 'Facilities B2B',
+      body: event.data ? event.data.text() : 'Nova notificação do sistema',
+    }
+  }
+
+  const title = data.title || 'Facilities B2B'
+  const options = {
+    body: data.body || 'Você possui uma nova atualização.',
+    icon: data.icon || '/favicon.ico',
+    badge: data.badge || '/favicon.ico',
+    tag: data.tag || 'facilities-notification',
+    data: {
+      url: data.url || '/',
+      timestamp: Date.now(),
+    },
+    vibrate: [100, 50, 100],
+    requireInteraction: true,
+  }
+
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
+// Clique na notificação: abre o app ou foca na aba/tela correta
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+
+  const targetUrl = event.notification.data?.url || '/'
+  const absoluteUrl = new URL(targetUrl, self.location.origin).href
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Se houver uma janela aberta do mesmo domínio, foca nela e navega para a URL
+      for (const client of clientList) {
+        if ('focus' in client) {
+          if (client.url === absoluteUrl) {
+            return client.focus()
+          }
+          if ('navigate' in client) {
+            client.navigate(absoluteUrl)
+            return client.focus()
+          }
+        }
+      }
+      // Se o app estiver fechado, abre uma nova janela na URL de destino
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(absoluteUrl)
+      }
+    }),
   )
 })

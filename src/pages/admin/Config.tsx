@@ -23,17 +23,19 @@ import {
   Ban,
   FileCheck,
   Database,
+  BellRing,
 } from 'lucide-react'
 
 import { UserAccessManagement } from './components/UserAccessManagement'
 import { PaymentConfigSection } from './components/PaymentConfigSection'
 import { FuncoesConfigSection } from './components/FuncoesConfigSection'
 import { BackupConfigSection } from './components/BackupConfigSection'
+import { PushNotificationConfigSection } from './components/PushNotificationConfigSection'
 
 export default function ConfigPage() {
   const { settings, refreshSettings, applyTheme } = useSettings()
   const [activeTab, setActiveTab] = useState<
-    'whitelabel' | 'usuarios' | 'pagamentos' | 'regras' | 'funcoes' | 'backup'
+    'whitelabel' | 'usuarios' | 'pagamentos' | 'regras' | 'funcoes' | 'notificacoes' | 'backup'
   >('whitelabel')
   const [isSaving, setIsSaving] = useState(false)
 
@@ -221,7 +223,7 @@ export default function ConfigPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-6">
-        <TabsList className="bg-slate-200/80 p-1 rounded-lg grid grid-cols-2 sm:grid-cols-6 gap-1">
+        <TabsList className="bg-slate-200/80 p-1 rounded-lg grid grid-cols-2 sm:grid-cols-7 gap-1">
           <TabsTrigger
             value="whitelabel"
             className="text-xs font-semibold flex items-center gap-1.5"
@@ -238,6 +240,13 @@ export default function ConfigPage() {
             Funções
           </TabsTrigger>
           <TabsTrigger
+            value="notificacoes"
+            className="text-xs font-semibold flex items-center gap-1.5"
+          >
+            <BellRing className="w-4 h-4" />
+            Notificações Push
+          </TabsTrigger>
+          <TabsTrigger
             value="pagamentos"
             className="text-xs font-semibold flex items-center gap-1.5"
           >
@@ -246,11 +255,11 @@ export default function ConfigPage() {
           </TabsTrigger>
           <TabsTrigger value="regras" className="text-xs font-semibold flex items-center gap-1.5">
             <Shield className="w-4 h-4" />
-            Regras de Cancelamento
+            Regras
           </TabsTrigger>
           <TabsTrigger value="backup" className="text-xs font-semibold flex items-center gap-1.5">
             <Database className="w-4 h-4" />
-            Backup de Dados
+            Backup
           </TabsTrigger>
         </TabsList>
 
@@ -646,6 +655,11 @@ export default function ConfigPage() {
             </div>
           </TabsContent>
         </form>
+
+        {/* ABA NOTIFICAÇÕES PUSH DO PWA */}
+        <TabsContent value="notificacoes" className="space-y-6 m-0">
+          <PushNotificationConfigSection />
+        </TabsContent>
 
         {/* ABA 5: BACKUP DE DADOS & SNAPSHOT DA BASE */}
         <TabsContent value="backup" className="space-y-6 m-0">

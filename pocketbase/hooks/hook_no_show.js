@@ -80,6 +80,78 @@ onRecordUpdate((e) => {
     const proId = record.getString('pro')
     const now = new Date()
 
+    // Notificação Push de Falta (no-show) para usuários da empresa do posto e admin
+    try {
+      let postoNome = 'Posto'
+      let dataEscala = ''
+      try {
+        const esc = $app.findRecordById('escalas', escalaId)
+        dataEscala = esc.getString('data').slice(0, 10)
+        const pos = $app.findRecordById('postos', esc.getString('posto'))
+        postoNome = pos.getString('nome')
+      } catch (_) {}
+
+      let proNome = 'Profissional'
+      try {
+        const proUser = $app.findRecordById('users', proId)
+        proNome = proUser.getString('name') || proUser.email() || 'Profissional'
+      } catch (_) {}
+
+      const gestores = $app.findRecordsByFilter(
+        'users',
+        "(role = 'empresa' || role = 'admin') && status = 'ativo'",
+        '-created',
+        20,
+        0,
+      )
+
+      const pushTitle = 'Falta registrada (No-show)'
+      const pushBody = `Falta registrada para ${proNome} no posto ${postoNome} em ${dataEscala}. Vaga aberta para cobertura.`
+      const pushUrl = '/cobertura'
+
+      for (let g = 0; g < gestores.length; g++) {
+        const gestorId = gestores[g].id
+        const subs = $app.findRecordsByFilter(
+          'push_subscriptions',
+          "user = '" + gestorId + "'",
+          '-created',
+          10,
+          0,
+        )
+        for (let s = 0; s < subs.length; s++) {
+          const sub = subs[s]
+          const ep = sub.getString('endpoint')
+          try {
+            const res = $http.send({
+              url: ep,
+              method: 'POST',
+              headers: {
+                TTL: '86400',
+                Urgency: 'high',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                title: pushTitle,
+                body: pushBody,
+                url: pushUrl,
+                icon: '/favicon.ico',
+                badge: '/favicon.ico',
+                tag: 'falta-noshow-' + record.id,
+              }),
+              timeout: 8,
+            })
+            if (res.statusCode === 404 || res.statusCode === 410) {
+              $app.delete(sub)
+            }
+          } catch (errP) {
+            console.log('[PUSH] Erro ao enviar push de falta:', errP)
+          }
+        }
+      }
+    } catch (errPushFalta) {
+      console.log('[PUSH] Erro geral ao enviar push de falta:', errPushFalta)
+    }
+
     // 0. Ler valor da multa por falta configurado em settings
     let valorMulta = 50
     try {
