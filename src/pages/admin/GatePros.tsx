@@ -4,13 +4,14 @@ import { useAuth } from '@/contexts/AuthContext'
 import { UserRecord, UserStatus, FuncaoRecord, UserDocument } from '@/types/facilities'
 import { formatCurrencyBRL, formatDateTimeBR } from '@/lib/formatters'
 import { listarFuncoes } from '@/services/funcoes'
-import { cadastrarPro, atualizarPro, reenviarConvitePro } from '@/services/pros'
+import { cadastrarPro, atualizarPro, reenviarConvitePro, alterarEmailPro } from '@/services/pros'
 import { formatarCPF, mascararCPF, validarCPF } from '@/lib/cpf'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Select,
   SelectContent,
@@ -511,11 +512,60 @@ export default function GateProsPage() {
       return
     }
 
+    const emailOriginal = (selectedPro.email || '').trim().toLowerCase()
+    const novoEmailLimpo = editEmail.trim().toLowerCase()
+    const houveTrocaEmail = Boolean(novoEmailLimpo && novoEmailLimpo !== emailOriginal)
+
+    // Se houve tentativa de troca de e-mail de um pro que já é verificado, bloquear
+    if (houveTrocaEmail && selectedPro.verified) {
+      toast({
+        title: 'Alteração de e-mail bloqueada',
+        description:
+          'Pro já verificado — a troca de e-mail deve ser feita pelo próprio pro via "Esqueci minha senha".',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsSaving(true)
     try {
+      let emailAlteradoOk = false
+
+      // Se o e-mail mudou em pro não verificado, executar primeiro a rota dedicada com privilégio superuser
+      if (houveTrocaEmail && !selectedPro.verified) {
+        if (!isAdmin) {
+          toast({
+            title: 'Permissão necessária',
+            description: 'Apenas administradores podem alterar o e-mail de profissionais.',
+            variant: 'destructive',
+          })
+          setIsSaving(false)
+          return
+        }
+
+        try {
+          const resEmail = await alterarEmailPro(selectedPro.id, novoEmailLimpo)
+          emailAlteradoOk = resEmail.success
+        } catch (errEmail: any) {
+          const msg =
+            errEmail?.response?.data?.error ||
+            errEmail?.data?.error ||
+            errEmail?.data?.message ||
+            errEmail?.message ||
+            'Não foi possível atualizar o e-mail do profissional.'
+          toast({
+            title: 'Erro ao alterar e-mail',
+            description: msg,
+            variant: 'destructive',
+          })
+          setIsSaving(false)
+          return
+        }
+      }
+
+      // Payload dos demais dados cadastrais (NÃO reenviar o campo email no update comum do PB para evitar rejeição 400 da API nativa)
       const payload: any = {
         name: editName.trim(),
-        email: editEmail.trim(),
         emailVisibility: true,
         cpf: editCpf ? editCpf.replace(/\D/g, '') : undefined,
         telefone: editTelefone.trim(),
@@ -547,10 +597,17 @@ export default function GateProsPage() {
 
       await atualizarPro(selectedPro.id, payload)
 
-      toast({
-        title: 'Profissional atualizado com sucesso!',
-        description: 'Informações cadastrais, funções e conformidade do Gate salvas.',
-      })
+      if (emailAlteradoOk) {
+        toast({
+          title: 'Profissional e e-mail atualizados!',
+          description: `E-mail alterado para ${novoEmailLimpo} e convite de primeiro acesso reenviado com sucesso para o novo endereço.`,
+        })
+      } else {
+        toast({
+          title: 'Profissional atualizado com sucesso!',
+          description: 'Informações cadastrais, funções e conformidade do Gate salvas.',
+        })
+      }
       setEditModalOpen(false)
       loadData()
     } catch (err: any) {
@@ -1545,12 +1602,41 @@ export default function GateProsPage() {
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
                     E-mail do Pro *
                   </label>
-                  <Input
-                    type="email"
-                    required
-                    value={editEmail}
-                    onChange={(e) => setEditEmail(e.target.value)}
-                  />
+                  {selectedPro?.verified ? (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="cursor-not-allowed">
+                            <Input
+                              type="email"
+                              required
+                              disabled
+                              className="bg-slate-100 text-slate-500 cursor-not-allowed"
+                              value={editEmail}
+                              onChange={(e) => setEditEmail(e.target.value)}
+                            />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs text-xs">
+                          Pro já verificado — a troca de e-mail deve ser feita pelo próprio pro via
+                          &quot;Esqueci minha senha&quot;
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <div className="space-y-1">
+                      <Input
+                        type="email"
+                        required
+                        value={editEmail}
+                        onChange={(e) => setEditEmail(e.target.value)}
+                      />
+                      <span className="text-[10px] text-amber-700 block">
+                        Pro não verificado: alterar o e-mail aqui reenviará automaticamente o
+                        convite de primeiro acesso para o novo endereço.
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div>

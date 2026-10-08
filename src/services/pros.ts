@@ -36,6 +36,17 @@ export type ReenviarConviteOutcome = {
   message: string
 }
 
+export interface AlterarEmailProResult {
+  success: boolean
+  message: string
+  pro_id: string
+  email_anterior: string
+  novo_email: string
+  verified: boolean
+  email_enviado: boolean
+  email_erro?: string | null
+}
+
 export interface AtualizarProPayload {
   name?: string
   email?: string
@@ -209,6 +220,24 @@ export async function atualizarPro(id: string, dados: AtualizarProPayload): Prom
 export async function reenviarVerificacaoEmail(email: string): Promise<void> {
   const cleanEmail = email.trim()
   await pb.collection('users').requestVerification(cleanEmail)
+}
+
+/**
+ * Altera o e-mail de um profissional não verificado via rota administrativa dedicada
+ * (executada com privilégio superuser no backend, validando unicidade e reenviando convite).
+ */
+export async function alterarEmailPro(
+  proId: string,
+  novoEmail: string,
+): Promise<AlterarEmailProResult> {
+  const cleanEmail = (novoEmail || '').trim().toLowerCase()
+  return pb.send<AlterarEmailProResult>('/backend/v1/admin/alterar-email-pro', {
+    method: 'POST',
+    body: {
+      pro_id: proId,
+      novo_email: cleanEmail,
+    },
+  })
 }
 
 export async function reenviarConvitePro(
