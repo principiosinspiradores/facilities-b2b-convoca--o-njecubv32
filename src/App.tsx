@@ -17,6 +17,7 @@ import MensagensPage from '@/pages/Mensagens'
 import LoginPage from '@/pages/auth/Login'
 import ForgotPasswordPage from '@/pages/auth/ForgotPassword'
 import ResetPasswordPage from '@/pages/auth/ResetPassword'
+import PrimeiroAcessoPage from '@/pages/auth/PrimeiroAcesso'
 import VerifyEmailPage from '@/pages/auth/VerifyEmail'
 import ConfirmEmailChangePage from '@/pages/auth/ConfirmEmailChange'
 
@@ -53,6 +54,7 @@ const App = () => (
             <Route path="/login" element={<LoginPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/primeiro-acesso" element={<PrimeiroAcessoPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/confirm-email-change" element={<ConfirmEmailChangePage />} />
 

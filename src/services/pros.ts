@@ -264,21 +264,31 @@ export async function reenviarConvitePro(
     }
   }
 
-  // Se o pro ainda não é verificado (verified = false), reenviamos APENAS o link de primeiro acesso / criar senha.
-  // Não disparar requestVerification em paralelo: um segundo e-mail confunde o pro e não define senha.
-  // Ao definir a senha via token de reset, a conta é ativada e verificada (verified = true).
+  // Se o pro ainda não é verificado (verified = false), reenviamos o link de PRIMEIRO ACESSO DE 24 HORAS
+  // via rota customizada do backend (/backend/v1/pros/reenviar-convite).
+  // O endpoint invalida convites anteriores não usados, gera novo token de 24h e envia o e-mail.
   try {
-    await pb.collection('users').requestPasswordReset(cleanEmail)
+    const res = await pb.send<{
+      success: boolean
+      type: 'first_access_link' | 'access_link'
+      message: string
+    }>('/backend/v1/pros/reenviar-convite', {
+      method: 'POST',
+      body: { email: cleanEmail },
+    })
+
     return {
-      type: 'first_access_link',
-      message: `Link de primeiro acesso enviado para ${cleanEmail}.`,
+      type: res.type || 'first_access_link',
+      message: res.message || `Link de primeiro acesso enviado para ${cleanEmail}.`,
     }
-  } catch (resetErr: any) {
-    const finalMsg =
-      resetErr?.data?.data?.email?.message ||
-      resetErr?.data?.message ||
-      resetErr?.message ||
+  } catch (conviteErr: any) {
+    console.error('Erro ao chamar /backend/v1/pros/reenviar-convite:', conviteErr)
+    // Se por qualquer razão a rota falhar ou retornar erro, tentar fallback defensivo ou propagar o erro
+    const errMsg =
+      conviteErr?.data?.error ||
+      conviteErr?.data?.message ||
+      conviteErr?.message ||
       'Falha ao enviar link de primeiro acesso.'
-    throw new Error(finalMsg)
+    throw new Error(errMsg)
   }
 }

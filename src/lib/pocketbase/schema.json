@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T15:09:11.072Z",
+  "generatedAt": "2026-10-08T16:41:08.694Z",
   "collections": [
     {
       "name": "users",
@@ -1721,6 +1721,63 @@
       "indexes": [
         "CREATE INDEX idx_push_outbox_user_lido ON push_outbox (user, lido, created DESC)",
         "CREATE INDEX idx_push_outbox_endpoint_lido ON push_outbox (endpoint, lido, created DESC)"
+      ]
+    },
+    {
+      "name": "convites_acesso",
+      "type": "base",
+      "apiRules": {
+        "list": null,
+        "view": null,
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "token",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "expires_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "usado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_convites_acesso_token ON convites_acesso (token)",
+        "CREATE INDEX idx_convites_acesso_user ON convites_acesso (user)",
+        "CREATE INDEX idx_convites_acesso_expires ON convites_acesso (expires_at)"
       ]
     }
   ]

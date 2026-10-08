@@ -259,16 +259,38 @@ routerAdd('POST', '/backend/v1/admin/alterar-email-pro', (e) => {
       plataformaUrl = 'https://app.housekeeping.com.br'
     }
 
-    let resetToken = ''
+    let conviteToken = ''
     try {
-      resetToken = proRecord.newPasswordResetToken()
+      try {
+        $app
+          .db()
+          .newQuery(
+            'UPDATE convites_acesso SET usado = 1 WHERE user = {:userId} AND (usado = 0 OR usado IS NULL)',
+          )
+          .bind({ userId: proRecord.id })
+          .execute()
+      } catch (invErr) {
+        console.log('Aviso ao invalidar convites anteriores:', invErr)
+      }
+
+      conviteToken = $security.randomString(48)
+      const expiresAtDate = new Date(Date.now() + 24 * 60 * 60 * 1000)
+      const expiresAtStr = expiresAtDate.toISOString().replace('T', ' ')
+
+      const convitesCol = $app.findCollectionByNameOrId('convites_acesso')
+      const conviteRec = new Record(convitesCol)
+      conviteRec.set('user', proRecord.id)
+      conviteRec.set('token', conviteToken)
+      conviteRec.set('expires_at', expiresAtStr)
+      conviteRec.set('usado', false)
+      $app.save(conviteRec)
     } catch (tokErr) {
-      console.log('Aviso ao gerar token de reset para novo e-mail:', tokErr)
+      console.log('Aviso ao gerar token de primeiro acesso 24h para novo e-mail:', tokErr)
     }
 
     const emailSubject = `[${senderName}] Crie seu acesso à plataforma`
-    const buttonUrl = resetToken
-      ? `${plataformaUrl}/reset-password?token=${encodeURIComponent(resetToken)}`
+    const buttonUrl = conviteToken
+      ? `${plataformaUrl}/primeiro-acesso?token=${encodeURIComponent(conviteToken)}`
       : `${plataformaUrl}/login`
 
     const html = `
@@ -280,7 +302,7 @@ routerAdd('POST', '/backend/v1/admin/alterar-email-pro', (e) => {
         <div style="padding: 24px 4px; color: #334155; font-size: 15px; line-height: 1.6;">
           <p style="margin-top: 0;">Olá, <strong>${proName}</strong>!</p>
           <p>Seu endereço de e-mail de acesso foi atualizado pela administração. <strong>Clique no botão abaixo para criar sua senha e ativar seu acesso à plataforma.</strong></p>
-          <p style="font-size: 13px; color: #047857; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 10px 14px; margin: 12px 0;"><strong>Atenção:</strong> Este link define sua senha e confirma automaticamente seu novo e-mail — nenhuma outra etapa é necessária.</p>
+          <p style="font-size: 13px; color: #047857; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 10px 14px; margin: 12px 0;"><strong>Atenção:</strong> Este link é válido por 24 horas e define sua senha e confirma automaticamente seu novo e-mail — nenhuma outra etapa é necessária.</p>
           <div style="background-color: #f8fafc; border-left: 4px solid ${corPrimaria}; padding: 16px; margin: 20px 0; border-radius: 6px;">
             <p style="margin: 0;"><strong>Novo e-mail de acesso:</strong> ${novoEmail}</p>
             <p style="margin: 8px 0 0 0;"><strong>Função(ões):</strong> ${funcoesTexto}</p>
@@ -292,7 +314,7 @@ routerAdd('POST', '/backend/v1/admin/alterar-email-pro', (e) => {
               Criar meu acesso
             </a>
           </div>
-          <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 16px;">Este link de primeiro acesso é individual e seguro. Caso expire, utilize a opção "Esqueci minha senha" na tela de login informando este novo e-mail.</p>
+          <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 16px;">Este link de primeiro acesso é válido por 24 horas, individual e seguro. Caso expire, utilize a opção "Esqueci minha senha" na tela de login informando este novo e-mail ou peça o reenvio do convite à gestão.</p>
         </div>
         <div style="border-top: 1px solid #e2e8f0; padding-top: 16px; font-size: 12px; color: #94a3b8; text-align: center;">
           Mensagem automática gerada pelo sistema ${senderName}.
