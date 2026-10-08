@@ -27,7 +27,7 @@ onRecordUpdate((e) => {
     const proFixoId = posto ? posto.getString('pro_fixo') : ''
     const isProFixo = proFixoId && proFixoId === proId
 
-    // Notificação Push de recusa / cancelamento para os gestores (empresa e admin)
+    // Notificação Push de recusa / cancelamento para os gestores (empresa e admin) via push_outbox e tickle
     try {
       const postoNome = posto ? posto.getString('nome') : 'Posto'
       const dataEscala = escala ? escala.getString('data').slice(0, 10) : ''
@@ -50,6 +50,7 @@ onRecordUpdate((e) => {
         ? `${proNome} recusou a convocação para o posto ${postoNome} em ${dataEscala}.`
         : `${proNome} cancelou o turno aceito para o posto ${postoNome} em ${dataEscala}.`
       const pushUrl = '/cobertura'
+      const pushTag = 'recusa-convocacao-' + record.id
 
       for (let g = 0; g < gestores.length; g++) {
         const gestorId = gestores[g].id
@@ -63,6 +64,24 @@ onRecordUpdate((e) => {
         for (let s = 0; s < subs.length; s++) {
           const sub = subs[s]
           const ep = sub.getString('endpoint')
+
+          // 1. Gravar na fila push_outbox
+          try {
+            const outboxCol = $app.findCollectionByNameOrId('push_outbox')
+            const outboxRec = new Record(outboxCol)
+            outboxRec.set('user', gestorId)
+            outboxRec.set('endpoint', ep)
+            outboxRec.set('title', pushTitle)
+            outboxRec.set('body', pushBody)
+            outboxRec.set('url', pushUrl)
+            outboxRec.set('tag', pushTag)
+            outboxRec.set('lido', false)
+            $app.save(outboxRec)
+          } catch (outboxErr) {
+            console.log('[PUSH] Erro ao gravar push_outbox de recusa:', outboxErr)
+          }
+
+          // 2. Disparo HTTP
           try {
             const res = $http.send({
               url: ep,
@@ -78,15 +97,49 @@ onRecordUpdate((e) => {
                 url: pushUrl,
                 icon: '/favicon.ico',
                 badge: '/favicon.ico',
-                tag: 'recusa-convocacao-' + record.id,
+                tag: pushTag,
               }),
               timeout: 8,
             })
-            if (res.statusCode === 404 || res.statusCode === 410) {
-              $app.delete(sub)
+
+            const status = res.statusCode
+            const raw = res.rawText ? res.rawText.slice(0, 160) : ''
+
+            if (status >= 200 && status < 300) {
+              console.log(
+                '[PUSH] Push de recusa/cancelamento entregue (HTTP ' +
+                  status +
+                  ') para sub ' +
+                  sub.id,
+              )
+            } else if (status === 404 || status === 410) {
+              console.log(
+                '[PUSH] Subscrição expirada (HTTP ' +
+                  status +
+                  ') para sub ' +
+                  sub.id +
+                  '. Removendo.',
+              )
+              try {
+                $app.delete(sub)
+              } catch (_) {}
+            } else {
+              console.log(
+                '[PUSH] Falha HTTP ' +
+                  status +
+                  ' ao enviar push de recusa/cancelamento para sub ' +
+                  sub.id +
+                  ' [' +
+                  ep.slice(0, 40) +
+                  '...]: ' +
+                  raw,
+              )
             }
           } catch (errP) {
-            console.log('[PUSH] Erro ao enviar push de recusa de convocação:', errP)
+            console.log(
+              '[PUSH] Exceção ao enviar push de recusa de convocação para sub ' + sub.id + ':',
+              errP,
+            )
           }
         }
       }

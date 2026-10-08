@@ -1,7 +1,7 @@
 // Service worker para PWA Facilities B2B com cache e suporte a Notificações Push
-// Não interfere com requisições de API nem quebra ambiente de dev/preview
+// Suporta push com payload (quando entregue) e modo tickle (push sem payload com busca na push_outbox)
 
-const CACHE_NAME = 'facilities-pwa-v2'
+const CACHE_NAME = 'facilities-pwa-v4'
 const PRECACHE_ASSETS = ['/', '/index.html', '/manifest.json', '/favicon.ico']
 
 // Instalação: pré-cache do shell mínimo
@@ -89,35 +89,96 @@ self.addEventListener('fetch', (event) => {
 // 🔔 GESTÃO DE NOTIFICAÇÕES PUSH (WEB PUSH)
 // ==========================================
 
-self.addEventListener('push', (event) => {
-  let data = {}
+async function fetchPendingNotification(endpoint) {
   try {
+    const res = await fetch(
+      '/backend/v1/push/pending-notification?endpoint=' + encodeURIComponent(endpoint),
+      {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      },
+    )
+    if (res.ok) {
+      const data = await res.json()
+      if (data && data.notification) {
+        return data.notification
+      }
+    }
+  } catch (err) {
+    console.warn('[SW] Erro ao buscar notificação pendente no tickle:', err)
+  }
+  return null
+}
+
+self.addEventListener('push', (event) => {
+  const promiseChain = (async () => {
+    let payload = null
+
+    // 1. Verificar se veio payload embutido no evento
     if (event.data) {
-      data = event.data.json()
+      try {
+        payload = event.data.json()
+      } catch (_) {
+        const text = event.data.text()
+        if (text && text.trim().length > 0) {
+          payload = {
+            title: 'Facilities B2B',
+            body: text,
+          }
+        }
+      }
     }
-  } catch (_) {
-    // Se o payload vier como texto simples
-    data = {
-      title: 'Facilities B2B',
-      body: event.data ? event.data.text() : 'Nova notificação do sistema',
+
+    // 2. Se não veio dados (push tickle sem payload), buscar da fila push_outbox via endpoint
+    if (!payload || !payload.title) {
+      let endpoint = ''
+      try {
+        const sub = await self.registration.pushManager.getSubscription()
+        if (sub && sub.endpoint) {
+          endpoint = sub.endpoint
+        }
+      } catch (subErr) {
+        console.warn('[SW] Falha ao obter subscription:', subErr)
+      }
+
+      if (endpoint) {
+        const pending = await fetchPendingNotification(endpoint)
+        if (pending) {
+          payload = {
+            title: pending.title,
+            body: pending.body,
+            url: pending.url || '/',
+            tag: pending.tag || pending.id || 'facilities-tickle',
+          }
+        }
+      }
     }
-  }
 
-  const title = data.title || 'Facilities B2B'
-  const options = {
-    body: data.body || 'Você possui uma nova atualização.',
-    icon: data.icon || '/favicon.ico',
-    badge: data.badge || '/favicon.ico',
-    tag: data.tag || 'facilities-notification',
-    data: {
-      url: data.url || '/',
-      timestamp: Date.now(),
-    },
-    vibrate: [100, 50, 100],
-    requireInteraction: true,
-  }
+    // Fallback padrão se ainda assim não tiver payload
+    const title = (payload && payload.title) || 'Facilities B2B'
+    const body =
+      (payload && payload.body) ||
+      'Você possui uma nova atualização. Abra o aplicativo para conferir.'
+    const targetUrl = (payload && payload.url) || '/'
+    const tag = (payload && payload.tag) || 'facilities-notification'
 
-  event.waitUntil(self.registration.showNotification(title, options))
+    const options = {
+      body: body,
+      icon: (payload && payload.icon) || '/favicon.ico',
+      badge: (payload && payload.badge) || '/favicon.ico',
+      tag: tag,
+      data: {
+        url: targetUrl,
+        timestamp: Date.now(),
+      },
+      vibrate: [100, 50, 100],
+      requireInteraction: true,
+    }
+
+    return self.registration.showNotification(title, options)
+  })()
+
+  event.waitUntil(promiseChain)
 })
 
 // Clique na notificação: abre o app ou foca na aba/tela correta

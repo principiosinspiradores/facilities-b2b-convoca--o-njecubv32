@@ -27,7 +27,7 @@ onRecordCreate((e) => {
     })
     $app.save(ev)
 
-    // Notificação Push de Disputa aberta para os administradores
+    // Notificação Push de Disputa aberta para os administradores via push_outbox e tickle
     try {
       let proNome = 'Profissional'
       try {
@@ -46,6 +46,7 @@ onRecordCreate((e) => {
       const pushTitle = 'Disputa de escrow aberta'
       const pushBody = `Disputa aberta por ${proNome}: "${motivo.slice(0, 80)}". Requer mediação.`
       const pushUrl = '/disputas'
+      const pushTag = 'disputa-aberta-' + record.id
 
       for (let a = 0; a < admins.length; a++) {
         const adminId = admins[a].id
@@ -59,6 +60,24 @@ onRecordCreate((e) => {
         for (let s = 0; s < subs.length; s++) {
           const sub = subs[s]
           const ep = sub.getString('endpoint')
+
+          // 1. Gravar na fila push_outbox
+          try {
+            const outboxCol = $app.findCollectionByNameOrId('push_outbox')
+            const outboxRec = new Record(outboxCol)
+            outboxRec.set('user', adminId)
+            outboxRec.set('endpoint', ep)
+            outboxRec.set('title', pushTitle)
+            outboxRec.set('body', pushBody)
+            outboxRec.set('url', pushUrl)
+            outboxRec.set('tag', pushTag)
+            outboxRec.set('lido', false)
+            $app.save(outboxRec)
+          } catch (outboxErr) {
+            console.log('[PUSH] Erro ao gravar push_outbox de disputa:', outboxErr)
+          }
+
+          // 2. Disparo HTTP
           try {
             const res = $http.send({
               url: ep,
@@ -74,15 +93,46 @@ onRecordCreate((e) => {
                 url: pushUrl,
                 icon: '/favicon.ico',
                 badge: '/favicon.ico',
-                tag: 'disputa-aberta-' + record.id,
+                tag: pushTag,
               }),
               timeout: 8,
             })
-            if (res.statusCode === 404 || res.statusCode === 410) {
-              $app.delete(sub)
+
+            const status = res.statusCode
+            const raw = res.rawText ? res.rawText.slice(0, 160) : ''
+
+            if (status >= 200 && status < 300) {
+              console.log(
+                '[PUSH] Push de disputa entregue (HTTP ' + status + ') para admin sub ' + sub.id,
+              )
+            } else if (status === 404 || status === 410) {
+              console.log(
+                '[PUSH] Subscrição admin expirada (HTTP ' +
+                  status +
+                  ') para sub ' +
+                  sub.id +
+                  '. Removendo.',
+              )
+              try {
+                $app.delete(sub)
+              } catch (_) {}
+            } else {
+              console.log(
+                '[PUSH] Falha HTTP ' +
+                  status +
+                  ' ao enviar push de disputa para admin sub ' +
+                  sub.id +
+                  ' [' +
+                  ep.slice(0, 40) +
+                  '...]: ' +
+                  raw,
+              )
             }
           } catch (errP) {
-            console.log('[PUSH] Erro ao enviar push de disputa aberta:', errP)
+            console.log(
+              '[PUSH] Exceção ao enviar push de disputa aberta para sub ' + sub.id + ':',
+              errP,
+            )
           }
         }
       }

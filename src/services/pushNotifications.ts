@@ -255,21 +255,43 @@ export async function promptPushPermissionOnce(userId: string): Promise<void> {
  */
 export async function sendTestPush(): Promise<{ success: boolean; message: string }> {
   try {
-    const res = await pb.send<{ totalSubscricoes: number; enviados: number }>(
-      '/backend/v1/push/test',
-      {
-        method: 'POST',
-      },
-    )
+    const res = await pb.send<{
+      totalSubscricoes: number
+      enviados: number
+      removidos: number
+      erros: number
+    }>('/backend/v1/push/test', {
+      method: 'POST',
+    })
     if (res && res.totalSubscricoes === 0) {
       return {
         success: false,
         message: 'Nenhum dispositivo cadastrado para este usuário. Ative as notificações primeiro.',
       }
     }
+
+    // Se o navegador suportar Service Worker e Notification localmente,
+    // verifica e exibe imediatamente a notificação de teste para feedback instantâneo na UI
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const reg = await navigator.serviceWorker.ready
+        if (reg) {
+          reg.showNotification('Teste de Notificação Push', {
+            body: 'Seu dispositivo está configurado e pronto para receber notificações de convocações e alertas!',
+            icon: '/favicon.ico',
+            badge: '/favicon.ico',
+            tag: 'teste-local-' + Date.now(),
+            data: { url: '/convocacoes' },
+          })
+        }
+      }
+    } catch {
+      /* intentionally ignored */
+    }
+
     return {
       success: true,
-      message: `Teste enviado para ${res.totalSubscricoes} aparelho(s)!`,
+      message: `Teste enviado para ${res.totalSubscricoes} aparelho(s) cadastrado(s)!`,
     }
   } catch (err: any) {
     return {

@@ -103,7 +103,7 @@ onRecordAfterCreateSuccess((e) => {
     })
     $app.newMailClient().send(mailer)
 
-    // Notificação Push no celular (PWA) para o profissional convocado
+    // Notificação Push no celular (PWA) para o profissional convocado (push_outbox + tickle / push com payload)
     try {
       const pushSubs = $app.findRecordsByFilter(
         'push_subscriptions',
@@ -115,10 +115,31 @@ onRecordAfterCreateSuccess((e) => {
       const pushTitle = 'Nova convocação disponível'
       const pushBody = `Nova convocação: ${postoNome}, ${dataEscala} ${turnoInicio} às ${turnoFim}`
       const pushUrl = '/convocacoes'
+      const pushTag = 'nova-convocacao-' + record.id
 
       for (let s = 0; s < pushSubs.length; s++) {
         const sub = pushSubs[s]
         const ep = sub.getString('endpoint')
+
+        // 1. Gravar na fila push_outbox para entrega resiliente
+        let outboxId = ''
+        try {
+          const outboxCol = $app.findCollectionByNameOrId('push_outbox')
+          const outboxRec = new Record(outboxCol)
+          outboxRec.set('user', proId)
+          outboxRec.set('endpoint', ep)
+          outboxRec.set('title', pushTitle)
+          outboxRec.set('body', pushBody)
+          outboxRec.set('url', pushUrl)
+          outboxRec.set('tag', pushTag)
+          outboxRec.set('lido', false)
+          $app.save(outboxRec)
+          outboxId = outboxRec.id
+        } catch (outboxErr) {
+          console.log('[PUSH] Erro ao gravar push_outbox para convocação:', outboxErr)
+        }
+
+        // 2. Disparo HTTP para o push service
         try {
           const res = $http.send({
             url: ep,
@@ -134,19 +155,53 @@ onRecordAfterCreateSuccess((e) => {
               url: pushUrl,
               icon: '/favicon.ico',
               badge: '/favicon.ico',
-              tag: 'nova-convocacao-' + record.id,
+              tag: pushTag,
             }),
             timeout: 8,
           })
-          if (res.statusCode === 404 || res.statusCode === 410) {
-            $app.delete(sub)
+
+          const status = res.statusCode
+          const raw = res.rawText ? res.rawText.slice(0, 160) : ''
+
+          if (status >= 200 && status < 300) {
+            console.log(
+              '[PUSH] Push de nova convocação enviado com sucesso (HTTP ' +
+                status +
+                ') para sub ' +
+                sub.id,
+            )
+          } else if (status === 404 || status === 410) {
+            console.log(
+              '[PUSH] Assinatura expirada (HTTP ' +
+                status +
+                ') para sub ' +
+                sub.id +
+                '. Removendo do banco.',
+            )
+            try {
+              $app.delete(sub)
+            } catch (_) {}
+          } else {
+            console.log(
+              '[PUSH] Falha HTTP ' +
+                status +
+                ' ao enviar push de convocação para sub ' +
+                sub.id +
+                ' [' +
+                ep.slice(0, 40) +
+                '...]: ' +
+                raw,
+            )
           }
         } catch (subErr) {
-          console.log('[PUSH] Erro ao enviar push de convocação:', subErr)
+          console.log(
+            '[PUSH] Exceção de rede ao enviar push de convocação para sub ' + sub.id + ':',
+            subErr,
+          )
         }
       }
     } catch (pushErr) {
-      console.log('[PUSH] Erro ao buscar inscrições push do pro:', pushErr)
+      console.log('[PUSH] Erro geral ao buscar inscrições push do pro:', pushErr)
     }
   } catch (err) {
     console.log('Erro geral ao enviar e-mail de nova convocação:', err)

@@ -186,7 +186,7 @@ onRecordUpdate((e) => {
       return
     }
 
-    // Notificação Push no celular (PWA) para os criadores / gestores da empresa e admin
+    // Notificação Push no celular (PWA) para os criadores / gestores da empresa e admin (push_outbox + tickle/push)
     try {
       const postoNome = posto ? posto.getString('nome') : 'Posto Designado'
       const dataEscala = escala ? escala.getString('data').slice(0, 10) : ''
@@ -207,6 +207,7 @@ onRecordUpdate((e) => {
       const pushTitle = 'Convocação aceita'
       const pushBody = `${proNome} aceitou a convocação para o posto ${postoNome} em ${dataEscala}.`
       const pushUrl = '/escalas'
+      const pushTag = 'aceite-convocacao-' + record.id
 
       for (let g = 0; g < gestores.length; g++) {
         const gestorId = gestores[g].id
@@ -220,6 +221,24 @@ onRecordUpdate((e) => {
         for (let s = 0; s < subs.length; s++) {
           const sub = subs[s]
           const ep = sub.getString('endpoint')
+
+          // 1. Gravar na fila push_outbox
+          try {
+            const outboxCol = $app.findCollectionByNameOrId('push_outbox')
+            const outboxRec = new Record(outboxCol)
+            outboxRec.set('user', gestorId)
+            outboxRec.set('endpoint', ep)
+            outboxRec.set('title', pushTitle)
+            outboxRec.set('body', pushBody)
+            outboxRec.set('url', pushUrl)
+            outboxRec.set('tag', pushTag)
+            outboxRec.set('lido', false)
+            $app.save(outboxRec)
+          } catch (outboxErr) {
+            console.log('[PUSH] Erro ao gravar push_outbox de aceite:', outboxErr)
+          }
+
+          // 2. Disparo HTTP
           try {
             const res = $http.send({
               url: ep,
@@ -235,15 +254,49 @@ onRecordUpdate((e) => {
                 url: pushUrl,
                 icon: '/favicon.ico',
                 badge: '/favicon.ico',
-                tag: 'aceite-convocacao-' + record.id,
+                tag: pushTag,
               }),
               timeout: 8,
             })
-            if (res.statusCode === 404 || res.statusCode === 410) {
-              $app.delete(sub)
+
+            const status = res.statusCode
+            const raw = res.rawText ? res.rawText.slice(0, 160) : ''
+
+            if (status >= 200 && status < 300) {
+              console.log(
+                '[PUSH] Push de aceite de convocação entregue (HTTP ' +
+                  status +
+                  ') para sub ' +
+                  sub.id,
+              )
+            } else if (status === 404 || status === 410) {
+              console.log(
+                '[PUSH] Subscrição expirada (HTTP ' +
+                  status +
+                  ') para sub ' +
+                  sub.id +
+                  '. Removendo.',
+              )
+              try {
+                $app.delete(sub)
+              } catch (_) {}
+            } else {
+              console.log(
+                '[PUSH] Falha HTTP ' +
+                  status +
+                  ' ao enviar push de aceite para sub ' +
+                  sub.id +
+                  ' [' +
+                  ep.slice(0, 40) +
+                  '...]: ' +
+                  raw,
+              )
             }
           } catch (errP) {
-            console.log('[PUSH] Erro ao enviar push de aceite de convocação:', errP)
+            console.log(
+              '[PUSH] Exceção ao enviar push de aceite de convocação para sub ' + sub.id + ':',
+              errP,
+            )
           }
         }
       }

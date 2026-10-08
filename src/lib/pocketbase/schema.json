@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T12:05:08.064Z",
+  "generatedAt": "2026-10-08T13:49:58.115Z",
   "collections": [
     {
       "name": "users",
@@ -1647,6 +1647,80 @@
       "indexes": [
         "CREATE UNIQUE INDEX idx_push_sub_endpoint ON push_subscriptions (endpoint)",
         "CREATE INDEX idx_push_sub_user ON push_subscriptions (user)"
+      ]
+    },
+    {
+      "name": "push_outbox",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && user = @request.auth.id",
+        "view": "@request.auth.id != '' && user = @request.auth.id",
+        "create": null,
+        "update": "@request.auth.id != '' && user = @request.auth.id",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "endpoint",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "url",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tag",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lido",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_push_outbox_user_lido ON push_outbox (user, lido, created DESC)",
+        "CREATE INDEX idx_push_outbox_endpoint_lido ON push_outbox (endpoint, lido, created DESC)"
       ]
     }
   ]
