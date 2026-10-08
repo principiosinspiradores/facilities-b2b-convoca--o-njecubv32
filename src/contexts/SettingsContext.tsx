@@ -129,8 +129,27 @@ const SettingsContext = createContext<SettingsContextType>({
   applyTheme: () => {},
 })
 
+const SETTINGS_CACHE_KEY = 'facilities_theme_settings_cached'
+
+function getInitialSettings(): SettingsRecord {
+  if (typeof window !== 'undefined') {
+    try {
+      const cached = localStorage.getItem(SETTINGS_CACHE_KEY)
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (parsed && (parsed.cor_primaria || parsed.nome_empresa)) {
+          return { ...defaultSettings, ...parsed }
+        }
+      }
+    } catch {
+      // Ignora falhas de parse
+    }
+  }
+  return defaultSettings
+}
+
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [settings, setSettings] = useState<SettingsRecord | null>(defaultSettings)
+  const [settings, setSettings] = useState<SettingsRecord | null>(getInitialSettings)
   const [isLoading, setIsLoading] = useState(true)
 
   const load = async () => {
@@ -139,12 +158,19 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (s) {
       setSettings(s)
       applyTheme(s)
+      try {
+        localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(s))
+      } catch {
+        // Ignora falha de armazenamento local
+      }
     }
     setIsLoading(false)
   }
 
   useEffect(() => {
-    applyTheme(defaultSettings)
+    // Aplica as cores imediatamente do cache persistido (evita flash verde da marca de fábrica no boot do PWA)
+    const initial = getInitialSettings()
+    applyTheme(initial)
     load()
 
     // Subscribe para realtime em settings se mudar white-label

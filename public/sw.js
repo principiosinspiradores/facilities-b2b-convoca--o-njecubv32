@@ -1,10 +1,12 @@
-// Service worker para PWA Facilities B2B com cache e suporte a Notificações Push
+// Service worker para PWA Facilities B2B com cache versionado e suporte a Notificações Push
 // Suporta push com payload (quando entregue) e modo tickle (push sem payload com busca na push_outbox)
 
-const CACHE_NAME = 'facilities-pwa-v4'
+// Versão do app e nome do cache derivado da release para evitar index.html/chunks obsoletos após redeploy
+const APP_VERSION = '0.0.62'
+const CACHE_NAME = `facilities-pwa-v${APP_VERSION}`
 const PRECACHE_ASSETS = ['/', '/index.html', '/manifest.json', '/favicon.ico']
 
-// Instalação: pré-cache do shell mínimo
+// Instalação: pré-cache do shell mínimo e ativação imediata
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -16,13 +18,14 @@ self.addEventListener('install', (event) => {
   self.skipWaiting()
 })
 
-// Ativação: limpar caches antigos
+// Ativação: limpar caches antigos de versões anteriores e assumir o controle dos clientes
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          if (key !== CACHE_NAME) {
+          if (key !== CACHE_NAME && key.startsWith('facilities-pwa-')) {
+            console.log('[SW] Purgando cache legado:', key)
             return caches.delete(key)
           }
         }),
@@ -32,7 +35,7 @@ self.addEventListener('activate', (event) => {
   self.clients.claim()
 })
 
-// Fetch: estratégia Network-First para App Shell e estáticos, NUNCA interceptar PocketBase API
+// Fetch: estratégia Network-First estrita para App Shell e estáticos, NUNCA interceptar PocketBase API
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
 
@@ -48,11 +51,26 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Network-first com fallback para cache
+  // Verifica se é requisição para chunk JS/CSS compilado (ex: /assets/index-xxx.js)
+  const isHashedAsset = url.pathname.startsWith('/assets/') || /\.(js|css|mjs)$/i.test(url.pathname)
+
+  // Network-first com fallback para cache e tratamento especial de 404 em chunks desatualizados
   event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        // Se a resposta for válida e for do mesmo domínio, guarda uma cópia no cache
+    fetch(event.request, { cache: 'no-cache' })
+      .then(async (networkResponse) => {
+        // Se a resposta for 404 para um chunk com hash antigo após um novo deploy:
+        // O build anterior foi substituído no servidor. Se o cache antigo do chunk ou index
+        // causou 404, purgamos referências do cache e nunca armazenamos erro 404.
+        if (networkResponse.status === 404 && isHashedAsset) {
+          console.warn('[SW] Chunk com hash antigo não encontrado no servidor (404):', url.pathname)
+          // Remove entrada obsoleta se existia no cache
+          const cache = await caches.open(CACHE_NAME)
+          await cache.delete(event.request)
+          // Retorna a resposta de rede (o handler global de erro no cliente dispara reload se chunk falhar)
+          return networkResponse
+        }
+
+        // Se a resposta for válida (200 OK) e for do mesmo domínio, guarda uma cópia no cache versionado
         if (
           networkResponse &&
           networkResponse.status === 200 &&
@@ -67,7 +85,7 @@ self.addEventListener('fetch', (event) => {
         return networkResponse
       })
       .catch(async () => {
-        // Sem rede: tenta responder com o cache
+        // Sem rede: tenta responder com o cache versionado atual
         const cachedResponse = await caches.match(event.request)
         if (cachedResponse) {
           return cachedResponse
