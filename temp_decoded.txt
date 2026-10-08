@@ -1,1 +1,0 @@
-{"width":1024,"height":1024,"pixelSampleTopLeft":[255,255,255,255],"pixelSampleCenter":[247,250,252,255]}
