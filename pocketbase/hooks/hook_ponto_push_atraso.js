@@ -51,7 +51,14 @@ onRecordAfterCreateSuccess((e) => {
       0,
     )
 
-    const VAPID = require(`${__hooks}/lib_vapid.js`)
+    let VAPID = (typeof globalThis !== 'undefined' && globalThis.VAPID) || null
+    if (!VAPID) {
+      try {
+        VAPID = require(`${__hooks}/lib_vapid.pb.js`)
+      } catch (_) {
+        VAPID = require('./lib_vapid.pb.js')
+      }
+    }
     const pushTag = 'ponto-atraso-' + record.id
     for (let g = 0; g < gestores.length; g++) {
       const gestorId = gestores[g].id

@@ -105,7 +105,14 @@ onRecordAfterCreateSuccess((e) => {
 
     // Notificação Push no celular (PWA) para o profissional convocado (push_outbox + tickle / push com payload)
     try {
-      const VAPID = require(`${__hooks}/lib_vapid.js`)
+      let VAPID = (typeof globalThis !== 'undefined' && globalThis.VAPID) || null
+      if (!VAPID) {
+        try {
+          VAPID = require(`${__hooks}/lib_vapid.pb.js`)
+        } catch (_) {
+          VAPID = require('./lib_vapid.pb.js')
+        }
+      }
       const pushSubs = $app.findRecordsByFilter(
         'push_subscriptions',
         "user = '" + proId + "'",

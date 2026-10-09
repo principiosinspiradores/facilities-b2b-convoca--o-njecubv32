@@ -29,7 +29,14 @@ onRecordUpdate((e) => {
 
     // Notificação Push de recusa / cancelamento para os gestores (empresa e admin) via push_outbox e tickle
     try {
-      const VAPID = require(`${__hooks}/lib_vapid.js`)
+      let VAPID = (typeof globalThis !== 'undefined' && globalThis.VAPID) || null
+      if (!VAPID) {
+        try {
+          VAPID = require(`${__hooks}/lib_vapid.pb.js`)
+        } catch (_) {
+          VAPID = require('./lib_vapid.pb.js')
+        }
+      }
       const postoNome = posto ? posto.getString('nome') : 'Posto'
       const dataEscala = escala ? escala.getString('data').slice(0, 10) : ''
       let proNome = 'Profissional'
