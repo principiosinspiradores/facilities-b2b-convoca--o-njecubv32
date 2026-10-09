@@ -640,17 +640,6 @@ routerAdd('POST', '/backend/v1/push/test', (e) => {
     }
 
     // 2. Disparar Web Push assinado com VAPID (com payload e tickle fallback)
-    let VAPID = (typeof globalThis !== 'undefined' && globalThis.VAPID) || null
-    if (!VAPID) {
-      try {
-        VAPID = require(`${__hooks}/lib_vapid.pb.js`)
-      } catch (_) {
-        try {
-          VAPID = require(`${__hooks}/lib_vapid.js`)
-        } catch (_) {}
-      }
-    }
-
     const payload = {
       title: title,
       body: body,
@@ -661,12 +650,7 @@ routerAdd('POST', '/backend/v1/push/test', (e) => {
     }
     const pushOptions = { urgency: 'high', ttl: 86400 }
 
-    let result
-    if (VAPID && typeof VAPID.sendPushNotification === 'function') {
-      result = VAPID.sendPushNotification(endpoint, payload, pushOptions)
-    } else {
-      result = enviarPushVapidInterno(endpoint, payload, pushOptions)
-    }
+    const result = enviarPushVapidInterno(endpoint, payload, pushOptions)
 
     if (result.success) {
       enviados++
