@@ -383,20 +383,23 @@ export default function MensagensPage() {
 
   return (
     <div className="space-y-4">
-      {/* Cabeçalho de contexto */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-xs">
+      {/* Cabeçalho de contexto - Encolhido no mobile para economizar viewport */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 bg-white p-3 sm:p-5 rounded-xl border border-slate-200 shadow-xs">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <MessageSquare className="w-6 h-6 text-primary" />
-            Central de Mensagens Internas
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <h1 className="text-base sm:text-2xl font-bold text-slate-900 flex items-center gap-1.5 sm:gap-2">
+              <MessageSquare className="w-4 h-4 sm:w-6 sm:h-6 text-primary shrink-0" />
+              <span>Central de Mensagens</span>
+              <span className="hidden sm:inline">Internas</span>
+            </h1>
             <Badge
               variant="outline"
-              className="bg-primary/5 text-primary border-primary/20 text-[11px] font-semibold uppercase tracking-wider"
+              className="bg-primary/5 text-primary border-primary/20 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider py-0 px-1.5"
             >
               Tempo Real
             </Badge>
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+          </div>
+          <p className="hidden sm:block text-xs sm:text-sm text-slate-500 mt-1">
             Comunicação direta e contextual entre profissionais e a operação de facilities. Sem
             mensagens externas.
           </p>
@@ -406,16 +409,16 @@ export default function MensagensPage() {
           <Button
             onClick={handleAbrirNovaConversa}
             style={{ backgroundColor: corPrimaria }}
-            className="text-white text-xs h-9 font-semibold shadow-xs hover:opacity-90 self-start sm:self-auto"
+            className="text-white text-xs h-8 sm:h-9 font-semibold shadow-xs hover:opacity-90 self-start sm:self-auto"
           >
-            <Plus className="w-4 h-4 mr-1.5" />
+            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
             Nova Conversa com Pro
           </Button>
         )}
       </div>
 
       {/* Grid Principal do Chat: Lista de Conversas (Esquerda) e Painel de Chat (Direita) */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden h-[74vh] min-h-[500px] flex">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden h-[calc(100dvh-175px)] min-h-[420px] sm:h-[74vh] sm:min-h-[500px] flex">
         {/* COLUNA ESQUERDA: LISTA DE CONVERSAS */}
         <div
           className={`w-full lg:w-80 lg:shrink-0 border-r border-slate-200 flex flex-col bg-slate-50/60 ${
@@ -642,7 +645,7 @@ export default function MensagensPage() {
                           style={
                             isMinha ? { backgroundColor: corPrimaria, color: '#ffffff' } : undefined
                           }
-                          className={`max-w-[85%] sm:max-w-[70%] rounded-2xl px-4 py-2.5 text-xs sm:text-sm shadow-xs break-words whitespace-pre-wrap leading-relaxed ${
+                          className={`max-w-[88%] sm:max-w-[70%] rounded-2xl px-3.5 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-sm shadow-xs break-all sm:break-words whitespace-pre-wrap [overflow-wrap:anywhere] leading-relaxed ${
                             isMinha
                               ? 'rounded-tr-xs text-white'
                               : 'bg-white text-slate-800 border border-slate-200 rounded-tl-xs'
@@ -651,7 +654,7 @@ export default function MensagensPage() {
                           {msg.texto}
 
                           <div
-                            className={`flex items-center justify-end gap-1 mt-1 text-[10px] ${
+                            className={`flex items-center justify-end gap-1 mt-1 text-[11px] sm:text-[10px] ${
                               isMinha ? 'text-white/80' : 'text-slate-400'
                             }`}
                           >

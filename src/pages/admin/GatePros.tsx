@@ -69,6 +69,7 @@ export default function GateProsPage() {
   const [newEmail, setNewEmail] = useState('')
   const [newTelefone, setNewTelefone] = useState('')
   const [newCpf, setNewCpf] = useState('')
+  const [newSenhaInicial, setNewSenhaInicial] = useState('')
   const [newFuncoes, setNewFuncoes] = useState<string[]>([])
   const [newCidade, setNewCidade] = useState('Campinas')
   const [newUf, setNewUf] = useState('SP')
@@ -84,6 +85,19 @@ export default function GateProsPage() {
     { tipo: 'Comprovante Residência', status: 'pendente' },
     { tipo: 'Certidão Antecedentes', status: 'pendente' },
   ])
+
+  // Diálogo informativo pós-cadastro com credenciais diretas para entregar ao pro
+  const [credenciaisDialog, setCredenciaisDialog] = useState<{
+    open: boolean
+    nome: string
+    email: string
+    senha: string
+  }>({
+    open: false,
+    nome: '',
+    email: '',
+    senha: '',
+  })
 
   // Modal de Avaliação de Gate & Edição de Pro
   const [editModalOpen, setEditModalOpen] = useState(false)
@@ -148,6 +162,7 @@ export default function GateProsPage() {
     setNewEmail('')
     setNewTelefone('')
     setNewCpf('')
+    setNewSenhaInicial('')
     // Pré-selecionar a primeira função ativa se houver
     const primeiraAtiva = funcoesCatalogo.find((f) => f.ativo)?.nome || 'Limpeza'
     setNewFuncoes([primeiraAtiva])
@@ -388,11 +403,13 @@ export default function GateProsPage() {
 
     setIsCreating(true)
     try {
+      const senhaInformada = newSenhaInicial.trim()
       const res = await cadastrarPro({
         name: newName,
         email: newEmail,
         cpf: newCpf,
         telefone: newTelefone,
+        senha_inicial: senhaInformada || undefined,
         funcoes: newFuncoes.length > 0 ? newFuncoes : ['Geral'],
         endereco_completo: {
           logradouro: newLogradouro,
@@ -412,10 +429,23 @@ export default function GateProsPage() {
           : {}),
       })
 
-      if (res.verificationOutcome === 'sent') {
+      if (res.verificationOutcome === 'direct_password') {
+        // Conta ativada direto com senha inicial definida pelo admin/empresa
+        setCredenciaisDialog({
+          open: true,
+          nome: newName.trim(),
+          email: newEmail.trim(),
+          senha: senhaInformada,
+        })
+        toast({
+          title: 'Profissional criado com sucesso!',
+          description: `Conta ativada com senha inicial. Entregue os dados de acesso à profissional.`,
+          duration: 10000,
+        })
+      } else if (res.verificationOutcome === 'sent') {
         toast({
           title: 'Pro cadastrado com sucesso!',
-          description: `E-mail de boas-vindas e link de ativação enviados para ${newEmail.trim()}.`,
+          description: `E-mail de boas-vindas e link de primeiro acesso enviados para ${newEmail.trim()}.`,
         })
       } else if (res.verificationOutcome === 'already_verified') {
         toast({
@@ -431,6 +461,7 @@ export default function GateProsPage() {
         })
       }
 
+      setNewSenhaInicial('')
       setCreateModalOpen(false)
       loadData()
     } catch (err: any) {
@@ -1241,6 +1272,34 @@ export default function GateProsPage() {
                     onChange={(e) => setNewTelefone(e.target.value)}
                   />
                 </div>
+
+                {/* Campo de Senha Inicial (Opcional - Primeiro Acesso Simplificado) */}
+                <div className="sm:col-span-2 p-3 bg-blue-50/60 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-blue-950 block">
+                      Senha Inicial (Opcional — Primeiro Acesso Simplificado)
+                    </label>
+                    <span className="text-[10px] text-blue-700 font-semibold bg-blue-100 px-2 py-0.5 rounded">
+                      Sem barreira de e-mail
+                    </span>
+                  </div>
+                  <Input
+                    type="text"
+                    placeholder="Ex: data de nascimento (ex: 15031985) ou 6 primeiros dígitos do CPF"
+                    value={newSenhaInicial}
+                    onChange={(e) => setNewSenhaInicial(e.target.value)}
+                    className="bg-white border-blue-300 text-xs text-slate-800 placeholder:text-slate-400"
+                  />
+                  <p className="text-[11px] text-blue-900 mt-1.5 leading-relaxed">
+                    💡 <strong>Se preenchida:</strong> a profissional nasce com conta ativada e
+                    pronta para login imediato (sem depender de abrir e-mail ou link de 24h). A tela
+                    exibirá os dados para você entregar via WhatsApp ou pessoalmente. A profissional
+                    pode alterar depois no Perfil.
+                    <br />
+                    ℹ️ <strong>Se deixada em branco:</strong> segue o fluxo convencional de convite
+                    por e-mail com link de primeiro acesso.
+                  </p>
+                </div>
               </div>
 
               {/* Endereço / Localização */}
@@ -1941,6 +2000,70 @@ export default function GateProsPage() {
             </Button>
             <Button type="button" variant="destructive" onClick={handleConfirmReject}>
               Confirmar Recusa
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* ================= DIÁLOGO DE ENTREGA DE CREDENCIAIS À PROFISSIONAL ================= */}
+      <Dialog
+        open={credenciaisDialog.open}
+        onOpenChange={(open) => setCredenciaisDialog((prev) => ({ ...prev, open }))}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-800 text-base sm:text-lg">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              Cadastro Concluído — Entregue à Profissional
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-600">
+              A conta de <strong>{credenciaisDialog.nome}</strong> foi ativada com sucesso. Copie as
+              credenciais abaixo e repasse diretamente à profissional por WhatsApp ou pessoalmente:
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="p-4 bg-slate-50 border-2 border-dashed border-emerald-300 rounded-xl space-y-3 my-2">
+            <div>
+              <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold block">
+                E-mail de acesso
+              </span>
+              <p className="text-sm font-mono font-bold text-slate-900 select-all">
+                {credenciaisDialog.email}
+              </p>
+            </div>
+
+            <div>
+              <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold block">
+                Senha inicial
+              </span>
+              <p className="text-base font-mono font-bold text-emerald-700 bg-white px-2.5 py-1 rounded border border-emerald-200 inline-block select-all">
+                {credenciaisDialog.senha}
+              </p>
+            </div>
+
+            <div className="text-[11px] text-slate-500 border-t border-slate-200 pt-2">
+              Orientação: Ao abrir o sistema, a profissional deve digitar este e-mail e esta senha.
+              Ela poderá trocar a senha quando desejar no menu Perfil.
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white"
+              onClick={() => {
+                const textoCopia = `Olá ${credenciaisDialog.nome}! Seu acesso à plataforma de facilities está pronto:\n\nE-mail: ${credenciaisDialog.email}\nSenha: ${credenciaisDialog.senha}\n\nAcesse pelo navegador ou aplicativo e faça seu login!`
+                if (navigator.clipboard) {
+                  navigator.clipboard.writeText(textoCopia).catch(() => {})
+                }
+                toast({
+                  title: 'Dados copiados!',
+                  description:
+                    'Texto copiado para sua área de transferência para envio no WhatsApp.',
+                })
+                setCredenciaisDialog((prev) => ({ ...prev, open: false }))
+              }}
+            >
+              Copiar Mensagem e Concluir
             </Button>
           </DialogFooter>
         </DialogContent>

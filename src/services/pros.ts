@@ -21,14 +21,16 @@ export interface CriarProPayload {
   periodo_teste_dias?: number
   ajuda_custo?: number
   valor_negociado?: number
+  senha_inicial?: string
 }
 
-export type VerificationOutcome = 'sent' | 'already_verified' | 'failed'
+export type VerificationOutcome = 'sent' | 'already_verified' | 'failed' | 'direct_password'
 
 export interface CadastrarProResult {
   record: UserRecord
   verificationOutcome: VerificationOutcome
   verificationMessage?: string
+  senhaDefinida?: string
 }
 
 export type ReenviarConviteOutcome = {
@@ -87,7 +89,14 @@ export async function listarPros(): Promise<UserRecord[]> {
  * O Pro é criado com role='pro'. Dispara o hook de boas-vindas e verificação.
  */
 export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarProResult> {
-  const tempPassword = 'Pro@' + Math.random().toString(36).substring(2, 10) + '9#'
+  const senhaInformada = dados.senha_inicial ? dados.senha_inicial.trim() : ''
+  const hasSenhaInicial = Boolean(senhaInformada)
+
+  // Se o admin definiu senha inicial: utiliza a senha escolhida e marca verified=true.
+  // Se não foi informada: gera senha temporária aleatória com verified=false (fluxo de convite por e-mail).
+  const effectivePassword = hasSenhaInicial
+    ? senhaInformada
+    : 'Pro@' + Math.random().toString(36).substring(2, 10) + '9#'
 
   const periodoDias = dados.periodo_teste_dias !== undefined ? Number(dados.periodo_teste_dias) : 10
   const finalStatus: UserStatus =
@@ -100,8 +109,8 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
     cpf: (dados.cpf || '').replace(/\D/g, ''),
     role: 'pro',
     status: finalStatus,
-    password: tempPassword,
-    passwordConfirm: tempPassword,
+    password: effectivePassword,
+    passwordConfirm: effectivePassword,
     telefone: (dados.telefone || '').trim(),
     funcoes: dados.funcoes || [],
     endereco_completo: dados.endereco_completo || {},
@@ -111,7 +120,7 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
       { tipo: 'Certidão Antecedentes', status: 'pendente' },
     ],
     periodo_teste_dias: periodoDias,
-    verified: false,
+    verified: hasSenhaInicial ? true : false,
   }
 
   // Preços apenas se fornecidos (por admin)
@@ -125,17 +134,38 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
   // Criação do registro no PocketBase. Caso ocorra erro 400 ou validação de hook,
   // o ClientResponseError é propagado intacto com err.data.data por campo e err.message.
   const created = await pb.collection('users').create<UserRecord>(payload)
-  const freshCreated = await pb
+
+  // Se foi criada com senha inicial mas o PocketBase não permitiu setar verified=true no create por regra de campo,
+  // garantimos verified=true no registro
+  let freshCreated = await pb
     .collection('users')
     .getOne<UserRecord>(created.id)
     .catch(() => created)
-  // O e-mail de boas-vindas com dados completos e botão de login é disparado
-  // de forma assíncrona pelo hook server-side hook_boas_vindas_pro.
-  // Aqui no frontend, solicitamos o token nativo de verificação do PocketBase em modo tolerante:
+
+  if (hasSenhaInicial && !freshCreated.verified) {
+    try {
+      freshCreated = await pb.collection('users').update<UserRecord>(freshCreated.id, {
+        verified: true,
+      })
+    } catch (_) {
+      // Ignora silenciosamente caso a api rule restrinja verified
+    }
+  }
+
+  // Se o admin definiu a senha inicial:
+  // Conta nasce ativada com senha direta, NÃO envia e-mail de convite de primeiro acesso.
+  if (hasSenhaInicial) {
+    return {
+      record: freshCreated,
+      verificationOutcome: 'direct_password',
+      senhaDefinida: senhaInformada,
+    }
+  }
+
+  // Comportamento atual (quando senha inicial vazia): convite por e-mail com token de 24h
   let verificationOutcome: VerificationOutcome = 'sent'
   let verificationMessage: string | undefined = undefined
 
-  // Se o registro criado já vier verificado (ou se o backend tratar como verificado)
   if (freshCreated.verified) {
     verificationOutcome = 'already_verified'
   } else {
@@ -151,7 +181,6 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
         ''
       ).toLowerCase()
 
-      // Verificar se a falha indica que já está verificado
       if (
         errMsg.includes('already verified') ||
         errMsg.includes('já verificado') ||

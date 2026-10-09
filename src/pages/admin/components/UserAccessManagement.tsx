@@ -53,6 +53,21 @@ export function UserAccessManagement() {
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
+  // Diálogo informativo pós-criação com credenciais para entregar ao usuário/pro
+  const [credenciaisDialog, setCredenciaisDialog] = useState<{
+    open: boolean
+    nome: string
+    email: string
+    senha: string
+    role: string
+  }>({
+    open: false,
+    nome: '',
+    email: '',
+    senha: '',
+    role: '',
+  })
+
   // Formulário
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -226,8 +241,9 @@ export function UserAccessManagement() {
         // Criar
         if (!password.trim() || password.trim().length < 8) {
           toast({
-            title: 'Senha inválida',
-            description: 'A senha temporária deve conter no mínimo 8 caracteres.',
+            title: 'Senha inicial curta',
+            description:
+              'Para garantia do sistema de autenticação, utilize no mínimo 8 caracteres na senha inicial (ex: data de nascimento + dígitos).',
             variant: 'destructive',
             duration: 10000,
           })
@@ -236,7 +252,7 @@ export function UserAccessManagement() {
         }
 
         const cleanEmail = email.trim()
-        await pb.collection('users').create({
+        const createdRecord = await pb.collection('users').create<UserRecord>({
           email: cleanEmail,
           emailVisibility: true,
           password: password.trim(),
@@ -245,22 +261,29 @@ export function UserAccessManagement() {
           role,
           status,
           cpf: cpfDigits || undefined,
+          verified: true, // Já ativado quando admin define a senha
         })
 
-        // Disparo tolerante do e-mail de verificação para o novo usuário
-        let emailSent = true
+        // Garante verified=true se a criação direta não tiver gravado
         try {
-          await pb.collection('users').requestVerification(cleanEmail)
-        } catch (mailErr) {
-          console.warn('Falha ao enviar e-mail de verificação:', mailErr)
-          emailSent = false
+          await pb.collection('users').update(createdRecord.id, { verified: true })
+        } catch {
+          /* intentionally ignored */
         }
+
+        // Exibe diálogo com as credenciais para entrega ao profissional/usuário
+        setCredenciaisDialog({
+          open: true,
+          nome: name.trim(),
+          email: cleanEmail,
+          senha: password.trim(),
+          role,
+        })
 
         toast({
           title: 'Usuário criado com sucesso',
-          description: emailSent
-            ? `Novo usuário ${cleanEmail} adicionado com perfil ${role.toUpperCase()} (e-mail de verificação enviado).`
-            : `Novo usuário ${cleanEmail} adicionado com perfil ${role.toUpperCase()}, mas o e-mail de verificação não pôde ser enviado.`,
+          description: `Novo usuário ${cleanEmail} criado com senha inicial definida.`,
+          duration: 10000,
         })
       }
 
@@ -739,19 +762,26 @@ export function UserAccessManagement() {
               <div>
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
                   {editingUser
-                    ? 'Nova Senha (deixe em branco para não alterar)'
-                    : 'Senha Inicial *'}
+                    ? 'Nova Senha (deixe em branco para manter)'
+                    : 'Senha Inicial (Primeiro Acesso Simplificado) *'}
                 </label>
                 <Input
-                  type="password"
+                  type="text"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder={
-                    editingUser ? 'Mínimo 8 caracteres' : 'Mínimo 8 caracteres (Skip@Pass)'
+                    editingUser
+                      ? 'Deixe em branco para manter a atual'
+                      : 'Ex: 15031985 (data de nascimento) ou 6 dígitos CPF + 2 letras'
                   }
                   required={!editingUser}
                   minLength={8}
                 />
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  {editingUser
+                    ? 'Preencha apenas se desejar redefinir a senha do usuário.'
+                    : 'A conta nasce ativada sem depender de link de e-mail. A tela exibirá os dados para entrega ao usuário.'}
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -799,6 +829,70 @@ export function UserAccessManagement() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo informativo pós-criação com credenciais prontas para entrega */}
+      <Dialog
+        open={credenciaisDialog.open}
+        onOpenChange={(open) => setCredenciaisDialog((prev) => ({ ...prev, open }))}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-800 text-base sm:text-lg">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              Usuário Criado — Entregue os Dados de Acesso
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-600">
+              A conta de <strong>{credenciaisDialog.nome}</strong> (
+              {credenciaisDialog.role.toUpperCase()}) foi ativada. Repasse as credenciais abaixo ao
+              usuário:
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="p-4 bg-slate-50 border-2 border-dashed border-emerald-300 rounded-xl space-y-3 my-2">
+            <div>
+              <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold block">
+                E-mail
+              </span>
+              <p className="text-sm font-mono font-bold text-slate-900 select-all">
+                {credenciaisDialog.email}
+              </p>
+            </div>
+
+            <div>
+              <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold block">
+                Senha inicial
+              </span>
+              <p className="text-base font-mono font-bold text-emerald-700 bg-white px-2.5 py-1 rounded border border-emerald-200 inline-block select-all">
+                {credenciaisDialog.senha}
+              </p>
+            </div>
+
+            <div className="text-[11px] text-slate-500 border-t border-slate-200 pt-2">
+              O usuário pode logar imediatamente na tela de login com este e-mail e senha.
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white"
+              onClick={() => {
+                const textoCopia = `Olá ${credenciaisDialog.nome}! Seu acesso à plataforma de facilities está pronto:\n\nE-mail: ${credenciaisDialog.email}\nSenha: ${credenciaisDialog.senha}\n\nAcesse pelo navegador ou aplicativo e faça seu login!`
+                if (navigator.clipboard) {
+                  navigator.clipboard.writeText(textoCopia).catch(() => {})
+                }
+                toast({
+                  title: 'Dados copiados!',
+                  description: 'Credenciais copiadas para a área de transferência.',
+                })
+                setCredenciaisDialog((prev) => ({ ...prev, open: false }))
+              }}
+            >
+              Copiar Dados e Concluir
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </Card>
