@@ -510,18 +510,23 @@
     let privBytes = new Uint8Array(32)
 
     // Gerar 32 bytes aleatórios criptograficamente seguros no intervalo [1, N-1]
+    // Utiliza sha256 interno (JS puro da própria lib) sobre entropia de $security.randomString + timestamp + índice
     while (true) {
+      const seed1 =
+        typeof $security !== 'undefined' && $security && $security.randomString
+          ? $security.randomString(64)
+          : String(Math.random()) + String(Date.now())
+      const seed2 =
+        typeof $security !== 'undefined' && $security && $security.randomString
+          ? $security.randomString(64)
+          : String(Math.random()) + String(Date.now())
+
+      const hash1 = sha256(stringToUtf8Bytes(seed1 + ':' + Date.now() + ':part1'))
+      const hash2 = sha256(stringToUtf8Bytes(seed2 + ':' + Date.now() + ':part2'))
+
+      // Preencher os 32 bytes do private key combinando os dois blocos de hash
       for (let i = 0; i < 32; i++) {
-        const randHex = $security.randomString(2)
-        // Usar hash seguro dos bytes para uniformidade caso a string gere hex
-        privBytes[i] = Math.floor(Math.random() * 256)
-      }
-      // Sobrescrever com entropia segura de $security.randomString
-      const randEntropia = $security.sha256($security.randomString(64) + Date.now())
-      // $security.sha256 no Goja retorna string hex de 64 chars
-      for (let i = 0; i < 32; i++) {
-        const byteVal = parseInt(randEntropia.substr(i * 2, 2), 16)
-        privBytes[i] = isNaN(byteVal) ? privBytes[i] : byteVal
+        privBytes[i] = hash1[i] ^ hash2[31 - i]
       }
 
       privBigInt = bits2int(privBytes)
@@ -548,7 +553,6 @@
       subject: 'mailto:contato@housekeeping.com.br',
     }
   }
-
   // Função utilitária para despachar push assinado com VAPID
   // Retorna { success: boolean, statusCode: number, expired: boolean, error?: string }
   function sendPushNotification(endpoint, payload, options) {
@@ -612,8 +616,8 @@
     }
   }
 
-  // Exportar para o escopo global do Goja / hooks
-  global.VAPID = {
+  // Exportar para o escopo global do Goja / hooks com máxima compatibilidade
+  const vapidExports = {
     getVapidHeaders: getVapidHeaders,
     createVapidJwt: createVapidJwt,
     getAudienceFromEndpoint: getAudienceFromEndpoint,
@@ -625,4 +629,15 @@
     bytesToBase64Url: bytesToBase64Url,
     base64UrlToBytes: base64UrlToBytes,
   }
+
+  if (typeof globalThis !== 'undefined') {
+    globalThis.VAPID = vapidExports
+  }
+  if (typeof global !== 'undefined' && global) {
+    global.VAPID = vapidExports
+  }
+  try {
+    /* fallback para atribuição direta em escopo global compartilhado */
+    VAPID = vapidExports
+  } catch (_) {}
 })(this)

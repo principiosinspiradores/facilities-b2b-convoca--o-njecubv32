@@ -63,16 +63,32 @@ routerAdd('POST', '/backend/v1/push/gerar-vapid', (e) => {
   }
 
   // 5. Gerar novo par de chaves usando a primitiva nativa de lib_vapid.js
+  let vapidInstance = null
+  if (typeof VAPID !== 'undefined' && VAPID.generateVapidKeyPair) {
+    vapidInstance = VAPID
+  } else if (
+    typeof globalThis !== 'undefined' &&
+    globalThis.VAPID &&
+    globalThis.VAPID.generateVapidKeyPair
+  ) {
+    vapidInstance = globalThis.VAPID
+  }
+
+  if (!vapidInstance) {
+    console.log(
+      '[GERAR_VAPID] Falha: Biblioteca VAPID não encontrada no escopo (nem VAPID nem globalThis.VAPID)',
+    )
+    return e.json(500, {
+      error: 'Biblioteca VAPID não carregada ou generateVapidKeyPair indisponível.',
+    })
+  }
+
   let keyPair = null
   try {
-    if (typeof VAPID === 'undefined' || !VAPID.generateVapidKeyPair) {
-      return e.json(500, {
-        error: 'Biblioteca VAPID não carregada ou generateVapidKeyPair indisponível.',
-      })
-    }
-    keyPair = VAPID.generateVapidKeyPair()
+    keyPair = vapidInstance.generateVapidKeyPair()
   } catch (errGen) {
-    console.log('[GERAR_VAPID] Erro ao gerar par de chaves:', errGen)
+    const errMsg = errGen && errGen.stack ? errGen.stack : String(errGen)
+    console.log('[GERAR_VAPID] Erro ao gerar par de chaves: ' + errMsg)
     return e.json(500, {
       error: 'Erro ao gerar par de chaves P-256: ' + String(errGen),
     })
@@ -92,7 +108,8 @@ routerAdd('POST', '/backend/v1/push/gerar-vapid', (e) => {
     settingsRec.set('vapid_subject', fixedSubject)
     $app.save(settingsRec)
   } catch (errSave) {
-    console.log('[GERAR_VAPID] Erro ao salvar chaves em settings:', errSave)
+    const errSaveMsg = errSave && errSave.stack ? errSave.stack : String(errSave)
+    console.log('[GERAR_VAPID] Erro ao salvar chaves em settings: ' + errSaveMsg)
     return e.json(500, {
       error: 'Erro ao gravar chaves na coleção settings: ' + String(errSave),
     })
