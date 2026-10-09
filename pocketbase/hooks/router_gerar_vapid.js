@@ -62,30 +62,28 @@ routerAdd('POST', '/backend/v1/push/gerar-vapid', (e) => {
     })
   }
 
-  // 5. Gerar novo par de chaves usando a primitiva nativa de lib_vapid.js
-  let vapidInstance = null
-  if (typeof VAPID !== 'undefined' && VAPID.generateVapidKeyPair) {
-    vapidInstance = VAPID
-  } else if (
-    typeof globalThis !== 'undefined' &&
-    globalThis.VAPID &&
-    globalThis.VAPID.generateVapidKeyPair
-  ) {
-    vapidInstance = globalThis.VAPID
+  // 5. Carregar biblioteca VAPID via require isolado do handler e gerar chaves P-256
+  let VAPID = null
+  try {
+    VAPID = require(`${__hooks}/lib_vapid.js`)
+  } catch (errRequire) {
+    const errMsg = errRequire && errRequire.stack ? errRequire.stack : String(errRequire)
+    console.log('[GERAR_VAPID] Erro ao carregar módulo lib_vapid.js: ' + errMsg)
+    return e.json(500, {
+      error: 'Falha ao carregar módulo VAPID: ' + String(errRequire),
+    })
   }
 
-  if (!vapidInstance) {
-    console.log(
-      '[GERAR_VAPID] Falha: Biblioteca VAPID não encontrada no escopo (nem VAPID nem globalThis.VAPID)',
-    )
+  if (!VAPID || !VAPID.generateVapidKeyPair) {
+    console.log('[GERAR_VAPID] Falha: Módulo VAPID carregado mas generateVapidKeyPair indisponível')
     return e.json(500, {
-      error: 'Biblioteca VAPID não carregada ou generateVapidKeyPair indisponível.',
+      error: 'Biblioteca VAPID carregada mas generateVapidKeyPair indisponível.',
     })
   }
 
   let keyPair = null
   try {
-    keyPair = vapidInstance.generateVapidKeyPair()
+    keyPair = VAPID.generateVapidKeyPair()
   } catch (errGen) {
     const errMsg = errGen && errGen.stack ? errGen.stack : String(errGen)
     console.log('[GERAR_VAPID] Erro ao gerar par de chaves: ' + errMsg)

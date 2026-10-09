@@ -29,6 +29,7 @@ onRecordUpdate((e) => {
 
     // Notificação Push de recusa / cancelamento para os gestores (empresa e admin) via push_outbox e tickle
     try {
+      const VAPID = require(`${__hooks}/lib_vapid.js`)
       const postoNome = posto ? posto.getString('nome') : 'Posto'
       const dataEscala = escala ? escala.getString('data').slice(0, 10) : ''
       let proNome = 'Profissional'

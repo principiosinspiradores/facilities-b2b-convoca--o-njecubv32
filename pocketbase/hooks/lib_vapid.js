@@ -614,7 +614,7 @@
     }
   }
 
-  // Exportar para o escopo global do Goja / hooks com máxima compatibilidade
+  // Exportar como módulo CommonJS para Goja / PocketBase hooks (require(`${__hooks}/lib_vapid.js`))
   const vapidExports = {
     getVapidHeaders: getVapidHeaders,
     createVapidJwt: createVapidJwt,
@@ -628,14 +628,5 @@
     base64UrlToBytes: base64UrlToBytes,
   }
 
-  if (typeof globalThis !== 'undefined') {
-    globalThis.VAPID = vapidExports
-  }
-  if (typeof global !== 'undefined' && global) {
-    global.VAPID = vapidExports
-  }
-  try {
-    /* fallback para atribuição direta em escopo global compartilhado */
-    VAPID = vapidExports
-  } catch (_) {}
+  module.exports = vapidExports
 })(this)

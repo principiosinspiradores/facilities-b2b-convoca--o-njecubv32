@@ -29,6 +29,7 @@ onRecordCreate((e) => {
 
     // Notificação Push de Disputa aberta para os administradores via push_outbox e tickle
     try {
+      const VAPID = require(`${__hooks}/lib_vapid.js`)
       let proNome = 'Profissional'
       try {
         const proUser = $app.findRecordById('users', proId)

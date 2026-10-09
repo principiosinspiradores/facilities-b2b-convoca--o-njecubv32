@@ -100,6 +100,8 @@ routerAdd('POST', '/backend/v1/push/test', (e) => {
   let removidos = 0
   let erros = 0
 
+  const VAPID = require(`${__hooks}/lib_vapid.js`)
+
   for (let i = 0; i < subscriptions.length; i++) {
     const sub = subscriptions[i]
     const endpoint = sub.getString('endpoint')

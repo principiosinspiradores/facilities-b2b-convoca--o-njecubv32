@@ -82,6 +82,7 @@ onRecordUpdate((e) => {
 
     // Notificação Push de Falta (no-show) para usuários da empresa do posto e admin via push_outbox e tickle
     try {
+      const VAPID = require(`${__hooks}/lib_vapid.js`)
       let postoNome = 'Posto'
       let dataEscala = ''
       try {

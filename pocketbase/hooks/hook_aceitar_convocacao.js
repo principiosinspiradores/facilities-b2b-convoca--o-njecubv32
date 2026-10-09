@@ -188,6 +188,7 @@ onRecordUpdate((e) => {
 
     // Notificação Push no celular (PWA) para os criadores / gestores da empresa e admin (push_outbox + tickle/push)
     try {
+      const VAPID = require(`${__hooks}/lib_vapid.js`)
       const postoNome = posto ? posto.getString('nome') : 'Posto Designado'
       const dataEscala = escala ? escala.getString('data').slice(0, 10) : ''
       let proNome = 'Profissional'
