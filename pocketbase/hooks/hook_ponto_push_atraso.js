@@ -56,8 +56,14 @@ onRecordAfterCreateSuccess((e) => {
       try {
         VAPID = require(`${__hooks}/lib_vapid.pb.js`)
       } catch (_) {
-        VAPID = require('./lib_vapid.pb.js')
+        try {
+          VAPID = require(`${__hooks}/lib_vapid.js`)
+        } catch (_) {}
       }
+    }
+    if (!VAPID || typeof VAPID.sendPushNotification !== 'function') {
+      console.log('[PUSH] VAPID não configurado — envio abortado')
+      return
     }
     const pushTag = 'ponto-atraso-' + record.id
     for (let g = 0; g < gestores.length; g++) {

@@ -643,13 +643,11 @@ routerAdd('POST', '/backend/v1/push/test', (e) => {
     let VAPID = (typeof globalThis !== 'undefined' && globalThis.VAPID) || null
     if (!VAPID) {
       try {
-        VAPID = require(`${__hooks}/lib_vapid.js`)
+        VAPID = require(`${__hooks}/lib_vapid.pb.js`)
       } catch (_) {
         try {
-          VAPID = require('./lib_vapid.js')
-        } catch (_) {
-          VAPID = require('lib_vapid.js')
-        }
+          VAPID = require(`${__hooks}/lib_vapid.js`)
+        } catch (_) {}
       }
     }
 

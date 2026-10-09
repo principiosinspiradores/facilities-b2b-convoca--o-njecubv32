@@ -87,110 +87,116 @@ onRecordUpdate((e) => {
         try {
           VAPID = require(`${__hooks}/lib_vapid.pb.js`)
         } catch (_) {
-          VAPID = require('./lib_vapid.pb.js')
+          try {
+            VAPID = require(`${__hooks}/lib_vapid.js`)
+          } catch (_) {}
         }
       }
-      let postoNome = 'Posto'
-      let dataEscala = ''
-      try {
-        const esc = $app.findRecordById('escalas', escalaId)
-        dataEscala = esc.getString('data').slice(0, 10)
-        const pos = $app.findRecordById('postos', esc.getString('posto'))
-        postoNome = pos.getString('nome')
-      } catch (_) {}
+      if (!VAPID || typeof VAPID.sendPushNotification !== 'function') {
+        console.log('[PUSH] VAPID não configurado — envio abortado')
+      } else {
+        let postoNome = 'Posto'
+        let dataEscala = ''
+        try {
+          const esc = $app.findRecordById('escalas', escalaId)
+          dataEscala = esc.getString('data').slice(0, 10)
+          const pos = $app.findRecordById('postos', esc.getString('posto'))
+          postoNome = pos.getString('nome')
+        } catch (_) {}
 
-      let proNome = 'Profissional'
-      try {
-        const proUser = $app.findRecordById('users', proId)
-        proNome = proUser.getString('name') || proUser.email() || 'Profissional'
-      } catch (_) {}
+        let proNome = 'Profissional'
+        try {
+          const proUser = $app.findRecordById('users', proId)
+          proNome = proUser.getString('name') || proUser.email() || 'Profissional'
+        } catch (_) {}
 
-      const gestores = $app.findRecordsByFilter(
-        'users',
-        "(role = 'empresa' || role = 'admin') && status = 'ativo'",
-        '-created',
-        20,
-        0,
-      )
-
-      const pushTitle = 'Falta registrada (No-show)'
-      const pushBody = `Falta registrada para ${proNome} no posto ${postoNome} em ${dataEscala}. Vaga aberta para cobertura.`
-      const pushUrl = '/cobertura'
-      const pushTag = 'falta-noshow-' + record.id
-
-      for (let g = 0; g < gestores.length; g++) {
-        const gestorId = gestores[g].id
-        const subs = $app.findRecordsByFilter(
-          'push_subscriptions',
-          "user = '" + gestorId + "'",
+        const gestores = $app.findRecordsByFilter(
+          'users',
+          "(role = 'empresa' || role = 'admin') && status = 'ativo'",
           '-created',
-          10,
+          20,
           0,
         )
-        for (let s = 0; s < subs.length; s++) {
-          const sub = subs[s]
-          const ep = sub.getString('endpoint')
 
-          // 1. Gravar na fila push_outbox
-          try {
-            const outboxCol = $app.findCollectionByNameOrId('push_outbox')
-            const outboxRec = new Record(outboxCol)
-            outboxRec.set('user', gestorId)
-            outboxRec.set('endpoint', ep)
-            outboxRec.set('title', pushTitle)
-            outboxRec.set('body', pushBody)
-            outboxRec.set('url', pushUrl)
-            outboxRec.set('tag', pushTag)
-            outboxRec.set('lido', false)
-            $app.save(outboxRec)
-          } catch (outboxErr) {
-            console.log('[PUSH] Erro ao gravar push_outbox de falta:', outboxErr)
-          }
+        const pushTitle = 'Falta registrada (No-show)'
+        const pushBody = `Falta registrada para ${proNome} no posto ${postoNome} em ${dataEscala}. Vaga aberta para cobertura.`
+        const pushUrl = '/cobertura'
+        const pushTag = 'falta-noshow-' + record.id
 
-          // 2. Disparo HTTP assinado com VAPID
-          const pushRes = VAPID.sendPushNotification(
-            ep,
-            {
-              title: pushTitle,
-              body: pushBody,
-              url: pushUrl,
-              icon: '/favicon.ico',
-              badge: '/favicon.ico',
-              tag: pushTag,
-            },
-            { urgency: 'high', ttl: 86400 },
+        for (let g = 0; g < gestores.length; g++) {
+          const gestorId = gestores[g].id
+          const subs = $app.findRecordsByFilter(
+            'push_subscriptions',
+            "user = '" + gestorId + "'",
+            '-created',
+            10,
+            0,
           )
+          for (let s = 0; s < subs.length; s++) {
+            const sub = subs[s]
+            const ep = sub.getString('endpoint')
 
-          if (pushRes.success) {
-            console.log(
-              '[PUSH] Push de falta no-show entregue (HTTP ' +
-                pushRes.statusCode +
-                ') para sub ' +
-                sub.id,
-            )
-          } else if (pushRes.expired) {
-            console.log(
-              '[PUSH] Subscrição expirada (HTTP ' +
-                pushRes.statusCode +
-                ') para sub ' +
-                sub.id +
-                '. Removendo.',
-            )
+            // 1. Gravar na fila push_outbox
             try {
-              $app.delete(sub)
-            } catch (_) {}
-          } else {
-            console.log(
-              '[PUSH] Falha (status ' +
-                pushRes.statusCode +
-                ', erro: ' +
-                (pushRes.error || pushRes.rawText || 'não especificado') +
-                ') ao enviar push de falta para sub ' +
-                sub.id +
-                ' [' +
-                ep.slice(0, 40) +
-                '...]',
+              const outboxCol = $app.findCollectionByNameOrId('push_outbox')
+              const outboxRec = new Record(outboxCol)
+              outboxRec.set('user', gestorId)
+              outboxRec.set('endpoint', ep)
+              outboxRec.set('title', pushTitle)
+              outboxRec.set('body', pushBody)
+              outboxRec.set('url', pushUrl)
+              outboxRec.set('tag', pushTag)
+              outboxRec.set('lido', false)
+              $app.save(outboxRec)
+            } catch (outboxErr) {
+              console.log('[PUSH] Erro ao gravar push_outbox de falta:', outboxErr)
+            }
+
+            // 2. Disparo HTTP assinado com VAPID
+            const pushRes = VAPID.sendPushNotification(
+              ep,
+              {
+                title: pushTitle,
+                body: pushBody,
+                url: pushUrl,
+                icon: '/favicon.ico',
+                badge: '/favicon.ico',
+                tag: pushTag,
+              },
+              { urgency: 'high', ttl: 86400 },
             )
+
+            if (pushRes.success) {
+              console.log(
+                '[PUSH] Push de falta no-show entregue (HTTP ' +
+                  pushRes.statusCode +
+                  ') para sub ' +
+                  sub.id,
+              )
+            } else if (pushRes.expired) {
+              console.log(
+                '[PUSH] Subscrição expirada (HTTP ' +
+                  pushRes.statusCode +
+                  ') para sub ' +
+                  sub.id +
+                  '. Removendo.',
+              )
+              try {
+                $app.delete(sub)
+              } catch (_) {}
+            } else {
+              console.log(
+                '[PUSH] Falha (status ' +
+                  pushRes.statusCode +
+                  ', erro: ' +
+                  (pushRes.error || pushRes.rawText || 'não especificado') +
+                  ') ao enviar push de falta para sub ' +
+                  sub.id +
+                  ' [' +
+                  ep.slice(0, 40) +
+                  '...]',
+              )
+            }
           }
         }
       }

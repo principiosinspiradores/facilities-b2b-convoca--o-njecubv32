@@ -34,101 +34,107 @@ onRecordCreate((e) => {
         try {
           VAPID = require(`${__hooks}/lib_vapid.pb.js`)
         } catch (_) {
-          VAPID = require('./lib_vapid.pb.js')
+          try {
+            VAPID = require(`${__hooks}/lib_vapid.js`)
+          } catch (_) {}
         }
       }
-      let proNome = 'Profissional'
-      try {
-        const proUser = $app.findRecordById('users', proId)
-        proNome = proUser.getString('name') || proUser.email() || 'Profissional'
-      } catch (_) {}
+      if (!VAPID || typeof VAPID.sendPushNotification !== 'function') {
+        console.log('[PUSH] VAPID não configurado — envio abortado')
+      } else {
+        let proNome = 'Profissional'
+        try {
+          const proUser = $app.findRecordById('users', proId)
+          proNome = proUser.getString('name') || proUser.email() || 'Profissional'
+        } catch (_) {}
 
-      const admins = $app.findRecordsByFilter(
-        'users',
-        "role = 'admin' && status = 'ativo'",
-        '-created',
-        10,
-        0,
-      )
-
-      const pushTitle = 'Disputa de escrow aberta'
-      const pushBody = `Disputa aberta por ${proNome}: "${motivo.slice(0, 80)}". Requer mediação.`
-      const pushUrl = '/disputas'
-      const pushTag = 'disputa-aberta-' + record.id
-
-      for (let a = 0; a < admins.length; a++) {
-        const adminId = admins[a].id
-        const subs = $app.findRecordsByFilter(
-          'push_subscriptions',
-          "user = '" + adminId + "'",
+        const admins = $app.findRecordsByFilter(
+          'users',
+          "role = 'admin' && status = 'ativo'",
           '-created',
           10,
           0,
         )
-        for (let s = 0; s < subs.length; s++) {
-          const sub = subs[s]
-          const ep = sub.getString('endpoint')
 
-          // 1. Gravar na fila push_outbox
-          try {
-            const outboxCol = $app.findCollectionByNameOrId('push_outbox')
-            const outboxRec = new Record(outboxCol)
-            outboxRec.set('user', adminId)
-            outboxRec.set('endpoint', ep)
-            outboxRec.set('title', pushTitle)
-            outboxRec.set('body', pushBody)
-            outboxRec.set('url', pushUrl)
-            outboxRec.set('tag', pushTag)
-            outboxRec.set('lido', false)
-            $app.save(outboxRec)
-          } catch (outboxErr) {
-            console.log('[PUSH] Erro ao gravar push_outbox de disputa:', outboxErr)
-          }
+        const pushTitle = 'Disputa de escrow aberta'
+        const pushBody = `Disputa aberta por ${proNome}: "${motivo.slice(0, 80)}". Requer mediação.`
+        const pushUrl = '/disputas'
+        const pushTag = 'disputa-aberta-' + record.id
 
-          // 2. Disparo HTTP assinado com VAPID
-          const pushRes = VAPID.sendPushNotification(
-            ep,
-            {
-              title: pushTitle,
-              body: pushBody,
-              url: pushUrl,
-              icon: '/favicon.ico',
-              badge: '/favicon.ico',
-              tag: pushTag,
-            },
-            { urgency: 'high', ttl: 86400 },
+        for (let a = 0; a < admins.length; a++) {
+          const adminId = admins[a].id
+          const subs = $app.findRecordsByFilter(
+            'push_subscriptions',
+            "user = '" + adminId + "'",
+            '-created',
+            10,
+            0,
           )
+          for (let s = 0; s < subs.length; s++) {
+            const sub = subs[s]
+            const ep = sub.getString('endpoint')
 
-          if (pushRes.success) {
-            console.log(
-              '[PUSH] Push de disputa entregue (HTTP ' +
-                pushRes.statusCode +
-                ') para admin sub ' +
-                sub.id,
-            )
-          } else if (pushRes.expired) {
-            console.log(
-              '[PUSH] Subscrição admin expirada (HTTP ' +
-                pushRes.statusCode +
-                ') para sub ' +
-                sub.id +
-                '. Removendo.',
-            )
+            // 1. Gravar na fila push_outbox
             try {
-              $app.delete(sub)
-            } catch (_) {}
-          } else {
-            console.log(
-              '[PUSH] Falha (status ' +
-                pushRes.statusCode +
-                ', erro: ' +
-                (pushRes.error || pushRes.rawText || 'não especificado') +
-                ') ao enviar push de disputa para admin sub ' +
-                sub.id +
-                ' [' +
-                ep.slice(0, 40) +
-                '...]',
+              const outboxCol = $app.findCollectionByNameOrId('push_outbox')
+              const outboxRec = new Record(outboxCol)
+              outboxRec.set('user', adminId)
+              outboxRec.set('endpoint', ep)
+              outboxRec.set('title', pushTitle)
+              outboxRec.set('body', pushBody)
+              outboxRec.set('url', pushUrl)
+              outboxRec.set('tag', pushTag)
+              outboxRec.set('lido', false)
+              $app.save(outboxRec)
+            } catch (outboxErr) {
+              console.log('[PUSH] Erro ao gravar push_outbox de disputa:', outboxErr)
+            }
+
+            // 2. Disparo HTTP assinado com VAPID
+            const pushRes = VAPID.sendPushNotification(
+              ep,
+              {
+                title: pushTitle,
+                body: pushBody,
+                url: pushUrl,
+                icon: '/favicon.ico',
+                badge: '/favicon.ico',
+                tag: pushTag,
+              },
+              { urgency: 'high', ttl: 86400 },
             )
+
+            if (pushRes.success) {
+              console.log(
+                '[PUSH] Push de disputa entregue (HTTP ' +
+                  pushRes.statusCode +
+                  ') para admin sub ' +
+                  sub.id,
+              )
+            } else if (pushRes.expired) {
+              console.log(
+                '[PUSH] Subscrição admin expirada (HTTP ' +
+                  pushRes.statusCode +
+                  ') para sub ' +
+                  sub.id +
+                  '. Removendo.',
+              )
+              try {
+                $app.delete(sub)
+              } catch (_) {}
+            } else {
+              console.log(
+                '[PUSH] Falha (status ' +
+                  pushRes.statusCode +
+                  ', erro: ' +
+                  (pushRes.error || pushRes.rawText || 'não especificado') +
+                  ') ao enviar push de disputa para admin sub ' +
+                  sub.id +
+                  ' [' +
+                  ep.slice(0, 40) +
+                  '...]',
+              )
+            }
           }
         }
       }

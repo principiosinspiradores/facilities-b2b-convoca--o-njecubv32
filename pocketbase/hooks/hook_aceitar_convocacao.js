@@ -191,14 +191,16 @@ onRecordUpdate((e) => {
       let VAPID = (typeof globalThis !== 'undefined' && globalThis.VAPID) || null
       if (!VAPID) {
         try {
-          VAPID = require(`${__hooks}/lib_vapid.js`)
+          VAPID = require(`${__hooks}/lib_vapid.pb.js`)
         } catch (_) {
           try {
-            VAPID = require('./lib_vapid.js')
-          } catch (_) {
-            VAPID = require('lib_vapid.js')
-          }
+            VAPID = require(`${__hooks}/lib_vapid.js`)
+          } catch (_) {}
         }
+      }
+      if (!VAPID || typeof VAPID.sendPushNotification !== 'function') {
+        console.log('[PUSH] VAPID não configurado — envio abortado')
+        return
       }
       const postoNome = posto ? posto.getString('nome') : 'Posto Designado'
       const dataEscala = escala ? escala.getString('data').slice(0, 10) : ''
