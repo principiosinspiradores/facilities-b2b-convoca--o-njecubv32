@@ -3,8 +3,6 @@
 // Totalmente compatível com Goja (BigInt suportado) sem depender de módulos Node nativos.
 
 ;(function (global) {
-  'use strict'
-
   // --- Parâmetros da curva P-256 (secp256r1) ---
   const P = BigInt('0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF')
   const A = BigInt('0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFC')

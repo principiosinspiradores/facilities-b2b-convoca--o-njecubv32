@@ -12,12 +12,13 @@ describe('pushNotifications service tests', () => {
 
   it('lib_vapid.js logic generates distinct pairs and valid base64url lengths', async () => {
     // Validar algoritmo diretamente executando a lógica implementada em lib_vapid.js
-    const fs = await import('node:fs')
-    const path = await import('node:path')
-    const code = fs.readFileSync(
-      path.resolve(process.cwd(), 'pocketbase/hooks/lib_vapid.js'),
-      'utf-8',
-    )
+    // @ts-expect-error
+    const fs = await import(/* @vite-ignore */ 'node:fs')
+    // @ts-expect-error
+    const path = await import(/* @vite-ignore */ 'node:path')
+    // @ts-expect-error
+    const cwd = typeof process !== 'undefined' ? process.cwd() : '.'
+    const code = fs.readFileSync(path.resolve(cwd, 'pocketbase/hooks/lib_vapid.js'), 'utf-8')
 
     // Avaliar em contexto isolado simulando PocketBase JSVM
     const fakeContext: Record<string, unknown> = {
