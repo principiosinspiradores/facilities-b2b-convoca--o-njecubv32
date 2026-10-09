@@ -384,10 +384,27 @@ routerAdd('POST', '/backend/v1/push/gerar-vapid', (e) => {
     }
   }
 
-  // 5. Gerar chaves P-256 via função VAPID inline
+  // 5. Carregar VAPID e gerar chaves P-256
+  let VAPID = (typeof globalThis !== 'undefined' && globalThis.VAPID) || null
+  if (!VAPID) {
+    try {
+      VAPID = require(`${__hooks}/lib_vapid.js`)
+    } catch (_) {
+      try {
+        VAPID = require('./lib_vapid.js')
+      } catch (_) {
+        VAPID = require('lib_vapid.js')
+      }
+    }
+  }
+
   let keyPair = null
   try {
-    keyPair = gerarParChavesVapidInterno()
+    if (VAPID && typeof VAPID.generateVapidKeyPair === 'function') {
+      keyPair = VAPID.generateVapidKeyPair()
+    } else {
+      keyPair = gerarParChavesVapidInterno()
+    }
   } catch (errGen) {
     const errMsg = errGen && errGen.stack ? errGen.stack : String(errGen)
     console.log('[GERAR_VAPID] Erro ao gerar par de chaves: ' + errMsg)

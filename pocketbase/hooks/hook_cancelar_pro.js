@@ -32,9 +32,13 @@ onRecordUpdate((e) => {
       let VAPID = (typeof globalThis !== 'undefined' && globalThis.VAPID) || null
       if (!VAPID) {
         try {
-          VAPID = require(`${__hooks}/lib_vapid.pb.js`)
+          VAPID = require(`${__hooks}/lib_vapid.js`)
         } catch (_) {
-          VAPID = require('./lib_vapid.pb.js')
+          try {
+            VAPID = require('./lib_vapid.js')
+          } catch (_) {
+            VAPID = require('lib_vapid.js')
+          }
         }
       }
       const postoNome = posto ? posto.getString('nome') : 'Posto'
