@@ -179,11 +179,16 @@ export default function ConvocacoesPage() {
         description: toastDesc,
       })
       loadConvocacoes()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao aceitar:', err)
+      const msgErro =
+        err?.response?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Tente novamente ou contate a central.'
       toast({
         title: 'Erro ao aceitar turno',
-        description: 'Tente novamente ou contate a central.',
+        description: msgErro,
         variant: 'destructive',
       })
     } finally {

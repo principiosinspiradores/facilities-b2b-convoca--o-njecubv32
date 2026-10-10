@@ -598,115 +598,161 @@ onRecordUpdate((e) => {
     const proId = record.getString('pro')
     const valorDiaria = record.getFloat('valor_diaria') || 0
 
-    // 1. Atualizar status da escala para 'aceita'
     let escala
     let posto
-    try {
-      escala = $app.findRecordById('escalas', escalaId)
-      escala.set('status', 'aceita')
-      $app.save(escala)
-
-      posto = $app.findRecordById('postos', escala.getString('posto'))
-    } catch (err) {
-      console.log('Erro ao atualizar escala para aceita:', err)
-    }
-
-    // 2. Se a profissional for fixa do posto com remuneração MENSAL (mensalista):
-    // O valor dela NÃO entra no escrow por diária (é remuneração salarial mensal contratada fora de escrow)
     let isFixaMensal = false
-    if (posto) {
-      const proFixoId = posto.getString('pro_fixo')
-      const forma =
-        posto.getString('forma_de_contratacao') || posto.getString('tipo_remuneracao_fixa')
-      if (proFixoId && proFixoId === proId && (forma === 'mensalista' || forma === 'mensal')) {
-        isFixaMensal = true
+
+    // Executar verificação e atualizações de banco dentro de transação atômica
+    $app.runInTransaction((txApp) => {
+      escala = txApp.findRecordById('escalas', escalaId)
+      const postoId = escala.getString('posto')
+      const dataEscala = escala.getString('data').slice(0, 10)
+      const turnoInicio = escala.getString('turno_inicio')
+      const turnoFim = escala.getString('turno_fim')
+      posto = txApp.findRecordById('postos', postoId)
+
+      // (a) Trava: se o pro já tem convocação ACEITA para qualquer escala do MESMO posto na MESMA data:
+      // Bloquear o aceite (status volta pendente, responder erro claro)
+      const escalasDoPostoNaData = txApp.findRecordsByFilter(
+        'escalas',
+        `posto = '${postoId}' && data ~ '${dataEscala}' && status != 'cancelada'`,
+        'created',
+        100,
+        0,
+      )
+
+      for (let ep = 0; ep < escalasDoPostoNaData.length; ep++) {
+        const escPosto = escalasDoPostoNaData[ep]
+        const convsAceitasPro = txApp.findRecordsByFilter(
+          'convocacoes',
+          `escala = '${escPosto.id}' && pro = '${proId}' && status = 'aceita' && id != '${record.id}'`,
+          '-created',
+          10,
+          0,
+        )
+        if (convsAceitasPro && convsAceitasPro.length > 0) {
+          record.set('status', 'pendente')
+          throw new BadRequestError('Você já aceitou uma convocação para este posto nesta data')
+        }
       }
-    }
 
-    // 3. Gestão de vagas múltiplas e cancelamento de convocações pendentes
-    // Identificar se a escala faz parte de um grupo de mesmo posto, data e turno
-    try {
-      if (escala) {
-        const postoId = escala.getString('posto')
-        const dataEscala = escala.getString('data').slice(0, 10)
-        const turnoInicio = escala.getString('turno_inicio')
-        const turnoFim = escala.getString('turno_fim')
+      // 1. Atualizar status da escala para 'aceita'
+      escala.set('status', 'aceita')
+      txApp.save(escala)
 
-        // Buscar todas as escalas deste mesmo posto, data e turno
-        const escalasDoGrupo = $app.findRecordsByFilter(
-          'escalas',
-          "posto = '" +
-            postoId +
-            "' && data ~ '" +
-            dataEscala +
-            "' && turno_inicio = '" +
-            turnoInicio +
-            "' && turno_fim = '" +
-            turnoFim +
-            "' && status != 'cancelada'",
-          'created',
+      // 2. Se a profissional for fixa do posto com remuneração MENSAL (mensalista)
+      if (posto) {
+        const proFixoId = posto.getString('pro_fixo')
+        const forma =
+          posto.getString('forma_de_contratacao') || posto.getString('tipo_remuneracao_fixa')
+        if (proFixoId && proFixoId === proId && (forma === 'mensalista' || forma === 'mensal')) {
+          isFixaMensal = true
+        }
+      }
+
+      // (b) Trava: contar convocações aceitas da escala/grupo:
+      // só cancelar as demais pendentes ("Vaga já preenchida") quando aceitas >= vagas da escala.
+      const escalasDoGrupo = txApp.findRecordsByFilter(
+        'escalas',
+        `posto = '${postoId}' && data ~ '${dataEscala}' && turno_inicio = '${turnoInicio}' && turno_fim = '${turnoFim}' && status != 'cancelada'`,
+        'created',
+        100,
+        0,
+      )
+
+      // Identificar número real de vagas configurado na escala ou quantidade de registros do grupo
+      let vagasDefinidas = escala.getInt('vagas') || 1
+      for (let eg = 0; eg < escalasDoGrupo.length; eg++) {
+        const v = escalasDoGrupo[eg].getInt('vagas')
+        if (v > vagasDefinidas) {
+          vagasDefinidas = v
+        }
+      }
+      const totalVagas = Math.max(vagasDefinidas, escalasDoGrupo.length)
+
+      // Contar quantas convocações aceitas existem para as escalas do grupo (incluindo o record atual)
+      const escalaIdsGrupo = []
+      let totalConvocacoesAceitas = 0
+
+      for (let i = 0; i < escalasDoGrupo.length; i++) {
+        const esc = escalasDoGrupo[i]
+        escalaIdsGrupo.push(esc.id)
+        const convsAceitas = txApp.findRecordsByFilter(
+          'convocacoes',
+          `escala = '${esc.id}' && status = 'aceita'`,
+          '-created',
           100,
           0,
         )
+        totalConvocacoesAceitas += convsAceitas.length
+      }
 
-        const totalVagas = escalasDoGrupo.length
-
-        // Contar quantas escalas já estão com status 'aceita' ou 'coberta' (ou 'concluida')
-        let totalCobertas = 0
-        const escalaIdsGrupo = []
-        for (let i = 0; i < escalasDoGrupo.length; i++) {
-          const esc = escalasDoGrupo[i]
-          escalaIdsGrupo.push(esc.id)
-          const st = esc.getString('status')
-          if (st === 'aceita' || st === 'coberta' || st === 'concluida') {
-            totalCobertas++
-          }
-        }
-
-        // Se é posto com 1 vaga OU se o grupo preencheu todas as vagas (totalCobertas >= totalVagas):
-        // Cancelar convocações pendentes restantes com aviso "vaga preenchida"
-        if (totalCobertas >= totalVagas) {
-          for (let g = 0; g < escalaIdsGrupo.length; g++) {
-            const escId = escalaIdsGrupo[g]
-            const outrasConvs = $app.findRecordsByFilter(
-              'convocacoes',
-              "escala = '" + escId + "' && status = 'pendente'",
-              '-created',
-              50,
-              0,
-            )
-            for (let i = 0; i < outrasConvs.length; i++) {
-              const c = outrasConvs[i]
-              // Não alterar a convocação que acabou de ser aceita
-              if (c.id === record.id) continue
-              c.set('status', 'cancelada')
-              c.set('regra_aplicada', 'Vaga já preenchida')
-              $app.save(c)
-            }
-          }
-        } else {
-          // Grupo ainda tem vagas abertas!
-          // Cancelar outras convocações pendentes apenas desta escala específica (para não ter 2 aceites na mesma escala)
-          // Mas manter as convocações das outras escalas abertas do grupo
-          const outrasConvsDestaEscala = $app.findRecordsByFilter(
+      // Se aceitas >= vagas da escala: cancelar convocações pendentes com "Vaga já preenchida"
+      if (totalConvocacoesAceitas >= totalVagas) {
+        for (let g = 0; g < escalaIdsGrupo.length; g++) {
+          const escId = escalaIdsGrupo[g]
+          const outrasConvs = txApp.findRecordsByFilter(
             'convocacoes',
-            "escala = '" + escalaId + "' && id != '" + record.id + "' && status = 'pendente'",
+            `escala = '${escId}' && status = 'pendente'`,
             '-created',
             50,
             0,
           )
-          for (let i = 0; i < outrasConvsDestaEscala.length; i++) {
-            const c = outrasConvsDestaEscala[i]
-            // Se o grupo ainda tem vagas, o pro pode ser transferido ou ver como cancelada na escala
+          for (let i = 0; i < outrasConvs.length; i++) {
+            const c = outrasConvs[i]
+            if (c.id === record.id) continue
             c.set('status', 'cancelada')
             c.set('regra_aplicada', 'Vaga já preenchida')
-            $app.save(c)
+            txApp.save(c)
           }
         }
       }
-    } catch (err) {
-      console.log('Erro ao gerenciar cancelamento de convocações pendentes por vagas:', err)
-    }
+
+      // Se for freelancer ou fixa por hora, registrar payout status=retido dentro da transação
+      if (!isFixaMensal) {
+        let guaranteeDays = 7
+        let provider = 'mercadopago'
+        try {
+          const settingsList = txApp.findRecordsByFilter('settings', 'id != ""', '-created', 1, 0)
+          if (settingsList && settingsList.length > 0) {
+            guaranteeDays = settingsList[0].getInt('guarantee_period_days') || 7
+            provider = settingsList[0].getString('payout_provider') || 'mercadopago'
+          }
+        } catch (_) {}
+
+        const payoutsCol = txApp.findCollectionByNameOrId('payouts')
+        const payoutRecord = new Record(payoutsCol)
+        payoutRecord.set('escala', escalaId)
+        payoutRecord.set('pro', proId)
+        payoutRecord.set('valor', valorDiaria)
+        payoutRecord.set('status', 'retido')
+        payoutRecord.set('disputa_aberta', false)
+
+        const now = new Date()
+        payoutRecord.set('data_conclusao', now.toISOString())
+
+        const libDate = new Date(now.getTime() + guaranteeDays * 24 * 60 * 60 * 1000)
+        payoutRecord.set('data_liberacao', libDate.toISOString())
+        payoutRecord.set('provedor', provider)
+        payoutRecord.set('referencia', 'ESC-' + escalaId.slice(0, 8))
+
+        txApp.save(payoutRecord)
+
+        const eventsCol = txApp.findCollectionByNameOrId('payment_events')
+        const event = new Record(eventsCol)
+        event.set('payout', payoutRecord.id)
+        event.set('tipo', 'convocacao_aceita')
+        event.set('valor', valorDiaria)
+        event.set('data', now.toISOString())
+        event.set('metadata', {
+          escala_id: escalaId,
+          pro_id: proId,
+          regra_aplicada: record.getString('regra_aplicada'),
+          valor: valorDiaria,
+        })
+        txApp.save(event)
+      }
+    })
 
     // 4. Notificação por e-mail: Confirmação de aceite
     try {
@@ -879,56 +925,6 @@ onRecordUpdate((e) => {
       }
     } catch (errPushGestor) {
       console.log('[PUSH] Erro geral ao enviar push de aceite para gestores:', errPushGestor)
-    }
-
-    // 5. Buscar settings para período de garantia (Freelancers ou Fixa por Hora)
-    let guaranteeDays = 7
-    let provider = 'mercadopago'
-    try {
-      const settingsList = $app.findRecordsByFilter('settings', 'id != ""', '-created', 1, 0)
-      if (settingsList && settingsList.length > 0) {
-        guaranteeDays = settingsList[0].getInt('guarantee_period_days') || 7
-        provider = settingsList[0].getString('payout_provider') || 'mercadopago'
-      }
-    } catch (_) {}
-
-    // 6. Criar ou atualizar payout status=retido (escrow contábil)
-    let payoutRecord
-    try {
-      const payoutsCol = $app.findCollectionByNameOrId('payouts')
-      payoutRecord = new Record(payoutsCol)
-      payoutRecord.set('escala', escalaId)
-      payoutRecord.set('pro', proId)
-      payoutRecord.set('valor', valorDiaria)
-      payoutRecord.set('status', 'retido')
-      payoutRecord.set('disputa_aberta', false)
-
-      const now = new Date()
-      payoutRecord.set('data_conclusao', now.toISOString())
-
-      const libDate = new Date(now.getTime() + guaranteeDays * 24 * 60 * 60 * 1000)
-      payoutRecord.set('data_liberacao', libDate.toISOString())
-      payoutRecord.set('provedor', provider)
-      payoutRecord.set('referencia', 'ESC-' + escalaId.slice(0, 8))
-
-      $app.save(payoutRecord)
-
-      // 7. Log em payment_events
-      const eventsCol = $app.findCollectionByNameOrId('payment_events')
-      const event = new Record(eventsCol)
-      event.set('payout', payoutRecord.id)
-      event.set('tipo', 'convocacao_aceita')
-      event.set('valor', valorDiaria)
-      event.set('data', now.toISOString())
-      event.set('metadata', {
-        escala_id: escalaId,
-        pro_id: proId,
-        regra_aplicada: record.getString('regra_aplicada'),
-        valor: valorDiaria,
-      })
-      $app.save(event)
-    } catch (err) {
-      console.log('Erro ao criar payout e evento:', err)
     }
   }
 }, 'convocacoes')

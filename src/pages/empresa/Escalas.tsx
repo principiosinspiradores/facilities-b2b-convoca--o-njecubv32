@@ -907,6 +907,25 @@ export default function EscalasPage() {
           regraCalculada = c.regra
         }
 
+        // 1. Trava anti-duplicação: verificar se já existe escala com mesmo posto + data + turno_inicio + turno_fim
+        const dataDia = d.slice(0, 10)
+        const existentesGrupo = await pb.collection('escalas').getFullList<EscalaRecord>({
+          filter: `posto = '${selectedPostoId}' && data ~ '${dataDia}' && turno_inicio = '${turnoInicio}' && turno_fim = '${turnoFim}' && status != 'cancelada'`,
+        })
+
+        if (existentesGrupo && existentesGrupo.length > 0) {
+          // Escala já existente para este turno! NÃO criar duplicata.
+          // Atualizar vagas da existente se aplicável
+          for (const escExistente of existentesGrupo) {
+            if ((escExistente.vagas || 1) !== vagasPorTurno) {
+              await pb.collection('escalas').update(escExistente.id, {
+                vagas: vagasPorTurno,
+              })
+            }
+          }
+          continue
+        }
+
         // Criar N registros de escala para o mesmo dia/turno conforme o número de vagas
         const isoDate = new Date(`${d}T12:00:00Z`).toISOString()
 
