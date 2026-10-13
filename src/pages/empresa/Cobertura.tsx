@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/contexts/AuthContext'
+import { useSettings } from '@/contexts/SettingsContext'
 import {
   EscalaRecord,
   ConvocacaoRecord,
@@ -65,6 +66,7 @@ import {
 export default function CoberturaPage() {
   const navigate = useNavigate()
   const { user, role } = useAuth()
+  const { settings } = useSettings()
   const isAdmin = role === 'admin'
 
   // Estados dos dados brutos
@@ -105,6 +107,10 @@ export default function CoberturaPage() {
   const [escalaHistorico, setEscalaHistorico] = useState<EscalaRecord | null>(null)
   const [historicoItens, setHistoricoItens] = useState<HistoricoEscalaRecord[]>([])
   const [isLoadingHistorico, setIsLoadingHistorico] = useState(false)
+
+  // Modal Confirmar Falta (No-Show)
+  const [modalFaltaAlerta, setModalFaltaAlerta] = useState<ItemAlertaCobertura | null>(null)
+  const [isConfirmingFalta, setIsConfirmingFalta] = useState(false)
 
   // Carregamento de dados
   const loadData = useCallback(async () => {
@@ -299,6 +305,40 @@ export default function CoberturaPage() {
     setModoEnvio('todos')
     setProIdsSelecionados([])
     setModalConvocacaoOpen(true)
+  }
+
+  // Confirmar Falta (No-Show)
+  const handleConfirmarFalta = async () => {
+    if (!modalFaltaAlerta) return
+    const convAceita = modalFaltaAlerta.convocacoesAtivas[0]
+    if (!convAceita) {
+      toast({
+        title: 'Convocação não encontrada',
+        description: 'Não foi possível localizar a convocação aceita para registrar falta.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsConfirmingFalta(true)
+    try {
+      await pb.collection('convocacoes').update(convAceita.id, { status: 'falta' })
+      toast({
+        title: 'Falta registrada com sucesso!',
+        description: `No-show confirmado para ${modalFaltaAlerta.proAceito?.name || 'o profissional'}. Vaga reofertada e multa aplicada.`,
+      })
+      setModalFaltaAlerta(null)
+      loadData()
+    } catch (err: any) {
+      console.error('Erro ao confirmar falta:', err)
+      toast({
+        title: 'Erro ao confirmar falta',
+        description: err?.message || 'Tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsConfirmingFalta(false)
+    }
   }
 
   // Abrir Modal de Histórico
@@ -1055,14 +1095,28 @@ export default function CoberturaPage() {
                     <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between sm:justify-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-100">
                       {/* Se for aceita_sem_ponto: botão de atalho para Conferência de Ponto em destaque */}
                       {alerta.tipoAlerta === 'aceita_sem_ponto' ? (
-                        <Button
-                          size="sm"
-                          onClick={() => navigate('/conferencia-ponto')}
-                          className="font-semibold text-xs bg-orange-600 hover:bg-orange-700 text-white shadow-xs"
-                        >
-                          <Clock className="w-3.5 h-3.5 mr-1.5" />
-                          Conferência de Ponto
-                        </Button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {alerta.convocacoesAtivas[0]?.status !== 'falta' &&
+                            alerta.escala.status !== 'falta' && (
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => setModalFaltaAlerta(alerta)}
+                                className="font-semibold text-xs bg-red-600 hover:bg-red-700 text-white shadow-xs"
+                              >
+                                <UserX className="w-3.5 h-3.5 mr-1.5" />
+                                Confirmar falta (no-show)
+                              </Button>
+                            )}
+                          <Button
+                            size="sm"
+                            onClick={() => navigate('/conferencia-ponto')}
+                            className="font-semibold text-xs bg-orange-600 hover:bg-orange-700 text-white shadow-xs"
+                          >
+                            <Clock className="w-3.5 h-3.5 mr-1.5" />
+                            Conferência de Ponto
+                          </Button>
+                        </div>
                       ) : (
                         <Button
                           size="sm"
@@ -1327,6 +1381,86 @@ export default function CoberturaPage() {
             >
               <Send className={`w-3.5 h-3.5 mr-1.5 ${isSendingConvocacao ? 'animate-spin' : ''}`} />
               {isSendingConvocacao ? 'Disparando...' : 'Confirmar e Convocar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL CONFIRMAR FALTA (NO-SHOW) */}
+      <Dialog
+        open={!!modalFaltaAlerta}
+        onOpenChange={(open) => !open && !isConfirmingFalta && setModalFaltaAlerta(null)}
+      >
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-red-700 flex items-center gap-2">
+              <UserX className="w-5 h-5 text-red-600" />
+              Confirmar Falta (No-Show)
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Esta ação registrará a ausência do profissional que aceitou o turno e não compareceu.
+            </DialogDescription>
+          </DialogHeader>
+
+          {modalFaltaAlerta && (
+            <div className="space-y-3 py-2 text-xs">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-1.5 text-slate-800">
+                <div>
+                  <span className="text-slate-500 font-semibold">Profissional:</span>{' '}
+                  <strong className="text-slate-900 font-bold">
+                    {modalFaltaAlerta.proAceito?.name || 'Profissional'}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-semibold">Posto:</span>{' '}
+                  <strong className="text-slate-900 font-bold">
+                    {modalFaltaAlerta.posto.nome}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-semibold">Data e Turno:</span>{' '}
+                  <strong className="text-slate-900">
+                    {formatDateBR(modalFaltaAlerta.escala.data)},{' '}
+                    {modalFaltaAlerta.escala.turno_inicio} às {modalFaltaAlerta.escala.turno_fim}
+                  </strong>
+                </div>
+                <div className="pt-1 border-t border-red-200/80 flex items-center justify-between">
+                  <span className="text-slate-600 font-semibold">Valor da Multa:</span>
+                  <span className="font-bold text-red-700 text-sm">
+                    {formatCurrencyBRL(settings?.multa_falta_pro ?? 50)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="leading-relaxed">
+                  Ao confirmar, a vaga será reofertada automaticamente para os profissionais
+                  elegíveis e a multa será aplicada.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModalFaltaAlerta(null)}
+              disabled={isConfirmingFalta}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleConfirmarFalta}
+              disabled={isConfirmingFalta}
+              className="text-xs font-semibold bg-red-600 hover:bg-red-700 text-white"
+            >
+              <UserX className={`w-3.5 h-3.5 mr-1.5 ${isConfirmingFalta ? 'animate-spin' : ''}`} />
+              {isConfirmingFalta ? 'Confirmando falta...' : 'Confirmar falta'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,9 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import pb from '@/lib/pocketbase/client'
-import { PontoRecord, PostoRecord, UserRecord, AtestadoRecord } from '@/types/facilities'
+import {
+  PontoRecord,
+  PostoRecord,
+  UserRecord,
+  AtestadoRecord,
+  EscalaRecord,
+  ConvocacaoRecord,
+} from '@/types/facilities'
 import { listarAtestados, validarAtestado, getAtestadoArquivoUrl } from '@/services/atestados'
 import { useAuth } from '@/contexts/AuthContext'
-import { formatDateBR } from '@/lib/formatters'
+import { useSettings } from '@/contexts/SettingsContext'
+import { formatDateBR, formatCurrencyBRL } from '@/lib/formatters'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -38,10 +46,21 @@ import {
   FileText,
   ExternalLink,
   UserCheck,
+  UserX,
 } from 'lucide-react'
+
+interface ItemSemChegada {
+  convocacaoId: string
+  convocacao: ConvocacaoRecord
+  escala: EscalaRecord
+  posto: PostoRecord
+  pro: UserRecord | undefined
+  minutosDesdeInicio: number
+}
 
 export default function ConferenciaPontoPage() {
   const { user } = useAuth()
+  const { settings } = useSettings()
   const [tabAtiva, setTabAtiva] = useState<'pontos' | 'atestados' | 'alertas_presenca'>('pontos')
   const [atestados, setAtestados] = useState<AtestadoRecord[]>([])
   const [filtroAtestadoStatus, setFiltroAtestadoStatus] = useState<string>('todos')
@@ -51,6 +70,10 @@ export default function ConferenciaPontoPage() {
   const [pontos, setPontos] = useState<PontoRecord[]>([])
   const [postos, setPostos] = useState<PostoRecord[]>([])
   const [pros, setPros] = useState<UserRecord[]>([])
+  const [escalasDoDia, setEscalasDoDia] = useState<EscalaRecord[]>([])
+  const [convocacoesDoDia, setConvocacoesDoDia] = useState<ConvocacaoRecord[]>([])
+  const [modalFaltaItem, setModalFaltaItem] = useState<ItemSemChegada | null>(null)
+  const [isConfirmingFalta, setIsConfirmingFalta] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
   // Filtros
@@ -69,25 +92,44 @@ export default function ConferenciaPontoPage() {
   const loadData = async () => {
     setIsLoading(true)
     try {
-      const [pontosRes, postosRes, prosRes, atestadosRes] = await Promise.all([
-        pb.collection('pontos').getFullList<PontoRecord>({
-          sort: '-timestamp_real',
-          expand: 'escala,escala.posto,posto,pro',
-        }),
-        pb.collection('postos').getFullList<PostoRecord>({
-          sort: 'nome',
-        }),
-        pb.collection('users').getFullList<UserRecord>({
-          filter: 'role = "pro"',
-          sort: 'name',
-        }),
-        listarAtestados().catch(() => []),
-      ])
+      const hojeIso = new Date().toISOString().slice(0, 10)
+      const [pontosRes, postosRes, prosRes, atestadosRes, escalasRes, convsRes] = await Promise.all(
+        [
+          pb.collection('pontos').getFullList<PontoRecord>({
+            sort: '-timestamp_real',
+            expand: 'escala,escala.posto,posto,pro',
+          }),
+          pb.collection('postos').getFullList<PostoRecord>({
+            sort: 'nome',
+          }),
+          pb.collection('users').getFullList<UserRecord>({
+            filter: 'role = "pro"',
+            sort: 'name',
+          }),
+          listarAtestados().catch(() => []),
+          pb
+            .collection('escalas')
+            .getFullList<EscalaRecord>({
+              filter: `data >= "${hojeIso} 00:00:00" && data <= "${hojeIso} 23:59:59"`,
+              expand: 'posto',
+            })
+            .catch(() => []),
+          pb
+            .collection('convocacoes')
+            .getFullList<ConvocacaoRecord>({
+              filter: `status = "aceita"`,
+              expand: 'pro,escala',
+            })
+            .catch(() => []),
+        ],
+      )
 
       setPontos(pontosRes)
       setPostos(postosRes)
       setPros(prosRes)
       setAtestados(atestadosRes)
+      setEscalasDoDia(escalasRes)
+      setConvocacoesDoDia(convsRes)
     } catch (err) {
       console.error(err)
       toast({
@@ -312,6 +354,91 @@ export default function ConferenciaPontoPage() {
   const alertasPresencaSemConvocacao = useMemo(() => {
     return pontos.filter((p) => p.aviso_sem_convocacao)
   }, [pontos])
+
+  // Turnos do dia com convocação aceita sem registro de chegada (minutosDesdeInicio > 15)
+  const turnosSemChegadaDoDia = useMemo(() => {
+    const agora = new Date()
+    const hojeStr = agora.toISOString().slice(0, 10)
+    const itens: ItemSemChegada[] = []
+
+    for (const conv of convocacoesDoDia) {
+      if (conv.status !== 'aceita') continue
+      const escala = conv.expand?.escala || escalasDoDia.find((e) => e.id === conv.escala)
+      if (!escala) continue
+      if (escala.status === 'falta') continue
+
+      const dataEscalaStr = (escala.data || '').slice(0, 10)
+      if (dataEscalaStr !== hojeStr) continue
+
+      const turnoInicio = escala.turno_inicio || '08:00'
+      const partesHora = turnoInicio.split(':')
+      const hIni = parseInt(partesHora[0] || '8', 10)
+      const mIni = parseInt(partesHora[1] || '0', 10)
+
+      const partesData = dataEscalaStr.split('-')
+      const anoE = parseInt(partesData[0], 10)
+      const mesE = parseInt(partesData[1], 10) - 1
+      const diaE = parseInt(partesData[2], 10)
+
+      const dataHoraTurno = new Date(anoE, mesE, diaE, hIni, mIni, 0)
+      const minutosDesdeInicio = Math.floor(
+        (agora.getTime() - dataHoraTurno.getTime()) / (1000 * 60),
+      )
+
+      if (minutosDesdeInicio <= 15) continue
+
+      const proId = conv.pro
+      const temPontoChegada = pontos.some((p) => {
+        if (p.pro !== proId) return false
+        if (p.tipo !== 'chegada') return false
+        if (p.escala && p.escala === escala.id) return true
+        const dataPontoStr = (p.timestamp_real || p.created || '').slice(0, 10)
+        return dataPontoStr === dataEscalaStr
+      })
+
+      if (!temPontoChegada) {
+        const posto =
+          escala.expand?.posto || postos.find((p) => p.id === escala.posto) || ({} as PostoRecord)
+        const proObj = conv.expand?.pro || pros.find((p) => p.id === proId)
+
+        itens.push({
+          convocacaoId: conv.id,
+          convocacao: conv,
+          escala,
+          posto,
+          pro: proObj,
+          minutosDesdeInicio,
+        })
+      }
+    }
+
+    return itens
+  }, [convocacoesDoDia, escalasDoDia, pontos, postos, pros])
+
+  // Confirmar Falta (No-Show) a partir da Conferência de Ponto
+  const handleConfirmarFaltaConferencia = async () => {
+    if (!modalFaltaItem) return
+
+    setIsConfirmingFalta(true)
+    try {
+      await pb.collection('convocacoes').update(modalFaltaItem.convocacaoId, { status: 'falta' })
+      toast({
+        title: 'Falta registrada com sucesso!',
+        description: `No-show confirmado para ${modalFaltaItem.pro?.name || 'o profissional'}. Vaga reofertada e multa aplicada.`,
+      })
+      setModalFaltaItem(null)
+      loadData()
+    } catch (err: any) {
+      console.error('Erro ao confirmar falta na conferência de ponto:', err)
+      toast({
+        title: 'Erro ao confirmar falta',
+        description: err?.message || 'Tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsConfirmingFalta(false)
+    }
+  }
 
   const handleValidarAtestadoAcao = async (status: 'aprovado' | 'rejeitado') => {
     if (!modalAtestado || !user) return
@@ -731,6 +858,75 @@ export default function ConferenciaPontoPage() {
       {/* ABA: ESPELHO DE PONTOS PADRÃO */}
       {tabAtiva === 'pontos' && (
         <>
+          {/* BANNER DE TURNOS DO DIA SEM CHEGADA (ACEITOU E NÃO BATEU PONTO > 15 MIN) */}
+          {turnosSemChegadaDoDia.length > 0 && (
+            <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4 shadow-sm">
+              <div className="flex items-start sm:items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center text-orange-700 shrink-0">
+                    <Clock className="w-5 h-5 text-orange-700 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-orange-950 flex items-center gap-2">
+                      Turnos de Hoje com Convocação Aceita sem Registro de Chegada
+                      <Badge className="bg-orange-600 text-white font-bold text-xs">
+                        {turnosSemChegadaDoDia.length} turno(s)
+                      </Badge>
+                    </h3>
+                    <p className="text-xs text-orange-800 mt-0.5">
+                      Profissionais aceitaram a convocação mas não registraram o ponto após a
+                      tolerância inicial do turno (&gt; 15 min).
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {turnosSemChegadaDoDia.map((item) => (
+                  <div
+                    key={item.convocacaoId}
+                    className="bg-white rounded-lg p-3 border border-orange-200 shadow-2xs flex flex-col justify-between gap-2.5"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900 text-xs">
+                          {item.pro?.name || item.pro?.email || 'Profissional'}
+                        </span>
+                        <Badge className="bg-orange-100 text-orange-900 border-orange-300 text-[10px] font-bold">
+                          +{item.minutosDesdeInicio} min atraso
+                        </Badge>
+                      </div>
+                      <div className="text-slate-600 text-[11px] mt-1">
+                        Posto: <strong>{item.posto.nome || 'Posto'}</strong>
+                      </div>
+                      <div className="text-slate-500 text-[11px]">
+                        Turno: {formatDateBR(item.escala.data)} ({item.escala.turno_inicio} às{' '}
+                        {item.escala.turno_fim})
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-slate-400">
+                        Multa: {formatCurrencyBRL(settings?.multa_falta_pro ?? 50)}
+                      </span>
+                      {item.convocacao.status !== 'falta' && item.escala.status !== 'falta' && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => setModalFaltaItem(item)}
+                          className="h-7 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-xs"
+                        >
+                          <UserX className="w-3.5 h-3.5 mr-1" />
+                          Confirmar falta (no-show)
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Cartões Rápidos de Integridade, Cerca e Janela de Tolerância */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <Card
@@ -1576,6 +1772,84 @@ export default function ConferenciaPontoPage() {
                 Validar / Aprovar
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Confirmar Falta (No-Show) na Conferência de Ponto */}
+      <Dialog
+        open={!!modalFaltaItem}
+        onOpenChange={(open) => !open && !isConfirmingFalta && setModalFaltaItem(null)}
+      >
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-red-700 flex items-center gap-2">
+              <UserX className="w-5 h-5 text-red-600" />
+              Confirmar Falta (No-Show)
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Esta ação registrará a ausência do profissional que aceitou o turno e não compareceu.
+            </DialogDescription>
+          </DialogHeader>
+
+          {modalFaltaItem && (
+            <div className="space-y-3 py-2 text-xs">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-1.5 text-slate-800">
+                <div>
+                  <span className="text-slate-500 font-semibold">Profissional:</span>{' '}
+                  <strong className="text-slate-900 font-bold">
+                    {modalFaltaItem.pro?.name || modalFaltaItem.pro?.email || 'Profissional'}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-semibold">Posto:</span>{' '}
+                  <strong className="text-slate-900 font-bold">{modalFaltaItem.posto.nome}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-semibold">Data e Turno:</span>{' '}
+                  <strong className="text-slate-900">
+                    {formatDateBR(modalFaltaItem.escala.data)}, {modalFaltaItem.escala.turno_inicio}{' '}
+                    às {modalFaltaItem.escala.turno_fim}
+                  </strong>
+                </div>
+                <div className="pt-1 border-t border-red-200/80 flex items-center justify-between">
+                  <span className="text-slate-600 font-semibold">Valor da Multa:</span>
+                  <span className="font-bold text-red-700 text-sm">
+                    {formatCurrencyBRL(settings?.multa_falta_pro ?? 50)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="leading-relaxed">
+                  Ao confirmar, a vaga será reofertada automaticamente para os profissionais
+                  elegíveis e a multa será aplicada.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModalFaltaItem(null)}
+              disabled={isConfirmingFalta}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleConfirmarFaltaConferencia}
+              disabled={isConfirmingFalta}
+              className="text-xs font-semibold bg-red-600 hover:bg-red-700 text-white"
+            >
+              <UserX className={`w-3.5 h-3.5 mr-1.5 ${isConfirmingFalta ? 'animate-spin' : ''}`} />
+              {isConfirmingFalta ? 'Confirmando falta...' : 'Confirmar falta'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
