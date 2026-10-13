@@ -61,6 +61,9 @@ export default function GateProsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('todos')
   const [filterFuncao, setFilterFuncao] = useState<string>('todas')
+  const [chipConvitesPendentes, setChipConvitesPendentes] = useState(false)
+  const [chipNuncaAcessaram, setChipNuncaAcessaram] = useState(false)
+  const [chipDocPendente, setChipDocPendente] = useState(false)
 
   // Modal Cadastro de Novo Pro
   const [createModalOpen, setCreateModalOpen] = useState(false)
@@ -770,26 +773,86 @@ export default function GateProsPage() {
     }
   }
 
+  // Normalização de texto tolerante a acentos e pontuação
+  const normalizar = (txt: string | undefined | null) =>
+    (txt || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+
+  // Helper para verificar se o profissional tem documento pendente
+  const temDocumentoPendente = (p: UserRecord) => {
+    const docs = p.documentos || []
+    if (docs.length === 0) return true
+    return docs.some((d: any) => d.status === 'pendente')
+  }
+
   // Filtragem de Pros
+  const queryTokens = normalizar(searchTerm).split(/\s+/).filter(Boolean)
+
   const prosFiltrados = pros.filter((p) => {
-    const q = searchTerm.toLowerCase().trim()
-    const matchBusca =
-      !q ||
-      (p.name || '').toLowerCase().includes(q) ||
-      (p.email || '').toLowerCase().includes(q) ||
-      (p.cpf && p.cpf.includes(q.replace(/\D/g, ''))) ||
-      (p.telefone || '').includes(q) ||
-      (Array.isArray(p.funcoes) && p.funcoes.some((f) => f.toLowerCase().includes(q))) ||
-      ((p.endereco_completo as any)?.bairro || '').toLowerCase().includes(q) ||
-      ((p.endereco_completo as any)?.cidade || '').toLowerCase().includes(q)
+    // 3. Busca tolerante: divide o termo em palavras e casa cada palavra em qualquer um dos campos
+    // Também tolerante a acentuação ("Jose" -> "José", "Clarice Fontes" -> "Clarice Fonte da Silva")
+    let matchBusca = true
+    if (queryTokens.length > 0) {
+      const nomeNorm = normalizar(p.name)
+      const emailNorm = normalizar(p.email)
+      const cpfLimpo = (p.cpf || '').replace(/\D/g, '')
+      const telLimpo = (p.telefone || '').replace(/\D/g, '')
+      const telNorm = normalizar(p.telefone)
+      const funcoesNorm = Array.isArray(p.funcoes) ? p.funcoes.map(normalizar).join(' ') : ''
+      const end = (p.endereco_completo as any) || {}
+      const bairroNorm = normalizar(end.bairro)
+      const cidadeNorm = normalizar(end.cidade)
+
+      matchBusca = queryTokens.every((token) => {
+        const tokenDigitos = token.replace(/\D/g, '')
+        const matchCpf = tokenDigitos && cpfLimpo.includes(tokenDigitos)
+        const matchTel =
+          (tokenDigitos && telLimpo.includes(tokenDigitos)) || telNorm.includes(token)
+
+        return (
+          nomeNorm.includes(token) ||
+          emailNorm.includes(token) ||
+          matchCpf ||
+          matchTel ||
+          funcoesNorm.includes(token) ||
+          bairroNorm.includes(token) ||
+          cidadeNorm.includes(token)
+        )
+      })
+    }
 
     const matchStatus = filterStatus === 'todos' || p.status === filterStatus
 
     const matchFuncao =
       filterFuncao === 'todas' || (Array.isArray(p.funcoes) && p.funcoes.includes(filterFuncao))
 
+    // 5. Filtros rápidos (chips adicionais combináveis)
+    if (chipConvitesPendentes && p.verified) {
+      return false
+    }
+
+    if (chipNuncaAcessaram && p.ultimo_acesso && p.ultimo_acesso.trim() !== '') {
+      return false
+    }
+
+    if (chipDocPendente && !temDocumentoPendente(p)) {
+      return false
+    }
+
     return matchBusca && matchStatus && matchFuncao
   })
+
+  // Detecta se há busca ou filtro ativo para exibir contador
+  const temFiltroAtivo =
+    Boolean(searchTerm.trim()) ||
+    filterStatus !== 'todos' ||
+    filterFuncao !== 'todas' ||
+    chipConvitesPendentes ||
+    chipNuncaAcessaram ||
+    chipDocPendente
 
   return (
     <div className="space-y-6">
@@ -887,6 +950,105 @@ export default function GateProsPage() {
               </Select>
             </div>
           </div>
+
+          {/* Filtros rápidos (chips) + Contador de resultados */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100/80">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                Filtros rápidos:
+              </span>
+
+              {/* Chip: Convites pendentes */}
+              <button
+                type="button"
+                onClick={() => setChipConvitesPendentes((v) => !v)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  chipConvitesPendentes
+                    ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-xs'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <AlertTriangle
+                  className={`w-3 h-3 ${chipConvitesPendentes ? 'text-amber-700' : 'text-slate-400'}`}
+                />
+                <span>Convites pendentes</span>
+                {chipConvitesPendentes && (
+                  <span className="ml-1 text-[10px] bg-amber-200/80 text-amber-900 px-1.5 py-0.2 rounded-full font-bold">
+                    ✓
+                  </span>
+                )}
+              </button>
+
+              {/* Chip: Nunca acessaram */}
+              <button
+                type="button"
+                onClick={() => setChipNuncaAcessaram((v) => !v)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  chipNuncaAcessaram
+                    ? 'bg-blue-100 text-blue-900 border-blue-300 shadow-xs'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <Clock
+                  className={`w-3 h-3 ${chipNuncaAcessaram ? 'text-blue-700' : 'text-slate-400'}`}
+                />
+                <span>Nunca acessaram</span>
+                {chipNuncaAcessaram && (
+                  <span className="ml-1 text-[10px] bg-blue-200/80 text-blue-900 px-1.5 py-0.2 rounded-full font-bold">
+                    ✓
+                  </span>
+                )}
+              </button>
+
+              {/* Chip: Com documento pendente */}
+              <button
+                type="button"
+                onClick={() => setChipDocPendente((v) => !v)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  chipDocPendente
+                    ? 'bg-rose-100 text-rose-900 border-rose-300 shadow-xs'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <FileText
+                  className={`w-3 h-3 ${chipDocPendente ? 'text-rose-700' : 'text-slate-400'}`}
+                />
+                <span>Com documento pendente</span>
+                {chipDocPendente && (
+                  <span className="ml-1 text-[10px] bg-rose-200/80 text-rose-900 px-1.5 py-0.2 rounded-full font-bold">
+                    ✓
+                  </span>
+                )}
+              </button>
+
+              {/* Botão limpar filtros se houver filtro ativo */}
+              {temFiltroAtivo && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm('')
+                    setFilterStatus('todos')
+                    setFilterFuncao('todas')
+                    setChipConvitesPendentes(false)
+                    setChipNuncaAcessaram(false)
+                    setChipDocPendente(false)
+                  }}
+                  className="text-[11px] text-slate-500 hover:text-slate-800 underline underline-offset-2 ml-1"
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+
+            {/* 4. Contador de resultados quando houver busca ou filtro ativo */}
+            {temFiltroAtivo && (
+              <div className="text-xs font-semibold text-slate-600 bg-slate-100/90 border border-slate-200/80 px-2.5 py-1 rounded-md">
+                {prosFiltrados.length === 1
+                  ? '1 profissional encontrada'
+                  : `${prosFiltrados.length} profissionais encontradas`}
+              </div>
+            )}
+          </div>
         </CardHeader>
 
         <CardContent>
@@ -899,19 +1061,23 @@ export default function GateProsPage() {
               Nenhum profissional encontrado com os filtros aplicados.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase">
-                    <th className="pb-3 px-2">Profissional / Contato</th>
-                    <th className="pb-3 px-2">CPF</th>
-                    <th className="pb-3 px-2">Função(ões)</th>
-                    <th className="pb-3 px-2">Bairro</th>
-                    <th className="pb-3 px-2">Status & Acesso</th>
-                    <th className="pb-3 px-2">Documentos</th>
-                    <th className="pb-3 px-2">Período de Teste</th>
-                    {isAdmin && <th className="pb-3 px-2">Precificação</th>}
-                    <th className="pb-3 px-2 text-right">Ações</th>
+            <div className="overflow-x-auto max-h-[calc(100vh-280px)] min-h-[360px] relative border border-slate-200 rounded-lg">
+              <table className="w-full text-left text-sm border-collapse min-w-[980px]">
+                <thead className="sticky top-0 z-30 bg-slate-100 shadow-xs">
+                  <tr className="border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase">
+                    <th className="py-3 px-3 sticky left-0 z-40 bg-slate-100 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] min-w-[220px]">
+                      Profissional / Contato
+                    </th>
+                    <th className="py-3 px-2 bg-slate-100">CPF</th>
+                    <th className="py-3 px-2 bg-slate-100">Função(ões)</th>
+                    <th className="py-3 px-2 bg-slate-100">Bairro</th>
+                    <th className="py-3 px-2 bg-slate-100">Status & Acesso</th>
+                    <th className="py-3 px-2 bg-slate-100">Documentos</th>
+                    <th className="py-3 px-2 bg-slate-100">Período de Teste</th>
+                    {isAdmin && <th className="py-3 px-2 bg-slate-100">Precificação</th>}
+                    <th className="py-3 px-3 text-right sticky right-0 z-40 bg-slate-100 shadow-[-2px_0_4px_-1px_rgba(0,0,0,0.06)] min-w-[240px]">
+                      Ações
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -935,8 +1101,8 @@ export default function GateProsPage() {
                       Array.isArray(p.funcoes) && p.funcoes.length > 0 ? p.funcoes : ['Geral']
 
                     return (
-                      <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-2">
+                      <tr key={p.id} className="group hover:bg-slate-50/90 transition-colors">
+                        <td className="py-3 px-3 sticky left-0 z-20 bg-white group-hover:bg-slate-50 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
                           <div className="font-semibold text-slate-900">{p.name || 'Sem nome'}</div>
                           <div className="text-xs text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
                             <Mail className="w-3 h-3 text-slate-400 shrink-0" />
@@ -1136,7 +1302,7 @@ export default function GateProsPage() {
                           </td>
                         )}
 
-                        <td className="py-3 px-2 text-right space-x-1 whitespace-nowrap">
+                        <td className="py-3 px-3 text-right space-x-1 whitespace-nowrap sticky right-0 z-20 bg-white group-hover:bg-slate-50 shadow-[-2px_0_4px_-1px_rgba(0,0,0,0.06)]">
                           {/* Botão único de Reenviar Convite (link de primeiro acesso / criar senha) */}
                           <Button
                             variant="outline"
