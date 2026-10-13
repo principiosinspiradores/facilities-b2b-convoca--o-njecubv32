@@ -443,6 +443,7 @@ export type TipoAlertaCobertura =
   | 'falta_pendente' // "Falta confirmada, cobertura pendente" (vermelho/amarelo): pro faltou, reoferta disparada, mas ninguém aceitou ainda
   | 'reoferta_esgotada' // "Reoferta esgotada" (vermelho): passou por todos os elegíveis e ninguém aceitou — turno perdido
   | 'recusa_fixa' // "Recusa do pro fixo" (amarelo): posto com profissional fixa designada em que ela recusou a convocação
+  | 'aceita_sem_ponto' // "Aceitou e não bateu ponto" (laranja, gravidade alta): convocação aceita de hoje com início + 15min sem ponto de chegada
 
 export interface ItemAlertaCobertura {
   id: string // id da escala ou identificador único
@@ -450,7 +451,7 @@ export interface ItemAlertaCobertura {
   posto: PostoRecord
   tipoAlerta: TipoAlertaCobertura
   tituloAlerta: string
-  corBadge: 'vermelho' | 'amarelo'
+  corBadge: 'vermelho' | 'amarelo' | 'laranja'
   gravidade: 'alta' | 'media'
   tempoAbertoFormatado: string
   tempoAbertoMinutos: number
@@ -459,6 +460,8 @@ export interface ItemAlertaCobertura {
   vagasCobertas?: number
   proFalta?: UserRecord
   proFixo?: UserRecord
+  proAceito?: UserRecord
+  minutosAtraso?: number
   convocacoesAtivas: ConvocacaoRecord[]
   convocacoesRecusadas: ConvocacaoRecord[]
   elegiveisRestantes: number

@@ -72,6 +72,7 @@ export default function CoberturaPage() {
   const [convocacoes, setConvocacoes] = useState<ConvocacaoRecord[]>([])
   const [postos, setPostos] = useState<PostoRecord[]>([])
   const [pros, setPros] = useState<UserRecord[]>([])
+  const [pontosDoDia, setPontosDoDia] = useState<PontoRecord[]>([])
   const [alertasSemConvocacao, setAlertasSemConvocacao] = useState<PontoRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -108,36 +109,47 @@ export default function CoberturaPage() {
   // Carregamento de dados
   const loadData = useCallback(async () => {
     try {
-      const [escList, convList, postosList, prosList, pontosAlertas] = await Promise.all([
-        pb.collection('escalas').getFullList<EscalaRecord>({
-          sort: 'data,turno_inicio',
-          expand: 'posto,posto.pro_fixo',
-        }),
-        pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
-          sort: '-created',
-          expand: 'pro,escala',
-        }),
-        pb.collection('postos').getFullList<PostoRecord>({
-          sort: 'nome',
-          expand: 'pro_fixo',
-        }),
-        pb.collection('users').getFullList<UserRecord>({
-          filter: 'role = "pro"',
-          sort: 'name',
-        }),
-        pb
-          .collection('pontos')
-          .getFullList<PontoRecord>({
-            filter: 'aviso_sem_convocacao = true',
-            sort: '-timestamp_real',
-            expand: 'pro,posto,escala.posto',
-          })
-          .catch(() => []),
-      ])
+      const hojeIso = new Date().toISOString().slice(0, 10)
+      const [escList, convList, postosList, prosList, pontosList, pontosAlertas] =
+        await Promise.all([
+          pb.collection('escalas').getFullList<EscalaRecord>({
+            sort: 'data,turno_inicio',
+            expand: 'posto,posto.pro_fixo',
+          }),
+          pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
+            sort: '-created',
+            expand: 'pro,escala',
+          }),
+          pb.collection('postos').getFullList<PostoRecord>({
+            sort: 'nome',
+            expand: 'pro_fixo',
+          }),
+          pb.collection('users').getFullList<UserRecord>({
+            filter: 'role = "pro"',
+            sort: 'name',
+          }),
+          pb
+            .collection('pontos')
+            .getFullList<PontoRecord>({
+              filter: `created >= "${hojeIso} 00:00:00" || timestamp_real >= "${hojeIso} 00:00:00"`,
+              sort: '-timestamp_real',
+              expand: 'pro,posto,escala',
+            })
+            .catch(() => []),
+          pb
+            .collection('pontos')
+            .getFullList<PontoRecord>({
+              filter: 'aviso_sem_convocacao = true',
+              sort: '-timestamp_real',
+              expand: 'pro,posto,escala.posto',
+            })
+            .catch(() => []),
+        ])
       setEscalas(escList)
       setConvocacoes(convList)
       setPostos(postosList)
       setPros(prosList)
+      setPontosDoDia(pontosList)
       setAlertasSemConvocacao(pontosAlertas)
     } catch (err) {
       console.error('Erro ao carregar dados de cobertura:', err)
@@ -158,6 +170,7 @@ export default function CoberturaPage() {
     let unsubEscalas: (() => void) | undefined
     let unsubConvocacoes: (() => void) | undefined
     let unsubHistorico: (() => void) | undefined
+    let unsubPontos: (() => void) | undefined
 
     pb.collection('escalas')
       .subscribe('*', () => loadData())
@@ -180,21 +193,30 @@ export default function CoberturaPage() {
       })
       .catch(() => {})
 
+    pb.collection('pontos')
+      .subscribe('*', () => loadData())
+      .then((u) => {
+        unsubPontos = u
+      })
+      .catch(() => {})
+
     return () => {
       if (unsubEscalas) unsubEscalas()
       if (unsubConvocacoes) unsubConvocacoes()
       if (unsubHistorico) unsubHistorico()
+      if (unsubPontos) unsubPontos()
     }
   }, [loadData])
 
   // Calcular alertas brutos detectados
   const todosAlertas = useMemo(() => {
-    return detectarAlertasCobertura(escalas, convocacoes, pros, nowDate, postos)
-  }, [escalas, convocacoes, pros, nowDate, postos])
+    return detectarAlertasCobertura(escalas, convocacoes, pros, nowDate, postos, pontosDoDia)
+  }, [escalas, convocacoes, pros, nowDate, postos, pontosDoDia])
 
-  // Contadores para os Cards no Topo (4 tipos)
+  // Contadores para os Cards no Topo (5 tipos)
   const contadores = useMemo(() => {
     const postosDescobertos = todosAlertas.filter((a) => a.tipoAlerta === 'posto_descoberto').length
+    const aceitasSemPonto = todosAlertas.filter((a) => a.tipoAlerta === 'aceita_sem_ponto').length
     const faltasPendentes = todosAlertas.filter((a) => a.tipoAlerta === 'falta_pendente').length
     const reofertasEsgotadas = todosAlertas.filter(
       (a) => a.tipoAlerta === 'reoferta_esgotada',
@@ -204,6 +226,7 @@ export default function CoberturaPage() {
 
     return {
       postosDescobertos,
+      aceitasSemPonto,
       faltasPendentes,
       reofertasEsgotadas,
       recusasFixa,
@@ -351,6 +374,13 @@ export default function CoberturaPage() {
   // Helpers visuais para cada tipo de alerta
   const renderBadgeAlerta = (tipo: TipoAlertaCobertura) => {
     switch (tipo) {
+      case 'aceita_sem_ponto':
+        return (
+          <Badge className="bg-orange-500 text-white font-semibold text-xs px-2.5 py-0.5 flex items-center gap-1.5 shadow-xs">
+            <Clock className="w-3.5 h-3.5" />
+            Aceitou e não bateu ponto
+          </Badge>
+        )
       case 'posto_descoberto':
         return (
           <Badge className="bg-red-600 text-white font-semibold text-xs px-2.5 py-0.5 flex items-center gap-1.5 shadow-xs">
@@ -493,8 +523,51 @@ export default function CoberturaPage() {
       )}
 
       {/* CARDS NO TOPO COM TOTAL DE CADA TIPO DE ALERTA */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Posto descoberto — sem ninguém */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        {/* Card 1: Aceitou e não bateu ponto (NOVO) */}
+        <Card
+          onClick={() =>
+            setFiltroTipoAlerta(
+              filtroTipoAlerta === 'aceita_sem_ponto' ? 'todos' : 'aceita_sem_ponto',
+            )
+          }
+          className={`cursor-pointer transition-all border ${
+            contadores.aceitasSemPonto > 0
+              ? 'bg-orange-50/90 border-orange-300 hover:border-orange-400 hover:shadow-sm'
+              : 'bg-emerald-50/50 border-emerald-200'
+          } ${filtroTipoAlerta === 'aceita_sem_ponto' ? 'ring-2 ring-orange-500' : ''}`}
+        >
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between">
+              <span
+                className={`text-[11px] font-bold uppercase tracking-wider ${
+                  contadores.aceitasSemPonto > 0 ? 'text-orange-800' : 'text-emerald-800'
+                }`}
+              >
+                Sem Ponto Batido
+              </span>
+              <Clock
+                className={`w-4 h-4 ${
+                  contadores.aceitasSemPonto > 0 ? 'text-orange-600' : 'text-emerald-600'
+                }`}
+              />
+            </div>
+            <div
+              className={`text-3xl font-black mt-2 ${
+                contadores.aceitasSemPonto > 0 ? 'text-orange-900' : 'text-emerald-900'
+              }`}
+            >
+              {contadores.aceitasSemPonto}
+            </div>
+            <p className="text-xs text-slate-600 mt-1">
+              {contadores.aceitasSemPonto > 0
+                ? 'Aceitou hoje e turno iniciou há +15 min'
+                : 'Todas as chegadas registradas'}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Card 2: Posto descoberto — sem ninguém */}
         <Card
           onClick={() =>
             setFiltroTipoAlerta(
@@ -537,7 +610,7 @@ export default function CoberturaPage() {
           </CardContent>
         </Card>
 
-        {/* Card 2: Falta confirmada, cobertura pendente */}
+        {/* Card 3: Falta confirmada, cobertura pendente */}
         <Card
           onClick={() =>
             setFiltroTipoAlerta(filtroTipoAlerta === 'falta_pendente' ? 'todos' : 'falta_pendente')
@@ -578,7 +651,7 @@ export default function CoberturaPage() {
           </CardContent>
         </Card>
 
-        {/* Card 3: Reoferta esgotada */}
+        {/* Card 4: Reoferta esgotada */}
         <Card
           onClick={() =>
             setFiltroTipoAlerta(
@@ -621,7 +694,7 @@ export default function CoberturaPage() {
           </CardContent>
         </Card>
 
-        {/* Card 4: Recusa do pro fixo */}
+        {/* Card 5: Recusa do pro fixo */}
         <Card
           onClick={() =>
             setFiltroTipoAlerta(filtroTipoAlerta === 'recusa_fixa' ? 'todos' : 'recusa_fixa')
@@ -730,6 +803,9 @@ export default function CoberturaPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos os Alertas ({contadores.totalGeral})</SelectItem>
+                  <SelectItem value="aceita_sem_ponto">
+                    Aceitou e Não Bateu Ponto ({contadores.aceitasSemPonto})
+                  </SelectItem>
                   <SelectItem value="posto_descoberto">
                     Posto Descoberto ({contadores.postosDescobertos})
                   </SelectItem>
@@ -977,17 +1053,41 @@ export default function CoberturaPage() {
 
                     {/* Botões de Ação Operacional Rápida */}
                     <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between sm:justify-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-100">
-                      {/* Botão Ação Rápida: Abrir Convocação Manual */}
-                      <Button
-                        size="sm"
-                        onClick={() => handleAbrirConvocacaoModal(alerta)}
-                        className="font-medium text-xs shadow-xs"
-                      >
-                        <Send className="w-3.5 h-3.5 mr-1.5" />
-                        Abrir Convocação Manual
-                      </Button>
+                      {/* Se for aceita_sem_ponto: botão de atalho para Conferência de Ponto em destaque */}
+                      {alerta.tipoAlerta === 'aceita_sem_ponto' ? (
+                        <Button
+                          size="sm"
+                          onClick={() => navigate('/conferencia-ponto')}
+                          className="font-semibold text-xs bg-orange-600 hover:bg-orange-700 text-white shadow-xs"
+                        >
+                          <Clock className="w-3.5 h-3.5 mr-1.5" />
+                          Conferência de Ponto
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          onClick={() => handleAbrirConvocacaoModal(alerta)}
+                          className="font-medium text-xs shadow-xs"
+                        >
+                          <Send className="w-3.5 h-3.5 mr-1.5" />
+                          Abrir Convocação Manual
+                        </Button>
+                      )}
 
                       <div className="flex items-center gap-2">
+                        {alerta.tipoAlerta === 'aceita_sem_ponto' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleAbrirConvocacaoModal(alerta)}
+                            className="text-xs text-slate-600 border-slate-300 hover:bg-slate-50"
+                            title="Reconvocar ou abrir convocação manual"
+                          >
+                            <Send className="w-3.5 h-3.5 mr-1 text-slate-500" />
+                            Reofertar
+                          </Button>
+                        )}
+
                         {/* Botão Histórico da Escala */}
                         <Button
                           variant="outline"
@@ -1006,6 +1106,7 @@ export default function CoberturaPage() {
                           size="sm"
                           onClick={() => {
                             const proAlvo =
+                              alerta.proAceito?.id ||
                               alerta.proFalta?.id ||
                               alerta.proFixo?.id ||
                               alerta.convocacoesAtivas[0]?.pro ||

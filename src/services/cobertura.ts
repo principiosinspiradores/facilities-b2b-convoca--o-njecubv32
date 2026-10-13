@@ -4,6 +4,7 @@ import {
   PostoRecord,
   UserRecord,
   ConvocacaoRecord,
+  PontoRecord,
   ItemAlertaCobertura,
   TipoAlertaCobertura,
   HistoricoEscalaRecord,
@@ -39,6 +40,7 @@ export function detectarAlertasCobertura(
   prosElegiveisAtivos: UserRecord[],
   agora: Date = new Date(),
   todosPostos: PostoRecord[] = [],
+  pontos: PontoRecord[] = [],
 ): ItemAlertaCobertura[] {
   // Mapear profissionais que são fixas mensalistas em outros postos
   const proMensalistaPostos = new Set<string>()
@@ -79,6 +81,58 @@ export function detectarAlertasCobertura(
     // Convocações vinculadas a esta escala
     const convsEscala = convocacoes.filter((c) => c.escala === escala.id)
     const convAceita = convsEscala.find((c) => c.status === 'aceita' || c.status === 'coberta')
+
+    // Alerta Especial: "Aceitou e não bateu ponto" (aceita_sem_ponto)
+    // Para escala de HOJE com convocação aceita, cujo turno_inicio já passou há mais de 15 minutos (tolerância)
+    // e NÃO existe ponto do tipo chegada daquela pro naquela data/escala.
+    const isHoje = dataEscalaStr === hojeStr
+    const minutosDesdeInicio = Math.floor((agora.getTime() - dataHoraTurno.getTime()) / (1000 * 60))
+
+    if (convAceita && escala.status !== 'falta' && isHoje && minutosDesdeInicio > 15) {
+      const proAceitoId = convAceita.pro
+      const proAceitoObj =
+        convAceita.expand?.pro ||
+        prosElegiveisAtivos.find((p) => p.id === proAceitoId) ||
+        posto.expand?.pro_fixo
+
+      // Verificar se existe ponto tipo chegada registrado para essa pro nesta escala ou posto/data
+      const temPontoChegada = pontos.some((p) => {
+        if (p.pro !== proAceitoId) return false
+        if (p.tipo !== 'chegada') return false
+        if (p.escala && p.escala === escala.id) return true
+        const dataPontoStr = (p.timestamp_real || p.created || '').slice(0, 10)
+        if (dataPontoStr === dataEscalaStr) {
+          if (p.posto && p.posto === posto.id) return true
+          if (p.escala && p.escala === escala.id) return true
+          return true
+        }
+        return false
+      })
+
+      if (!temPontoChegada) {
+        const tempoAtrasoFormatado = formatarTempoDecorrido(minutosDesdeInicio)
+        alertas.push({
+          id: `sem_ponto_${escala.id}`,
+          escala,
+          posto,
+          tipoAlerta: 'aceita_sem_ponto',
+          tituloAlerta: 'Aceitou e não bateu ponto',
+          corBadge: 'laranja',
+          gravidade: 'alta',
+          tempoAbertoFormatado: tempoAtrasoFormatado,
+          tempoAbertoMinutos: minutosDesdeInicio,
+          minutosAtraso: minutosDesdeInicio,
+          proAceito: proAceitoObj,
+          convocacoesAtivas: [convAceita],
+          convocacoesRecusadas: [],
+          elegiveisRestantes: 0,
+          situacaoAtual: `${proAceitoObj?.name || 'Profissional'} aceitou o turno das ${turnoInicio}, mas ainda não registrou chegada (${minutosDesdeInicio} min de atraso).`,
+          dataInicioTurno: dataHoraTurno,
+          isProximas24h: true,
+        })
+        continue
+      }
+    }
 
     // Se já tem profissional aceito e não há falta aberta, escala está coberta!
     if (convAceita && escala.status !== 'falta') {
