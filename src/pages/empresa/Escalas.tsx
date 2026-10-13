@@ -977,13 +977,24 @@ export default function EscalasPage() {
       setModoRevisaoPeriodo(false)
       setPreviasPeriodo([])
       loadData()
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
-      toast({
-        title: 'Erro ao criar escala(s)',
-        description: 'Verifique os dados e tente novamente.',
-        variant: 'destructive',
-      })
+      const errMsg = err?.message || (err?.data && JSON.stringify(err?.data)) || ''
+      if (
+        errMsg.includes('Já existe uma escala cadastrada para este posto') ||
+        errMsg.includes('Escala já existente para este posto')
+      ) {
+        toast({
+          title: 'Escala já existente para este posto/data/turno — nenhuma duplicata criada',
+          className: 'bg-amber-500 text-white border-amber-600',
+        })
+      } else {
+        toast({
+          title: 'Erro ao criar escala(s)',
+          description: 'Verifique os dados e tente novamente.',
+          variant: 'destructive',
+        })
+      }
     } finally {
       setIsCreatingEscala(false)
     }
@@ -1649,6 +1660,10 @@ export default function EscalasPage() {
     }
 
     setIsSendingConvocacoes(true)
+    let totalConvocadas = 0
+    let totalJaConvocadas = 0
+    let totalFalhas = 0
+
     try {
       const now = new Date().toISOString()
 
@@ -1668,20 +1683,25 @@ export default function EscalasPage() {
         const escalaAtual = alvos[idxEscala % alvos.length]
         idxEscala++
 
-        // Checar se já tem convocação
+        // Checar se no estado local já tem convocação
         const existing = convocacoes.find((c) => c.escala === escalaAtual.id && c.pro === proId)
-        if (!existing) {
-          const proObj = pros.find((p) => p.id === proId)
-          let rule = 'tabela base'
-          let val = escalaAtual.valor_diaria || 180
-          if (proObj?.status === 'teste') {
-            val = proObj.ajuda_custo || 50
-            rule = 'ajuda de custo (teste)'
-          } else if (proObj?.valor_negociado) {
-            val = proObj.valor_negociado
-            rule = 'valor negociado'
-          }
+        if (existing) {
+          totalJaConvocadas++
+          continue
+        }
 
+        const proObj = pros.find((p) => p.id === proId)
+        let rule = 'tabela base'
+        let val = escalaAtual.valor_diaria || 180
+        if (proObj?.status === 'teste') {
+          val = proObj.ajuda_custo || 50
+          rule = 'ajuda de custo (teste)'
+        } else if (proObj?.valor_negociado) {
+          val = proObj.valor_negociado
+          rule = 'valor negociado'
+        }
+
+        try {
           await pb.collection('convocacoes').create({
             escala: escalaAtual.id,
             pro: proId,
@@ -1691,24 +1711,39 @@ export default function EscalasPage() {
             data_convocacao: now,
           })
 
+          totalConvocadas++
+
           if (escalaAtual.status === 'aberta') {
-            await pb.collection('escalas').update(escalaAtual.id, {
-              status: 'convocada',
-            })
+            try {
+              await pb.collection('escalas').update(escalaAtual.id, {
+                status: 'convocada',
+              })
+            } catch {
+              /* intentionally ignored */
+            }
+          }
+        } catch (errConv: any) {
+          const errMsg = errConv?.message || (errConv?.data && JSON.stringify(errConv.data)) || ''
+          if (errConv?.status === 400 && errMsg.includes('Convocação já existente')) {
+            totalJaConvocadas++
+          } else {
+            console.error('Falha ao convocar pro', proId, errConv)
+            totalFalhas++
           }
         }
       }
 
       toast({
-        title: 'Convocações enviadas!',
-        description: `${selectedProIds.length} profissional(is) receberam o alerta no inbox.`,
+        title: 'Resumo das convocações',
+        description: `${totalConvocadas} convocadas, ${totalJaConvocadas} já estavam convocadas, ${totalFalhas} falhas.`,
       })
       setModalConvocar(false)
       loadData()
     } catch (err) {
       console.error(err)
       toast({
-        title: 'Erro ao convocar profissionais',
+        title: 'Erro ao processar lote de convocações',
+        description: `${totalConvocadas} convocadas, ${totalJaConvocadas} já estavam convocadas, ${totalFalhas} falhas.`,
         variant: 'destructive',
       })
     } finally {

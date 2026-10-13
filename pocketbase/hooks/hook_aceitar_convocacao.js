@@ -611,8 +611,10 @@ onRecordUpdate((e) => {
       const turnoFim = escala.getString('turno_fim')
       posto = txApp.findRecordById('postos', postoId)
 
-      // (a) Trava: se o pro já tem convocação ACEITA para qualquer escala do MESMO posto na MESMA data:
-      // Bloquear o aceite (status volta pendente, responder erro claro)
+      // (a) Trava: se o pro já tem convocação ACEITA para qualquer escala do MESMO posto na MESMA data
+      // cujo turno SE SOBREPÕE no horário: bloquear o aceite (status volta pendente, responder erro claro).
+      // Turnos distintos sem sobreposição (ex. manhã e noite no mesmo hotel) são PERMITIDOS.
+      // Sobreposição = inicioA < fimB && inicioB < fimA
       const escalasDoPostoNaData = txApp.findRecordsByFilter(
         'escalas',
         `posto = '${postoId}' && data ~ '${dataEscala}' && status != 'cancelada'`,
@@ -631,8 +633,16 @@ onRecordUpdate((e) => {
           0,
         )
         if (convsAceitasPro && convsAceitasPro.length > 0) {
-          record.set('status', 'pendente')
-          throw new BadRequestError('Você já aceitou uma convocação para este posto nesta data')
+          const iniA = turnoInicio
+          const fimA = turnoFim
+          const iniB = escPosto.getString('turno_inicio')
+          const fimB = escPosto.getString('turno_fim')
+          const temSobreposicao = iniA < fimB && iniB < fimA
+
+          if (temSobreposicao) {
+            record.set('status', 'pendente')
+            throw new BadRequestError('Você já aceitou uma convocação para este posto nesta data')
+          }
         }
       }
 

@@ -591,35 +591,6 @@ onRecordAfterCreateSuccess((e) => {
   const proId = record.getString('pro')
   const escalaId = record.getString('escala')
 
-  // Trava anti-duplicação de convocação:
-  // Não criar convocação se já existir para a mesma escala + mesmo pro com status pendente ou aceita;
-  // ignorar silenciosamente com log.
-  try {
-    if (proId && escalaId) {
-      const convExistente = $app.findRecordsByFilter(
-        'convocacoes',
-        `escala = '${escalaId}' && pro = '${proId}' && (status = 'pendente' || status = 'aceita')`,
-        '-created',
-        1,
-        0,
-      )
-      if (convExistente && convExistente.length > 0) {
-        console.log(
-          `[TRAVA_CONVOCACAO] Ignorando convocação duplicada para escala ${escalaId} e pro ${proId} (já possui status ${convExistente[0].getString('status')})`,
-        )
-        throw new BadRequestError('Convocação já existente para este profissional nesta escala')
-      }
-    }
-  } catch (errDuplicata) {
-    if (
-      errDuplicata.status === 400 ||
-      (errDuplicata.message && errDuplicata.message.indexOf('Convocação já existente') >= 0)
-    ) {
-      throw errDuplicata
-    }
-    console.log('[TRAVA_CONVOCACAO] Erro ao verificar convocação duplicada:', errDuplicata)
-  }
-
   e.next()
 
   const status = record.getString('status')
@@ -814,4 +785,40 @@ onRecordAfterCreateSuccess((e) => {
   } catch (err) {
     console.log('Erro geral ao enviar e-mail de nova convocação:', err)
   }
+}, 'convocacoes')
+
+// Trava anti-duplicação de criação de convocações no backend (ANTES de e.next()):
+// Impede que sejam geradas convocações repetidas (pendente ou aceita) para a mesma escala e profissional.
+onRecordCreate((e) => {
+  const record = e.record
+  const proId = record.getString('pro')
+  const escalaId = record.getString('escala')
+
+  try {
+    if (proId && escalaId) {
+      const convExistente = $app.findRecordsByFilter(
+        'convocacoes',
+        `escala = '${escalaId}' && pro = '${proId}' && (status = 'pendente' || status = 'aceita')`,
+        '-created',
+        1,
+        0,
+      )
+      if (convExistente && convExistente.length > 0) {
+        console.log(
+          `[TRAVA_CONVOCACAO] Ignorando convocação duplicada para escala ${escalaId} e pro ${proId} (já possui status ${convExistente[0].getString('status')})`,
+        )
+        throw new BadRequestError('Convocação já existente para este profissional nesta escala')
+      }
+    }
+  } catch (errDuplicata) {
+    if (
+      errDuplicata.status === 400 ||
+      (errDuplicata.message && errDuplicata.message.indexOf('Convocação já existente') >= 0)
+    ) {
+      throw errDuplicata
+    }
+    console.log('[TRAVA_CONVOCACAO] Erro ao verificar convocação duplicada:', errDuplicata)
+  }
+
+  e.next()
 }, 'convocacoes')
