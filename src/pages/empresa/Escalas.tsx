@@ -138,6 +138,11 @@ export default function EscalasPage() {
   const [grupoParaExcluirTurno, setGrupoParaExcluirTurno] = useState<any | null>(null)
   const [isDeletingTurnoInteiro, setIsDeletingTurnoInteiro] = useState(false)
 
+  // Modal Confirmar Adicionar Vaga Extra
+  const [modalAdicionarVagaExtra, setModalAdicionarVagaExtra] = useState(false)
+  const [grupoParaVagaExtra, setGrupoParaVagaExtra] = useState<any | null>(null)
+  const [isAddingVagaExtra, setIsAddingVagaExtra] = useState(false)
+
   // Estado de Recálculo em Andamento
   const [recalculandoId, setRecalculandoId] = useState<string | null>(null)
 
@@ -923,6 +928,12 @@ export default function EscalasPage() {
               })
             }
           }
+          toast({
+            title: 'Escala já existe para este posto/data/turno',
+            description:
+              "Nada foi duplicado. Para incluir uma profissional EXTRA solicitada pelo cliente, use o botão 'Adicionar vaga extra' no card do turno.",
+            className: 'bg-amber-500 text-white border-amber-600',
+          })
           continue
         }
 
@@ -985,7 +996,9 @@ export default function EscalasPage() {
         errMsg.includes('Escala já existente para este posto')
       ) {
         toast({
-          title: 'Escala já existente para este posto/data/turno — nenhuma duplicata criada',
+          title: 'Escala já existe para este posto/data/turno',
+          description:
+            "Nada foi duplicado. Para incluir uma profissional EXTRA solicitada pelo cliente, use o botão 'Adicionar vaga extra' no card do turno.",
           className: 'bg-amber-500 text-white border-amber-600',
         })
       } else {
@@ -1301,6 +1314,91 @@ export default function EscalasPage() {
       })
     } finally {
       setIsDeletingEscala(false)
+    }
+  }
+
+  // Abrir modal de Adicionar Vaga Extra
+  const handleAbrirAdicionarVagaExtra = (grupo: any) => {
+    setGrupoParaVagaExtra(grupo)
+    setModalAdicionarVagaExtra(true)
+  }
+
+  // Confirmar adição de vaga extra
+  const handleConfirmarAdicionarVagaExtra = async () => {
+    if (!grupoParaVagaExtra) return
+
+    setIsAddingVagaExtra(true)
+    try {
+      const grupo = grupoParaVagaExtra
+      const primeira = grupo.primeiraEscala
+      const postoId = primeira.posto
+      const dataEscala = primeira.data
+      const turnoIni = grupo.turno_inicio || primeira.turno_inicio
+      const turnoFim = grupo.turno_fim || primeira.turno_fim
+      const valorDiaria = primeira.valor_diaria || 0
+
+      // Novo total de vagas do grupo = registros atuais do grupo + 1 nova escala
+      const novoTotalVagas = (grupo.escalas?.length || 1) + 1
+
+      // 1. Criar UMA nova escala com os mesmos dados do grupo
+      const novaEscala = await pb.collection('escalas').create<EscalaRecord>({
+        posto: postoId,
+        data: dataEscala,
+        turno_inicio: turnoIni,
+        turno_fim: turnoFim,
+        status: 'aberta',
+        multa_aplicada: false,
+        valor_diaria: valorDiaria,
+        vagas: novoTotalVagas,
+        observacao: primeira.observacao || '',
+      })
+
+      // 2. Atualizar o campo vagas de todas as escalas existentes do grupo
+      if (grupo.escalas && grupo.escalas.length > 0) {
+        for (const esc of grupo.escalas) {
+          try {
+            await pb.collection('escalas').update(esc.id, {
+              vagas: novoTotalVagas,
+            })
+          } catch (errUpd) {
+            console.warn('Erro ao atualizar vagas da escala existente:', esc.id, errUpd)
+          }
+        }
+      }
+
+      toast({
+        title: 'Vaga extra adicionada com sucesso!',
+        description: `O turno agora conta com ${novoTotalVagas} vagas. Selecione o profissional para a convocação.`,
+      })
+
+      // Fechar modal de confirmação de vaga extra
+      setModalAdicionarVagaExtra(false)
+
+      // Montar objeto de grupo atualizado incluindo a nova escala
+      const escalasAtualizadas = [...(grupo.escalas || []), novaEscala]
+      const grupoAtualizado = {
+        ...grupo,
+        totalVagas: novoTotalVagas,
+        isGrupoMultiVagas: true,
+        escalas: escalasAtualizadas,
+      }
+
+      // Recarregar dados em segundo plano
+      loadData()
+
+      // 3. Abrir o modal de convocação existente para o usuário escolher a profissional extra
+      openConvocarGrupoModal(grupoAtualizado)
+    } catch (err: any) {
+      console.error('Erro ao adicionar vaga extra:', err)
+      const errMsg = err?.message || (err?.data && JSON.stringify(err.data)) || ''
+      toast({
+        title: 'Erro ao adicionar vaga extra',
+        description: errMsg || 'Não foi possível registrar a vaga adicional.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsAddingVagaExtra(false)
+      setGrupoParaVagaExtra(null)
     }
   }
 
