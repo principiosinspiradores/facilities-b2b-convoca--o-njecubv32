@@ -1351,7 +1351,7 @@ export default function EscalasPage() {
         multa_aplicada: false,
         valor_diaria: valorDiaria,
         vagas: novoTotalVagas,
-        observacao: primeira.observacao || '',
+        observacao: 'vaga extra',
       })
 
       // 2. Atualizar o campo vagas de todas as escalas existentes do grupo

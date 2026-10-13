@@ -9,6 +9,14 @@
  */
 onRecordCreate((e) => {
   const record = e.record
+  const observacao = (record.getString('observacao') || '').toLowerCase()
+
+  // Se a criação for uma vaga extra legítima, pula o bloqueio de duplicidade
+  if (observacao.indexOf('vaga extra') >= 0) {
+    e.next()
+    return
+  }
+
   const postoId = record.getString('posto')
   const rawData = record.getString('data')
   const turnoInicio = record.getString('turno_inicio')
