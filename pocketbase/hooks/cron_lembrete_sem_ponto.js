@@ -6,7 +6,7 @@
 // "Você aceitou o turno do posto X hoje e ainda não registrou seu ponto. Registre sua chegada agora."
 // Enviar UMA única vez por convocação/dia (tag: 'sem-ponto-<convocacao_id>').
 
-cronAdd('lembrete_ponto_pro_sem_chegada', '*/15 * * * *', () => {
+cronAdd('lembrete_sem_ponto', '*/15 * * * *', () => {
   // Biblioteca VAPID nativa embutida (RFC 8292 / ES256 / P-256)
   const VAPID_LIB = (() => {
     const P = BigInt('0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF')
