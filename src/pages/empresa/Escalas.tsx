@@ -51,6 +51,7 @@ import {
   Edit2,
   Trash2,
   Calculator,
+  UserPlus,
 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Textarea } from '@/components/ui/textarea'
@@ -2320,6 +2321,29 @@ export default function EscalasPage() {
                           </Tooltip>
                         </TooltipProvider>
 
+                        {/* Adicionar Vaga Extra neste turno */}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleAbrirAdicionarVagaExtra(grupo)}
+                                  className="border-primary/30 text-primary hover:bg-primary/5 hover:text-primary text-xs h-9"
+                                >
+                                  <UserPlus className="w-3.5 h-3.5 mr-1 text-primary" />
+                                  Adicionar vaga extra
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Criar uma vaga adicional neste mesmo turno e convocar uma profissional
+                              extra na sequência
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
                         {aceito ? (
                           <div className="text-right bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs text-emerald-900">
                             <div className="font-bold flex items-center gap-1 justify-end">
@@ -2512,7 +2536,6 @@ export default function EscalasPage() {
                           </Tooltip>
                         </TooltipProvider>
                       )}
-
                       {/* Atalho no Grupo: Excluir turno inteiro (apenas se nenhuma vaga tiver aceite) */}
                       {(() => {
                         const temAlgumAceiteNoGrupo =
@@ -2544,8 +2567,29 @@ export default function EscalasPage() {
                           </TooltipProvider>
                         )
                       })()}
-
-                      {/* Botão de Preenchimento Automático: Convocar Elegíveis até Preencher */}
+                      {/* Adicionar Vaga Extra neste turno (grupo multi-vagas) */}
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleAbrirAdicionarVagaExtra(grupo)}
+                                className="border-primary/30 text-primary hover:bg-primary/5 hover:text-primary text-xs h-9"
+                              >
+                                <UserPlus className="w-3.5 h-3.5 mr-1 text-primary" />
+                                Adicionar vaga extra
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Criar uma vaga adicional neste mesmo turno e convocar uma profissional
+                            extra na sequência
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      {/* Botão de Preenchimento Automático: Convocar Elegíveis até Preencher */}{' '}
                       {!isTotalmenteCoberto && (
                         <Button
                           variant="outline"
@@ -2558,7 +2602,6 @@ export default function EscalasPage() {
                           Convocar elegíveis até preencher
                         </Button>
                       )}
-
                       {/* Botão Convocar Pros para o grupo */}
                       {!isTotalmenteCoberto && (
                         <Button
@@ -2569,7 +2612,6 @@ export default function EscalasPage() {
                           Convocar ({todasConvsGrupo.length})
                         </Button>
                       )}
-
                       {/* Botão Expandir / Recolher Escalas Individuais */}
                       <Button
                         variant="ghost"
@@ -4000,6 +4042,105 @@ export default function EscalasPage() {
                     <>
                       <Trash2 className="w-4 h-4 mr-1.5" />
                       Excluir Todas as Vagas
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Confirmar Adicionar Vaga Extra */}
+      <Dialog
+        open={modalAdicionarVagaExtra}
+        onOpenChange={(open) => {
+          if (!isAddingVagaExtra) {
+            setModalAdicionarVagaExtra(open)
+            if (!open) setGrupoParaVagaExtra(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          {grupoParaVagaExtra && (
+            <div>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-primary">
+                  <UserPlus className="w-5 h-5 text-primary" />
+                  Adicionar Vaga Extra
+                </DialogTitle>
+                <DialogDescription>
+                  Uma nova vaga será criada neste mesmo turno, sem alterar as vagas já existentes.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="py-4 space-y-3 text-xs">
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1">
+                  <div className="font-bold text-slate-800 text-sm">
+                    {grupoParaVagaExtra.posto?.nome ||
+                      grupoParaVagaExtra.primeiraEscala?.expand?.posto?.nome ||
+                      'Posto'}
+                  </div>
+                  <div className="text-slate-600 flex items-center gap-2">
+                    <Calendar className="w-3.5 h-3.5 text-primary" />
+                    <span>{formatDateBR(grupoParaVagaExtra.data)}</span>
+                    <span>•</span>
+                    <Clock className="w-3.5 h-3.5 text-primary" />
+                    <span>
+                      {(grupoParaVagaExtra.turno_inicio ||
+                        grupoParaVagaExtra.primeiraEscala?.turno_inicio) ??
+                        ''}{' '}
+                      às{' '}
+                      {(grupoParaVagaExtra.turno_fim ||
+                        grupoParaVagaExtra.primeiraEscala?.turno_fim) ??
+                        ''}
+                    </span>
+                  </div>
+                  <div className="text-slate-700 font-medium pt-1">
+                    Vagas atuais: <strong>{grupoParaVagaExtra.escalas?.length || 1}</strong> →{' '}
+                    <strong>{(grupoParaVagaExtra.escalas?.length || 1) + 1} vagas</strong> (+1)
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-amber-800">
+                    <Info className="w-4 h-4 text-amber-600" />
+                    Convocação na sequência
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    Após confirmar, a nova vaga será criada e o modal de convocação será aberto em
+                    seguida para você escolher a profissional extra que irá cobri-la.
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isAddingVagaExtra}
+                  onClick={() => {
+                    setModalAdicionarVagaExtra(false)
+                    setGrupoParaVagaExtra(null)
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  disabled={isAddingVagaExtra}
+                  onClick={handleConfirmarAdicionarVagaExtra}
+                  className="font-medium"
+                >
+                  {isAddingVagaExtra ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Adicionando Vaga...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="w-4 h-4 mr-1.5" />
+                      Confirmar
                     </>
                   )}
                 </Button>
