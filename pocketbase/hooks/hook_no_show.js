@@ -882,6 +882,19 @@ onRecordUpdate((e) => {
       const convCol = $app.findCollectionByNameOrId('convocacoes')
       let countReoferta = 0
 
+      const postoIdEscala = escala.getString('posto')
+      const dataEscalaStr = escala.getString('data').slice(0, 10)
+      const turnoInicioEscala = escala.getString('turno_inicio')
+      const turnoFimEscala = escala.getString('turno_fim')
+
+      const escalasDoPostoNaData = $app.findRecordsByFilter(
+        'escalas',
+        `posto = '${postoIdEscala}' && data ~ '${dataEscalaStr}' && status != 'cancelada'`,
+        'created',
+        100,
+        0,
+      )
+
       for (let i = 0; i < pros.length; i++) {
         const p = pros[i]
         const bloqueadoAte = p.getString('bloqueado_ate')
@@ -900,6 +913,32 @@ onRecordUpdate((e) => {
           0,
         )
         if (existing && existing.length > 0) {
+          continue
+        }
+
+        // Excluir pros que já têm convocação status='aceita' em qualquer escala do mesmo posto + mesma data com turno sobreposto
+        let temAceiteSobreposto = false
+        for (let ep = 0; ep < escalasDoPostoNaData.length; ep++) {
+          const escPosto = escalasDoPostoNaData[ep]
+          const convsAceitas = $app.findRecordsByFilter(
+            'convocacoes',
+            `escala = '${escPosto.id}' && pro = '${p.id}' && status = 'aceita'`,
+            '-created',
+            10,
+            0,
+          )
+          if (convsAceitas && convsAceitas.length > 0) {
+            const iniA = turnoInicioEscala
+            const fimA = turnoFimEscala
+            const iniB = escPosto.getString('turno_inicio')
+            const fimB = escPosto.getString('turno_fim')
+            if (iniA < fimB && iniB < fimA) {
+              temAceiteSobreposto = true
+              break
+            }
+          }
+        }
+        if (temAceiteSobreposto) {
           continue
         }
 

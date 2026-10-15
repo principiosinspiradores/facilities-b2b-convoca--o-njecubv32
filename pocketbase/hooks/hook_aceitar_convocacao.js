@@ -586,8 +586,6 @@ onRecordUpdate((e) => {
       sendPushNotification: sendPushNotification,
     }
   })()
-  e.next()
-
   const record = e.record
   const originalStatus = e.record.original().getString('status')
   const newStatus = record.getString('status')
@@ -598,11 +596,55 @@ onRecordUpdate((e) => {
     const proId = record.getString('pro')
     const valorDiaria = record.getFloat('valor_diaria') || 0
 
+    // 1. Validação prévia ANTES de e.next():
+    // (a) Trava: se o pro já tem convocação ACEITA para qualquer escala do MESMO posto na MESMA data
+    // cujo turno SE SOBREPÕE no horário: bloquear o aceite ANTES da persistência (status permanece no banco como original).
+    // Turnos distintos sem sobreposição (ex. manhã e noite no mesmo hotel) são PERMITIDOS.
+    // Sobreposição = inicioA < fimB && inicioB < fimA
+    const escalaPrevia = $app.findRecordById('escalas', escalaId)
+    const postoIdPrevia = escalaPrevia.getString('posto')
+    const dataEscalaPrevia = escalaPrevia.getString('data').slice(0, 10)
+    const turnoInicioPrevia = escalaPrevia.getString('turno_inicio')
+    const turnoFimPrevia = escalaPrevia.getString('turno_fim')
+
+    const escalasDoPostoNaDataPrevia = $app.findRecordsByFilter(
+      'escalas',
+      `posto = '${postoIdPrevia}' && data ~ '${dataEscalaPrevia}' && status != 'cancelada'`,
+      'created',
+      100,
+      0,
+    )
+
+    for (let ep = 0; ep < escalasDoPostoNaDataPrevia.length; ep++) {
+      const escPosto = escalasDoPostoNaDataPrevia[ep]
+      const convsAceitasPro = $app.findRecordsByFilter(
+        'convocacoes',
+        `escala = '${escPosto.id}' && pro = '${proId}' && status = 'aceita' && id != '${record.id}'`,
+        '-created',
+        10,
+        0,
+      )
+      if (convsAceitasPro && convsAceitasPro.length > 0) {
+        const iniA = turnoInicioPrevia
+        const fimA = turnoFimPrevia
+        const iniB = escPosto.getString('turno_inicio')
+        const fimB = escPosto.getString('turno_fim')
+        const temSobreposicao = iniA < fimB && iniB < fimA
+
+        if (temSobreposicao) {
+          throw new BadRequestError('Você já aceitou uma convocação para este posto nesta data')
+        }
+      }
+    }
+
+    // Persistir a alteração da convocação (status='aceita')
+    e.next()
+
     let escala
     let posto
     let isFixaMensal = false
 
-    // Executar verificação e atualizações de banco dentro de transação atômica
+    // Executar atualizações de banco dentro de transação atômica
     $app.runInTransaction((txApp) => {
       escala = txApp.findRecordById('escalas', escalaId)
       const postoId = escala.getString('posto')
@@ -610,41 +652,6 @@ onRecordUpdate((e) => {
       const turnoInicio = escala.getString('turno_inicio')
       const turnoFim = escala.getString('turno_fim')
       posto = txApp.findRecordById('postos', postoId)
-
-      // (a) Trava: se o pro já tem convocação ACEITA para qualquer escala do MESMO posto na MESMA data
-      // cujo turno SE SOBREPÕE no horário: bloquear o aceite (status volta pendente, responder erro claro).
-      // Turnos distintos sem sobreposição (ex. manhã e noite no mesmo hotel) são PERMITIDOS.
-      // Sobreposição = inicioA < fimB && inicioB < fimA
-      const escalasDoPostoNaData = txApp.findRecordsByFilter(
-        'escalas',
-        `posto = '${postoId}' && data ~ '${dataEscala}' && status != 'cancelada'`,
-        'created',
-        100,
-        0,
-      )
-
-      for (let ep = 0; ep < escalasDoPostoNaData.length; ep++) {
-        const escPosto = escalasDoPostoNaData[ep]
-        const convsAceitasPro = txApp.findRecordsByFilter(
-          'convocacoes',
-          `escala = '${escPosto.id}' && pro = '${proId}' && status = 'aceita' && id != '${record.id}'`,
-          '-created',
-          10,
-          0,
-        )
-        if (convsAceitasPro && convsAceitasPro.length > 0) {
-          const iniA = turnoInicio
-          const fimA = turnoFim
-          const iniB = escPosto.getString('turno_inicio')
-          const fimB = escPosto.getString('turno_fim')
-          const temSobreposicao = iniA < fimB && iniB < fimA
-
-          if (temSobreposicao) {
-            record.set('status', 'pendente')
-            throw new BadRequestError('Você já aceitou uma convocação para este posto nesta data')
-          }
-        }
-      }
 
       // 1. Atualizar status da escala para 'aceita'
       escala.set('status', 'aceita')
