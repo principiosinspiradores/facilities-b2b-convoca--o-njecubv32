@@ -52,6 +52,7 @@ import {
   Trash2,
   Calculator,
   UserPlus,
+  XCircle,
 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Textarea } from '@/components/ui/textarea'
@@ -143,6 +144,15 @@ export default function EscalasPage() {
   const [modalAdicionarVagaExtra, setModalAdicionarVagaExtra] = useState(false)
   const [grupoParaVagaExtra, setGrupoParaVagaExtra] = useState<any | null>(null)
   const [isAddingVagaExtra, setIsAddingVagaExtra] = useState(false)
+
+  // Modal Cancelar Convocação Aceita (Gestão/Empresa)
+  const [modalCancelarConvocacao, setModalCancelarConvocacao] = useState(false)
+  const [convocacaoParaCancelar, setConvocacaoParaCancelar] = useState<ConvocacaoRecord | null>(
+    null,
+  )
+  const [escalaConvocacaoParaCancelar, setEscalaConvocacaoParaCancelar] =
+    useState<EscalaRecord | null>(null)
+  const [isCancelingConvocacao, setIsCancelingConvocacao] = useState(false)
 
   // Estado de Recálculo em Andamento
   const [recalculandoId, setRecalculandoId] = useState<string | null>(null)
@@ -1318,6 +1328,55 @@ export default function EscalasPage() {
     }
   }
 
+  // Abrir modal de Cancelar Convocação Aceita
+  const handleAbrirCancelarConvocacao = (conv: ConvocacaoRecord, esc: EscalaRecord) => {
+    setConvocacaoParaCancelar(conv)
+    setEscalaConvocacaoParaCancelar(esc)
+    setModalCancelarConvocacao(true)
+  }
+
+  // Confirmar cancelamento de convocação aceita
+  const handleConfirmarCancelarConvocacao = async () => {
+    if (!convocacaoParaCancelar) return
+
+    setIsCancelingConvocacao(true)
+    try {
+      const resp = await pb.send<{ success: boolean; message: string }>(
+        '/backend/v1/facilities/cancelar-convocacao-gestao',
+        {
+          method: 'POST',
+          body: { convocacao_id: convocacaoParaCancelar.id },
+        },
+      )
+
+      toast({
+        title: 'Convocação cancelada com sucesso!',
+        description:
+          resp?.message ||
+          'A vaga foi reaberta e a profissional foi notificada sem aplicação de multa.',
+      })
+
+      setModalCancelarConvocacao(false)
+      setConvocacaoParaCancelar(null)
+      setEscalaConvocacaoParaCancelar(null)
+      loadData()
+    } catch (err: any) {
+      console.error('Erro ao cancelar convocação pela gestão:', err)
+      const msgErro =
+        err?.response?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Não foi possível cancelar a convocação.'
+      toast({
+        title: 'Não foi possível cancelar convocação',
+        description: msgErro,
+        variant: 'destructive',
+      })
+    } finally {
+      setIsCancelingConvocacao(false)
+    }
+  }
+
   // Abrir modal de Adicionar Vaga Extra
   const handleAbrirAdicionarVagaExtra = (grupo: any) => {
     setGrupoParaVagaExtra(grupo)
@@ -2345,19 +2404,40 @@ export default function EscalasPage() {
                         </TooltipProvider>
 
                         {aceito ? (
-                          <div className="text-right bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs text-emerald-900">
-                            <div className="font-bold flex items-center gap-1 justify-end">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                              Turno Coberto:
+                          <div className="flex items-center gap-2">
+                            <div className="text-right bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs text-emerald-900">
+                              <div className="font-bold flex items-center gap-1 justify-end">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                Turno Coberto:
+                              </div>
+                              <div className="font-semibold text-slate-900 truncate max-w-[140px]">
+                                {aceito.expand?.pro?.name || 'Profissional'}
+                                {isPostoComFixa && aceito.pro === posto?.pro_fixo && (
+                                  <span className="ml-1 text-[10px] text-primary font-bold">
+                                    (Fixa)
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <div className="font-semibold text-slate-900 truncate max-w-[140px]">
-                              {aceito.expand?.pro?.name || 'Profissional'}
-                              {isPostoComFixa && aceito.pro === posto?.pro_fixo && (
-                                <span className="ml-1 text-[10px] text-primary font-bold">
-                                  (Fixa)
-                                </span>
-                              )}
-                            </div>
+                            {/* Botão Cancelar convocação aceita */}
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleAbrirCancelarConvocacao(aceito, escala)}
+                                    className="border-rose-300 text-rose-700 hover:bg-rose-50 hover:text-rose-800 text-xs h-9 font-medium"
+                                  >
+                                    <XCircle className="w-3.5 h-3.5 mr-1 text-rose-600" />
+                                    Cancelar convocação
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Cancelar convocação aceita por desistência do cliente (sem multa)
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </div>
                         ) : (
                           <Button
@@ -2771,28 +2851,52 @@ export default function EscalasPage() {
                                     </Tooltip>
                                   </TooltipProvider>
 
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span>
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            disabled={escalaTemAceite(subEscala)}
-                                            onClick={() => handleAbrirExcluirEscala(subEscala)}
-                                            className="h-7 w-7 p-0 text-rose-600 hover:text-rose-800 hover:bg-rose-50"
-                                          >
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                          </Button>
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        {escalaTemAceite(subEscala)
-                                          ? 'Vaga já coberta não pode ser excluída'
-                                          : 'Excluir esta vaga'}
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
+                                  {subAceito ? (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span>
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              onClick={() =>
+                                                handleAbrirCancelarConvocacao(subAceito, subEscala)
+                                              }
+                                              className="h-7 w-7 p-0 text-rose-600 hover:text-rose-800 hover:bg-rose-50"
+                                            >
+                                              <XCircle className="w-3.5 h-3.5" />
+                                            </Button>
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          Cancelar convocação aceita desta vaga (sem multa)
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  ) : (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span>
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              disabled={escalaTemAceite(subEscala)}
+                                              onClick={() => handleAbrirExcluirEscala(subEscala)}
+                                              className="h-7 w-7 p-0 text-rose-600 hover:text-rose-800 hover:bg-rose-50"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </Button>
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {escalaTemAceite(subEscala)
+                                            ? 'Vaga já coberta não pode ser excluída'
+                                            : 'Excluir esta vaga'}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -4141,6 +4245,133 @@ export default function EscalasPage() {
                     <>
                       <UserPlus className="w-4 h-4 mr-1.5" />
                       Confirmar
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Confirmar Cancelar Convocação Aceita (Gestão/Empresa) */}
+      <Dialog
+        open={modalCancelarConvocacao}
+        onOpenChange={(open) => {
+          if (!isCancelingConvocacao) {
+            setModalCancelarConvocacao(open)
+            if (!open) {
+              setConvocacaoParaCancelar(null)
+              setEscalaConvocacaoParaCancelar(null)
+            }
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          {convocacaoParaCancelar && (
+            <div>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-rose-700">
+                  <AlertTriangle className="w-5 h-5 text-rose-600" />
+                  Cancelar Convocação Aceita
+                </DialogTitle>
+                <DialogDescription>
+                  Confirme o cancelamento da convocação aceita para esta vaga.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="py-4 space-y-3 text-xs">
+                {/* Detalhes do Turno e Pro */}
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 text-[11px] uppercase font-semibold">
+                      Profissional
+                    </span>
+                    <span className="font-bold text-slate-900 text-sm">
+                      {convocacaoParaCancelar.expand?.pro?.name || 'Profissional'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                    <span className="text-slate-500 text-[11px] uppercase font-semibold">
+                      Posto
+                    </span>
+                    <span className="font-semibold text-slate-800">
+                      {escalaConvocacaoParaCancelar?.expand?.posto?.nome ||
+                        postos.find((p) => p.id === escalaConvocacaoParaCancelar?.posto)?.nome ||
+                        'Posto de Trabalho'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                    <span className="text-slate-500 text-[11px] uppercase font-semibold">
+                      Data / Turno
+                    </span>
+                    <span className="font-medium text-slate-700">
+                      {formatDateBR(escalaConvocacaoParaCancelar?.data)} (
+                      {escalaConvocacaoParaCancelar?.turno_inicio} às{' '}
+                      {escalaConvocacaoParaCancelar?.turno_fim})
+                    </span>
+                  </div>
+                  {convocacaoParaCancelar.valor_diaria ? (
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                      <span className="text-slate-500 text-[11px] uppercase font-semibold">
+                        Valor em Escrow
+                      </span>
+                      <span className="font-semibold text-slate-700">
+                        {formatCurrencyBRL(convocacaoParaCancelar.valor_diaria)}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Aviso Regulatório */}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-amber-800">
+                    <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                    Regra de Cancelamento pela Gestão
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    A profissional será notificada imediatamente por <strong>
+                      e-mail e push
+                    </strong>{' '}
+                    informando que a vaga foi desistida pelo cliente.
+                  </p>
+                  <p className="text-[11px] leading-relaxed font-medium text-amber-950">
+                    O valor retido em escrow será cancelado <strong>sem aplicação de multa</strong>{' '}
+                    e sem qualquer penalidade para o perfil da profissional. A vaga voltará a ficar
+                    aberta e poderá ser reconvocada normalmente.
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isCancelingConvocacao}
+                  onClick={() => {
+                    setModalCancelarConvocacao(false)
+                    setConvocacaoParaCancelar(null)
+                    setEscalaConvocacaoParaCancelar(null)
+                  }}
+                >
+                  Fechar
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={isCancelingConvocacao}
+                  onClick={handleConfirmarCancelarConvocacao}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-medium"
+                >
+                  {isCancelingConvocacao ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Cancelando...
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-4 h-4 mr-1.5" />
+                      Confirmar Cancelamento
                     </>
                   )}
                 </Button>

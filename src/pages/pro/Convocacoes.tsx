@@ -115,6 +115,19 @@ export default function ConvocacoesPage() {
         }),
       )
 
+      // Ordenar pela DATA DO TURNO em ordem CRESCENTE (da mais próxima para a mais distante),
+      // com desempate por turno_inicio
+      updated.sort((a, b) => {
+        const dataA = a.expand?.escala?.data ? a.expand.escala.data.slice(0, 10) : ''
+        const dataB = b.expand?.escala?.data ? b.expand.escala.data.slice(0, 10) : ''
+        if (dataA !== dataB) {
+          return dataA.localeCompare(dataB)
+        }
+        const horaA = a.expand?.escala?.turno_inicio || ''
+        const horaB = b.expand?.escala?.turno_inicio || ''
+        return horaA.localeCompare(horaB)
+      })
+
       setConvocacoes(updated)
     } catch (err) {
       console.error('Erro ao buscar convocações:', err)

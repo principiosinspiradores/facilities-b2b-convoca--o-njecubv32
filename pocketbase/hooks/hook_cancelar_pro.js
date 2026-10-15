@@ -592,10 +592,21 @@ onRecordUpdate((e) => {
   const originalStatus = e.record.original().getString('status')
   const newStatus = record.getString('status')
 
+  // Se for cancelamento feito pela gestão/cliente, NÃO aplicar multa, bloqueio ou suspensão ao pro
+  const regraAplicada = record.getString('regra_aplicada') || ''
+  const isCanceladoPelaGestao =
+    regraAplicada.indexOf('Cancelada pela gestão') >= 0 ||
+    regraAplicada.indexOf('pela gestão') >= 0 ||
+    regraAplicada.indexOf('pelo cliente') >= 0 ||
+    regraAplicada.indexOf('excluída pela gestão') >= 0
+
   // Disparar quando pro cancela convocação que já estava 'aceita'
-  // OU quando pro fixo recusa convocação direta
+  // OU quando pro fixo recusa convocação direta.
+  // Se o cancelamento partiu da gestão, não aplicar penalidades nem reoferta automática do pro.
   const isCancelamentoAceito =
-    originalStatus === 'aceita' && (newStatus === 'cancelada' || newStatus === 'recusada')
+    originalStatus === 'aceita' &&
+    (newStatus === 'cancelada' || newStatus === 'recusada') &&
+    !isCanceladoPelaGestao
   const isRecusaDireta = originalStatus === 'pendente' && newStatus === 'recusada'
 
   if (isCancelamentoAceito || isRecusaDireta) {
