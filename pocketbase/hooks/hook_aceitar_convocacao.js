@@ -590,15 +590,15 @@ onRecordUpdate((e) => {
   const originalStatus = e.record.original().getString('status')
   const newStatus = record.getString('status')
 
-  // Disparar apenas quando muda para 'aceita'
+  // 1. Validação prévia de aceite ANTES de e.next():
+  // Se estiver mudando para 'aceita', aplicar a trava de sobreposição no mesmo posto e data.
+  // O throw aborta a requisição ANTES da persistência (status permanece no banco como original).
   if (originalStatus !== 'aceita' && newStatus === 'aceita') {
     const escalaId = record.getString('escala')
     const proId = record.getString('pro')
-    const valorDiaria = record.getFloat('valor_diaria') || 0
 
-    // 1. Validação prévia ANTES de e.next():
     // (a) Trava: se o pro já tem convocação ACEITA para qualquer escala do MESMO posto na MESMA data
-    // cujo turno SE SOBREPÕE no horário: bloquear o aceite ANTES da persistência (status permanece no banco como original).
+    // cujo turno SE SOBREPÕE no horário: bloquear o aceite ANTES da persistência.
     // Turnos distintos sem sobreposição (ex. manhã e noite no mesmo hotel) são PERMITIDOS.
     // Sobreposição = inicioA < fimB && inicioB < fimA
     const escalaPrevia = $app.findRecordById('escalas', escalaId)
@@ -636,9 +636,16 @@ onRecordUpdate((e) => {
         }
       }
     }
+  }
 
-    // Persistir a alteração da convocação (status='aceita')
-    e.next()
+  // 2. Persistir a alteração da convocação INCONDICIONALMENTE (aceita, cancelada, recusada, falta etc.)
+  e.next()
+
+  // 3. Efeitos colaterais pós-persistência: disparar apenas quando muda para 'aceita'
+  if (originalStatus !== 'aceita' && newStatus === 'aceita') {
+    const escalaId = record.getString('escala')
+    const proId = record.getString('pro')
+    const valorDiaria = record.getFloat('valor_diaria') || 0
 
     let escala
     let posto
