@@ -319,6 +319,7 @@ export interface SettingsRecord {
   vapid_public_key?: string
   vapid_private_key?: string
   vapid_subject?: string
+  ponto_intervalo_min_saida_min?: number
   created: string
   updated: string
 }

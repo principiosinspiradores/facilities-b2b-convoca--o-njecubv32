@@ -376,8 +376,26 @@ export async function sincronizarPontosPendentes(proId?: string): Promise<SyncRe
         })
       } catch (err: any) {
         console.error(`Erro ao sincronizar ponto ${item.client_uuid}:`, err)
+        const msgErro =
+          err?.response?.message || err?.data?.message || err?.message || 'Falha de rede/servidor'
+
+        // Se for bloqueio de duplicidade conhecida ou já gravado, remove da fila pendente para não re-tentar eternamente
+        if (
+          msgErro.includes('Você já registrou') ||
+          msgErro.includes('Registre sua chegada antes da saída')
+        ) {
+          await removerPontoPendente(item.client_uuid)
+          resultado.falhas++
+          resultado.detalhes.push({
+            client_uuid: item.client_uuid,
+            sucesso: false,
+            erro: msgErro,
+          })
+          continue
+        }
+
         item.status = 'erro'
-        item.ultimoErro = err?.message || 'Falha de rede/servidor'
+        item.ultimoErro = msgErro
         await salvarPontoOffline(item)
         resultado.falhas++
         resultado.detalhes.push({

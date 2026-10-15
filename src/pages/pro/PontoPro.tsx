@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/contexts/AuthContext'
+import { useSettings } from '@/contexts/SettingsContext'
 import { ConvocacaoRecord, EscalaRecord, PontoRecord, PostoRecord } from '@/types/facilities'
 import { formatDateBR } from '@/lib/formatters'
 import {
@@ -59,10 +60,20 @@ import {
 
 export default function PontoProPage() {
   const { user } = useAuth()
+  const { settings } = useSettings()
+  const [currentTime, setCurrentTime] = useState<number>(Date.now())
   const [escalasHoje, setEscalasHoje] = useState<ConvocacaoRecord[]>([])
   const [pontosRegistrados, setPontosRegistrados] = useState<PontoRecord[]>([])
   const [pontosPendentes, setPontosPendentes] = useState<PontoPendenteItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // Atualizar relógio a cada segundo para contagem regressiva em tempo real
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now())
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   // Status de conectividade
   const [isOnline, setIsOnline] = useState<boolean>(
@@ -632,7 +643,27 @@ export default function PontoProPage() {
           })
 
           await loadData(false)
-        } catch (envioErr) {
+        } catch (envioErr: any) {
+          // Se for erro de validação/regra de negócio do servidor (400 com mensagem da trava), não enfileirar como falha de rede
+          const msgServidor =
+            envioErr?.response?.message || envioErr?.data?.message || envioErr?.message || ''
+          if (
+            envioErr?.status === 400 ||
+            msgServidor.includes('Você já registrou') ||
+            msgServidor.includes('Registre sua chegada') ||
+            msgServidor.includes('Saída muito próxima')
+          ) {
+            toast({
+              title: 'Registro não permitido',
+              description: msgServidor || 'Regra de registro de ponto não atendida.',
+              variant: 'destructive',
+            })
+            await loadData(false)
+            stopCamera()
+            setModalRegistroOpen(false)
+            return
+          }
+
           console.warn('Falha no envio online, salvando na fila offline:', envioErr)
           const itemPendente: PontoPendenteItem = {
             client_uuid: clientUuid,
@@ -973,29 +1004,94 @@ export default function PontoProPage() {
                           </div>
                         </div>
 
-                        {/* Botões de Ação */}
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          <Button
-                            size="sm"
-                            disabled={temChegada}
-                            onClick={() => openRegistroModal(conv, 'chegada')}
-                            className="text-xs font-semibold"
-                          >
-                            <Camera className="w-3.5 h-3.5 mr-1" />
-                            {temChegada ? 'Chegada Registrada' : 'Registrar Chegada'}
-                          </Button>
+                        {/* Botões de Ação com trava anti-duplicação e intervalo mínimo */}
+                        {(() => {
+                          // Obter intervalo mínimo (lido de settings ou fallback 10 min)
+                          const intervaloMinSaidaMin =
+                            Number(settings?.ponto_intervalo_min_saida_min) > 0
+                              ? Number(settings?.ponto_intervalo_min_saida_min)
+                              : 10
 
-                          <Button
-                            size="sm"
-                            disabled={!temChegada || temSaida}
-                            onClick={() => openRegistroModal(conv, 'saida')}
-                            variant={temSaida ? 'outline' : 'secondary'}
-                            className="text-xs font-semibold"
-                          >
-                            <Clock className="w-3.5 h-3.5 mr-1" />
-                            {temSaida ? 'Saída Registrada' : 'Registrar Saída'}
-                          </Button>
-                        </div>
+                          const pontoChegadaRef = pendenteChegada || pontoChegadaServidor
+                          let horaChegadaFormatada = ''
+                          let minRestantes = 0
+                          let saidaBloqueadaPorIntervalo = false
+
+                          if (pontoChegadaRef) {
+                            const tChegada = new Date(pontoChegadaRef.timestamp_real).getTime()
+                            horaChegadaFormatada = new Date(
+                              pontoChegadaRef.timestamp_real,
+                            ).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                            const msPassados = currentTime - tChegada
+                            const msNecessarios = intervaloMinSaidaMin * 60 * 1000
+                            const msRestantes = msNecessarios - msPassados
+                            if (msRestantes > 0) {
+                              saidaBloqueadaPorIntervalo = true
+                              minRestantes = Math.ceil(msRestantes / 60000)
+                            }
+                          }
+
+                          if (temChegada && temSaida) {
+                            return (
+                              <div className="pt-1">
+                                <Button
+                                  size="sm"
+                                  disabled
+                                  variant="outline"
+                                  className="w-full text-xs font-semibold bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed"
+                                >
+                                  <CheckCheck className="w-3.5 h-3.5 mr-1.5 text-primary" />
+                                  Ponto completo do turno
+                                </Button>
+                              </div>
+                            )
+                          }
+
+                          const labelChegada = temChegada
+                            ? `Chegada registrada às ${horaChegadaFormatada}`
+                            : 'Registrar Chegada'
+
+                          let labelSaida = 'Registrar Saída'
+                          if (temSaida) {
+                            labelSaida = 'Saída Registrada'
+                          } else if (temChegada && saidaBloqueadaPorIntervalo) {
+                            labelSaida = `Saída liberada em ${minRestantes} min`
+                          }
+
+                          const saidaDesabilitada =
+                            !temChegada || temSaida || saidaBloqueadaPorIntervalo
+
+                          return (
+                            <div className="grid grid-cols-2 gap-2 pt-1">
+                              <Button
+                                size="sm"
+                                disabled={temChegada}
+                                onClick={() => openRegistroModal(conv, 'chegada')}
+                                className="text-xs font-semibold"
+                                title={temChegada ? labelChegada : undefined}
+                              >
+                                <Camera className="w-3.5 h-3.5 mr-1" />
+                                <span className="truncate">{labelChegada}</span>
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                disabled={saidaDesabilitada}
+                                onClick={() => openRegistroModal(conv, 'saida')}
+                                variant={temSaida ? 'outline' : 'secondary'}
+                                className="text-xs font-semibold"
+                                title={
+                                  saidaBloqueadaPorIntervalo
+                                    ? `Aguarde ${minRestantes} min para registrar a saída (intervalo mínimo de ${intervaloMinSaidaMin} min)`
+                                    : undefined
+                                }
+                              >
+                                <Clock className="w-3.5 h-3.5 mr-1" />
+                                <span className="truncate">{labelSaida}</span>
+                              </Button>
+                            </div>
+                          )
+                        })()}
                       </CardContent>
                     </Card>
                   )
