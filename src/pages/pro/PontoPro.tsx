@@ -1027,7 +1027,8 @@ export default function PontoProPage() {
                             const msRestantes = msNecessarios - msPassados
                             if (msRestantes > 0) {
                               saidaBloqueadaPorIntervalo = true
-                              minRestantes = Math.ceil(msRestantes / 60000)
+                              // Se faltar menos de 1 minuto (ex: 45s), minRestantes pode ser 0 ou usar a regra de segundos
+                              minRestantes = Math.floor(msRestantes / 60000)
                             }
                           }
 
@@ -1055,7 +1056,10 @@ export default function PontoProPage() {
                           if (temSaida) {
                             labelSaida = 'Saída Registrada'
                           } else if (temChegada && saidaBloqueadaPorIntervalo) {
-                            labelSaida = `Saída liberada em ${minRestantes} min`
+                            labelSaida =
+                              minRestantes <= 0
+                                ? 'Saída liberada em segundos'
+                                : `Saída liberada em ${minRestantes} min`
                           }
 
                           const saidaDesabilitada =
@@ -1082,7 +1086,9 @@ export default function PontoProPage() {
                                 className="text-xs font-semibold"
                                 title={
                                   saidaBloqueadaPorIntervalo
-                                    ? `Aguarde ${minRestantes} min para registrar a saída (intervalo mínimo de ${intervaloMinSaidaMin} min)`
+                                    ? minRestantes <= 0
+                                      ? `Aguarde alguns segundos para registrar a saída (intervalo mínimo de ${intervaloMinSaidaMin} min)`
+                                      : `Aguarde ${minRestantes} min para registrar a saída (intervalo mínimo de ${intervaloMinSaidaMin} min)`
                                     : undefined
                                 }
                               >
