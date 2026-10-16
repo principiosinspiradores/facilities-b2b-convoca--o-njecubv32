@@ -235,6 +235,20 @@ export default function ConvocacoesPage() {
 
   const filteredConvocacoes = convocacoes.filter((c) => {
     if (activeTab === 'pendentes') {
+      // Trava de segurança: filtrar fora qualquer convocação cuja data do turno seja anterior a hoje (America/Sao_Paulo)
+      const dataEscala = c.expand?.escala?.data ? c.expand.escala.data.slice(0, 10) : ''
+      if (dataEscala) {
+        const hojeSp = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/Sao_Paulo',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(new Date())
+        if (dataEscala < hojeSp) {
+          return false
+        }
+      }
+
       return (
         c.status === 'pendente' ||
         (c.status === 'cancelada' && c.regra_aplicada === 'Vaga já preenchida')
