@@ -666,7 +666,7 @@ export default function EscalasPage() {
             data: isoDate,
             turno_inicio: horaIni,
             turno_fim: horaFim,
-            vagas: Math.max(1, postoAlvo.vagas || 1),
+            vagas: 1,
             status: 'convocada',
             multa_aplicada: false,
             valor_diaria: valorDiariaCalculada,
@@ -923,42 +923,38 @@ export default function EscalasPage() {
           regraCalculada = c.regra
         }
 
-        // 1. Trava anti-duplicação: verificar se já existe escala com mesmo posto + data + turno_inicio + turno_fim
+        // 1. Trava anti-duplicação: verificar quantas escalas já existem para este posto/data/turno
         const dataDia = d.slice(0, 10)
         const existentesGrupo = await pb.collection('escalas').getFullList<EscalaRecord>({
           filter: `posto = '${selectedPostoId}' && data ~ '${dataDia}' && turno_inicio = '${turnoInicio}' && turno_fim = '${turnoFim}' && status != 'cancelada'`,
         })
 
-        if (existentesGrupo && existentesGrupo.length > 0) {
-          // Escala já existente para este turno! NÃO criar duplicata.
-          // Atualizar vagas da existente se aplicável
-          for (const escExistente of existentesGrupo) {
-            if ((escExistente.vagas || 1) !== vagasPorTurno) {
-              await pb.collection('escalas').update(escExistente.id, {
-                vagas: vagasPorTurno,
-              })
-            }
-          }
+        const totalJaExistentes = existentesGrupo ? existentesGrupo.length : 0
+        const vagasFaltantes = Math.max(0, vagasPorTurno - totalJaExistentes)
+
+        if (vagasFaltantes <= 0) {
+          // Já existem todas as vagas necessárias cadastradas para este turno! NÃO criar duplicata.
           toast({
             title: 'Escala já existe para este posto/data/turno',
             description:
-              "Nada foi duplicado. Para incluir uma profissional EXTRA solicitada pelo cliente, use o botão 'Adicionar vaga extra' no card do turno.",
+              "As vagas configuradas já foram criadas. Para incluir uma profissional EXTRA solicitada pelo cliente, use o botão 'Adicionar vaga extra' no card do turno.",
             className: 'bg-amber-500 text-white border-amber-600',
           })
           continue
         }
 
-        // Criar N registros de escala para o mesmo dia/turno conforme o número de vagas
+        // Criar registros de escala com vagas=1 até completar o total de vagas do turno
         const isoDate = new Date(`${d}T12:00:00Z`).toISOString()
 
-        for (let vagaIdx = 0; vagaIdx < vagasPorTurno; vagaIdx++) {
+        for (let vagaIdx = 0; vagaIdx < vagasFaltantes; vagaIdx++) {
+          const numeroVagaAtual = totalJaExistentes + vagaIdx
           const novaEscala = await pb.collection('escalas').create<EscalaRecord>({
             posto: selectedPostoId,
             data: isoDate,
             turno_inicio: turnoInicio,
             turno_fim: turnoFim,
-            vagas: vagasPorTurno,
-            status: proFixoId && vagaIdx === 0 ? 'convocada' : 'aberta',
+            vagas: 1,
+            status: proFixoId && numeroVagaAtual === 0 ? 'convocada' : 'aberta',
             multa_aplicada: false,
             valor_diaria: vDiaria,
           })
@@ -1400,7 +1396,7 @@ export default function EscalasPage() {
       // Novo total de vagas do grupo = registros atuais do grupo + 1 nova escala
       const novoTotalVagas = (grupo.escalas?.length || 1) + 1
 
-      // 1. Criar UMA nova escala com os mesmos dados do grupo
+      // 1. Criar UMA nova escala com os mesmos dados do grupo (sempre vagas=1 no modelo padronizado)
       const novaEscala = await pb.collection('escalas').create<EscalaRecord>({
         posto: postoId,
         data: dataEscala,
@@ -1409,22 +1405,9 @@ export default function EscalasPage() {
         status: 'aberta',
         multa_aplicada: false,
         valor_diaria: valorDiaria,
-        vagas: novoTotalVagas,
+        vagas: 1,
         observacao: 'vaga extra',
       })
-
-      // 2. Atualizar o campo vagas de todas as escalas existentes do grupo
-      if (grupo.escalas && grupo.escalas.length > 0) {
-        for (const esc of grupo.escalas) {
-          try {
-            await pb.collection('escalas').update(esc.id, {
-              vagas: novoTotalVagas,
-            })
-          } catch (errUpd) {
-            console.warn('Erro ao atualizar vagas da escala existente:', esc.id, errUpd)
-          }
-        }
-      }
 
       toast({
         title: 'Vaga extra adicionada com sucesso!',
