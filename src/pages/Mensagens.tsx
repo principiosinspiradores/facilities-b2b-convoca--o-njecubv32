@@ -13,7 +13,7 @@ import {
   obterOuCriarConversaDireta,
 } from '@/services/mensagens'
 import pb from '@/lib/pocketbase/client'
-import { formatDateTimeBR, formatDateBR } from '@/lib/formatters'
+import { formatDateTimeBR, formatDateBR, formatTimeSP } from '@/lib/formatters'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -501,7 +501,7 @@ export default function MensagensPage() {
                         </span>
                         {conv.ultima_mensagem_data && (
                           <span className="text-[10px] text-slate-400 shrink-0 tabular-nums">
-                            {formatDateTimeBR(conv.ultima_mensagem_data).split(' ')[1] || ''}
+                            {formatTimeSP(conv.ultima_mensagem_data)}
                           </span>
                         )}
                       </div>
@@ -658,7 +658,7 @@ export default function MensagensPage() {
                               isMinha ? 'text-white/80' : 'text-slate-400'
                             }`}
                           >
-                            <span>{msg.created ? msg.created.slice(11, 16) : ''}</span>
+                            <span>{formatTimeSP(msg.created)}</span>
                             {isMinha && (
                               <span>
                                 {msg.lida ? (

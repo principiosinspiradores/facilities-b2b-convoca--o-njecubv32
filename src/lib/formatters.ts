@@ -48,3 +48,38 @@ export function formatDateTimeBR(dateTimeStr?: string | null): string {
     return dateTimeStr
   }
 }
+
+export function formatTimeSP(dateTimeStr?: string | null): string {
+  if (!dateTimeStr) return ''
+  try {
+    const d = new Date(dateTimeStr)
+    if (isNaN(d.getTime())) return ''
+    return new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(d)
+  } catch {
+    return ''
+  }
+}
+
+export function formatDateTimeSP(dateTimeStr?: string | null): string {
+  if (!dateTimeStr) return '—'
+  try {
+    const d = new Date(dateTimeStr)
+    if (isNaN(d.getTime())) return String(dateTimeStr)
+    return new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(d)
+  } catch {
+    return String(dateTimeStr)
+  }
+}

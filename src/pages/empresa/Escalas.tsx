@@ -198,10 +198,18 @@ export default function EscalasPage() {
   useEffect(() => {
     loadData()
 
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    const scheduleDebouncedLoad = () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        loadData()
+      }, 2000)
+    }
+
     let unsub: (() => void) | undefined
     pb.collection('escalas')
       .subscribe('*', () => {
-        loadData()
+        scheduleDebouncedLoad()
       })
       .then((u) => {
         unsub = u
@@ -209,6 +217,7 @@ export default function EscalasPage() {
       .catch(() => {})
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
       if (unsub) unsub()
     }
   }, [])
@@ -721,7 +730,7 @@ export default function EscalasPage() {
       })
 
       setModalCoberturaPeriodo(false)
-      loadData()
+      recarregarEscalasFiltro()
     } catch (err: any) {
       console.error('Erro ao gerar cobertura de período:', err)
       toast({
@@ -994,7 +1003,7 @@ export default function EscalasPage() {
       setModalNovaEscala(false)
       setModoRevisaoPeriodo(false)
       setPreviasPeriodo([])
-      loadData()
+      recarregarEscalasFiltro()
     } catch (err: any) {
       console.error(err)
       const errMsg = err?.message || (err?.data && JSON.stringify(err?.data)) || ''
@@ -1190,7 +1199,7 @@ export default function EscalasPage() {
       const isoDate = new Date(`${editData}T12:00:00Z`).toISOString()
 
       // 1. Atualizar a escala
-      await pb.collection('escalas').update(escalaParaEditar.id, {
+      const updatedEsc = await pb.collection('escalas').update<EscalaRecord>(escalaParaEditar.id, {
         data: isoDate,
         turno_inicio: editTurnoInicio,
         turno_fim: editTurnoFim,
@@ -1202,6 +1211,7 @@ export default function EscalasPage() {
       const convs = convocacoes.filter(
         (c) => c.escala === escalaParaEditar.id && c.status === 'pendente',
       )
+      const convUpdates: Record<string, { val: number; rule: string }> = {}
       for (const conv of convs) {
         const proObj = pros.find((p) => p.id === conv.pro)
         let val = editValorDiaria
@@ -1217,6 +1227,33 @@ export default function EscalasPage() {
           valor_diaria: val,
           regra_aplicada: rule,
         })
+        convUpdates[conv.id] = { val, rule }
+      }
+
+      // Patch local da escala e convocações atualizadas
+      setEscalas((prev) =>
+        prev.map((e) =>
+          e.id === escalaParaEditar.id
+            ? {
+                ...e,
+                ...updatedEsc,
+                expand: escalaParaEditar.expand,
+              }
+            : e,
+        ),
+      )
+      if (Object.keys(convUpdates).length > 0) {
+        setConvocacoes((prev) =>
+          prev.map((c) =>
+            convUpdates[c.id]
+              ? {
+                  ...c,
+                  valor_diaria: convUpdates[c.id].val,
+                  regra_aplicada: convUpdates[c.id].rule,
+                }
+              : c,
+          ),
+        )
       }
 
       toast({
@@ -1225,7 +1262,6 @@ export default function EscalasPage() {
       })
       setModalEditarEscala(false)
       setEscalaParaEditar(null)
-      loadData()
     } catch (err) {
       console.error(err)
       toast({
@@ -1303,6 +1339,11 @@ export default function EscalasPage() {
       // 2. Excluir a escala
       await pb.collection('escalas').delete(escalaParaExcluir.id)
 
+      // Patch local: remover escala e convocações associadas
+      const deletedEscalaId = escalaParaExcluir.id
+      setEscalas((prev) => prev.filter((e) => e.id !== deletedEscalaId))
+      setConvocacoes((prev) => prev.filter((c) => c.escala !== deletedEscalaId))
+
       toast({
         title: 'Escala excluída com sucesso!',
         description:
@@ -1312,7 +1353,6 @@ export default function EscalasPage() {
       })
       setModalExcluirEscala(false)
       setEscalaParaExcluir(null)
-      loadData()
     } catch (err) {
       console.error(err)
       toast({
@@ -1345,6 +1385,23 @@ export default function EscalasPage() {
         },
       )
 
+      // Patch local: atualizar status da convocação para cancelada e da escala para aberta
+      const canceledConvId = convocacaoParaCancelar.id
+      const targetEscalaId = convocacaoParaCancelar.escala || escalaConvocacaoParaCancelar?.id
+
+      setConvocacoes((prev) =>
+        prev.map((c) =>
+          c.id === canceledConvId
+            ? { ...c, status: 'cancelada' as const, regra_aplicada: 'cancelada pela gestão' }
+            : c,
+        ),
+      )
+      if (targetEscalaId) {
+        setEscalas((prev) =>
+          prev.map((e) => (e.id === targetEscalaId ? { ...e, status: 'aberta' as const } : e)),
+        )
+      }
+
       toast({
         title: 'Convocação cancelada com sucesso!',
         description:
@@ -1355,7 +1412,6 @@ export default function EscalasPage() {
       setModalCancelarConvocacao(false)
       setConvocacaoParaCancelar(null)
       setEscalaConvocacaoParaCancelar(null)
-      loadData()
     } catch (err: any) {
       console.error('Erro ao cancelar convocação pela gestão:', err)
       const msgErro =
@@ -1426,8 +1482,14 @@ export default function EscalasPage() {
         escalas: escalasAtualizadas,
       }
 
-      // Recarregar dados em segundo plano
-      loadData()
+      // Patch local: inserir nova escala criada na grade em memória
+      const novaEscalaComExpand = {
+        ...novaEscala,
+        expand: {
+          posto: grupo.posto || primeira.expand?.posto,
+        },
+      }
+      setEscalas((prev) => [...prev, novaEscalaComExpand])
 
       // 3. Abrir o modal de convocação existente para o usuário escolher a profissional extra
       openConvocarGrupoModal(grupoAtualizado)
@@ -1521,13 +1583,16 @@ export default function EscalasPage() {
         }
       }
 
+      // Patch local: remover do estado local as escalas e convocações do grupo
+      setEscalas((prev) => prev.filter((e) => !escalaIds.includes(e.id)))
+      setConvocacoes((prev) => prev.filter((c) => !escalaIds.includes(c.escala)))
+
       toast({
         title: 'Turno inteiro excluído!',
         description: `${grupoParaExcluirTurno.escalas.length} vaga(s) removida(s) com sucesso.`,
       })
       setModalExcluirTurnoInteiro(false)
       setGrupoParaExcluirTurno(null)
-      loadData()
     } catch (err) {
       console.error(err)
       toast({
@@ -1536,6 +1601,26 @@ export default function EscalasPage() {
       })
     } finally {
       setIsDeletingTurnoInteiro(false)
+    }
+  }
+
+  // Recarregar apenas as escalas e convocações da grade atual de forma leve
+  const recarregarEscalasFiltro = async () => {
+    try {
+      const [resEscalas, resConvocacoes] = await Promise.all([
+        pb.collection('escalas').getFullList<EscalaRecord>({
+          sort: 'data,turno_inicio',
+          expand: 'posto',
+        }),
+        pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
+          expand: 'pro',
+        }),
+      ])
+      setEscalas(resEscalas || [])
+      setConvocacoes(resConvocacoes || [])
+    } catch (e) {
+      console.error('Erro ao recarregar escalas filtradas:', e)
+      loadData()
     }
   }
 
@@ -1580,6 +1665,7 @@ export default function EscalasPage() {
 
       // Atualizar convocações pendentes vinculadas (não as aceitas!)
       const convs = convocacoes.filter((c) => c.escala === escala.id && c.status === 'pendente')
+      const convUpdates: Record<string, { val: number; rule: string }> = {}
       for (const conv of convs) {
         const proObj = pros.find((p) => p.id === conv.pro)
         let val = est.valor
@@ -1595,13 +1681,31 @@ export default function EscalasPage() {
           valor_diaria: val,
           regra_aplicada: rule,
         })
+        convUpdates[conv.id] = { val, rule }
+      }
+
+      // Patch local da escala e convocações
+      setEscalas((prev) =>
+        prev.map((e) => (e.id === escala.id ? { ...e, valor_diaria: est.valor } : e)),
+      )
+      if (Object.keys(convUpdates).length > 0) {
+        setConvocacoes((prev) =>
+          prev.map((c) =>
+            convUpdates[c.id]
+              ? {
+                  ...c,
+                  valor_diaria: convUpdates[c.id].val,
+                  regra_aplicada: convUpdates[c.id].rule,
+                }
+              : c,
+          ),
+        )
       }
 
       toast({
         title: 'Valor recalculado!',
         description: `Novo valor: ${formatCurrencyBRL(est.valor)} (Regra: ${est.regra}).`,
       })
-      loadData()
     } catch (err) {
       console.error(err)
       toast({
@@ -1670,11 +1774,20 @@ export default function EscalasPage() {
         }
       }
 
+      // Patch local para as escalas sem aceite do grupo
+      const grupoEscalaIds = grupo.escalas.map((e: EscalaRecord) => e.id)
+      setEscalas((prev) =>
+        prev.map((e) =>
+          grupoEscalaIds.includes(e.id) && !escalaTemAceite(e)
+            ? { ...e, valor_diaria: est.valor }
+            : e,
+        ),
+      )
+
       toast({
         title: 'Valores recalculados com sucesso!',
         description: `${vagasAtualizadas} vaga(s) atualizada(s) para ${formatCurrencyBRL(est.valor)} (Regra: ${est.regra}).`,
       })
-      loadData()
     } catch (err) {
       console.error(err)
       toast({
@@ -1743,6 +1856,8 @@ export default function EscalasPage() {
     const candidatos = elegiveis.slice(0, vagasNecessarias)
     const now = new Date().toISOString()
     let disparadas = 0
+    const novasConvs: ConvocacaoRecord[] = []
+    const escalasAlvoIdsAfetadas = new Set<string>()
 
     try {
       for (let i = 0; i < candidatos.length; i++) {
@@ -1759,7 +1874,7 @@ export default function EscalasPage() {
           rule = 'valor negociado (preenchimento)'
         }
 
-        await pb.collection('convocacoes').create({
+        const novaC = await pb.collection('convocacoes').create<ConvocacaoRecord>({
           escala: escalaAlvo.id,
           pro: proObj.id,
           status: 'pendente',
@@ -1767,6 +1882,8 @@ export default function EscalasPage() {
           regra_aplicada: rule,
           data_convocacao: now,
         })
+        novasConvs.push({ ...novaC, expand: { pro: proObj } })
+        escalasAlvoIdsAfetadas.add(escalaAlvo.id)
         disparadas++
 
         if (escalaAlvo.status === 'aberta') {
@@ -1776,11 +1893,20 @@ export default function EscalasPage() {
         }
       }
 
+      // Patch local: adicionar novas convocações e marcar escalas como convocadas
+      setConvocacoes((prev) => [...novasConvs, ...prev])
+      setEscalas((prev) =>
+        prev.map((e) =>
+          escalasAlvoIdsAfetadas.has(e.id) && e.status === 'aberta'
+            ? { ...e, status: 'convocada' as const }
+            : e,
+        ),
+      )
+
       toast({
         title: 'Convocações disparadas!',
         description: `${disparadas} elegíveis convocados automaticamente para preencher as vagas pendentes.`,
       })
-      loadData()
     } catch (err) {
       console.error(err)
       toast({
@@ -1804,6 +1930,8 @@ export default function EscalasPage() {
     let totalConvocadas = 0
     let totalJaConvocadas = 0
     let totalFalhas = 0
+    const criadasConvs: ConvocacaoRecord[] = []
+    const escalasConvocadasIds = new Set<string>()
 
     try {
       const now = new Date().toISOString()
@@ -1843,7 +1971,7 @@ export default function EscalasPage() {
         }
 
         try {
-          await pb.collection('convocacoes').create({
+          const recC = await pb.collection('convocacoes').create<ConvocacaoRecord>({
             escala: escalaAtual.id,
             pro: proId,
             status: 'pendente',
@@ -1852,6 +1980,8 @@ export default function EscalasPage() {
             data_convocacao: now,
           })
 
+          criadasConvs.push({ ...recC, expand: { pro: proObj } })
+          escalasConvocadasIds.add(escalaAtual.id)
           totalConvocadas++
 
           if (escalaAtual.status === 'aberta') {
@@ -1874,12 +2004,23 @@ export default function EscalasPage() {
         }
       }
 
+      // Patch local: adicionar registros convocados e atualizar status da escala
+      if (criadasConvs.length > 0) {
+        setConvocacoes((prev) => [...criadasConvs, ...prev])
+        setEscalas((prev) =>
+          prev.map((e) =>
+            escalasConvocadasIds.has(e.id) && e.status === 'aberta'
+              ? { ...e, status: 'convocada' as const }
+              : e,
+          ),
+        )
+      }
+
       toast({
         title: 'Resumo das convocações',
         description: `${totalConvocadas} convocadas, ${totalJaConvocadas} já estavam convocadas, ${totalFalhas} falhas.`,
       })
       setModalConvocar(false)
-      loadData()
     } catch (err) {
       console.error(err)
       toast({

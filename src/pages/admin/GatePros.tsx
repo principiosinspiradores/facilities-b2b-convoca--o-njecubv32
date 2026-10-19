@@ -466,7 +466,11 @@ export default function GateProsPage() {
 
       setNewSenhaInicial('')
       setCreateModalOpen(false)
-      loadData()
+      if (res.record) {
+        setPros((prev) => [res.record, ...prev.filter((p) => p.id !== res.record.id)])
+      } else {
+        loadData()
+      }
     } catch (err: any) {
       console.error('Erro ao cadastrar Pro:', err)
 
@@ -665,7 +669,7 @@ export default function GateProsPage() {
         payload.bloqueado_ate = null
       }
 
-      await atualizarPro(selectedPro.id, payload)
+      const updatedUser = await atualizarPro(selectedPro.id, payload)
 
       if (emailAlteradoOk) {
         toast({
@@ -679,7 +683,7 @@ export default function GateProsPage() {
         })
       }
       setEditModalOpen(false)
-      loadData()
+      setPros((prev) => prev.map((p) => (p.id === selectedPro.id ? { ...p, ...updatedUser } : p)))
     } catch (err: any) {
       console.error(err)
       toast({
@@ -749,19 +753,25 @@ export default function GateProsPage() {
 
     setActionLoadingId(pro.id)
     try {
-      await pb.collection('users').update(pro.id, {
+      const bloqAte = !isCurrentlyBlocked
+        ? new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString()
+        : null
+      const updatedUser = await pb.collection('users').update<UserRecord>(pro.id, {
         status: newStatus,
         emailVisibility: true,
-        bloqueado_ate: !isCurrentlyBlocked
-          ? new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString()
-          : null,
+        bloqueado_ate: bloqAte,
       })
+
+      setPros((prev) =>
+        prev.map((p) =>
+          p.id === pro.id ? { ...p, ...updatedUser, status: newStatus, bloqueado_ate: bloqAte } : p,
+        ),
+      )
 
       toast({
         title: isCurrentlyBlocked ? 'Profissional Desbloqueado' : 'Profissional Bloqueado',
         description: `O profissional "${pro.name || pro.email}" agora está com status ${newStatus.toUpperCase()}.`,
       })
-      loadData()
     } catch (err) {
       console.error(err)
       toast({
@@ -870,9 +880,19 @@ export default function GateProsPage() {
           </p>
         </div>
 
-        {/* Botão de Cadastro acessível para Empresa e Admin */}
+        {/* Botão de Cadastro e Recarga Manual */}
         <div className="flex items-center gap-2 shrink-0">
-          <Button onClick={openCreateModal} className="shadow-xs font-semibold">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadData}
+            title="Atualizar lista de profissionais"
+            className="text-slate-600 border-slate-200 hover:bg-slate-100 text-xs h-9 px-3"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isLoading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+          <Button onClick={openCreateModal} className="shadow-xs font-semibold h-9">
             <UserPlus className="w-4 h-4 mr-2" />
             Cadastrar Pro
           </Button>

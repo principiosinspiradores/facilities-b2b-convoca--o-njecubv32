@@ -13,7 +13,7 @@ import {
   TipoAlertaCobertura,
   HistoricoEscalaRecord,
 } from '@/types/facilities'
-import { formatDateBR, formatCurrencyBRL } from '@/lib/formatters'
+import { formatDateBR, formatCurrencyBRL, formatTimeSP } from '@/lib/formatters'
 import {
   detectarAlertasCobertura,
   executarConvocacaoManual,
@@ -172,41 +172,50 @@ export default function CoberturaPage() {
   useEffect(() => {
     loadData()
 
-    // Realtime subscriptions
+    // Realtime subscriptions com debounce de 2s para agrupar múltiplos eventos sem engasgar a UI
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    const scheduleDebouncedLoad = () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        loadData()
+      }, 2000)
+    }
+
     let unsubEscalas: (() => void) | undefined
     let unsubConvocacoes: (() => void) | undefined
     let unsubHistorico: (() => void) | undefined
     let unsubPontos: (() => void) | undefined
 
     pb.collection('escalas')
-      .subscribe('*', () => loadData())
+      .subscribe('*', () => scheduleDebouncedLoad())
       .then((u) => {
         unsubEscalas = u
       })
       .catch(() => {})
 
     pb.collection('convocacoes')
-      .subscribe('*', () => loadData())
+      .subscribe('*', () => scheduleDebouncedLoad())
       .then((u) => {
         unsubConvocacoes = u
       })
       .catch(() => {})
 
     pb.collection('historico_escalas')
-      .subscribe('*', () => loadData())
+      .subscribe('*', () => scheduleDebouncedLoad())
       .then((u) => {
         unsubHistorico = u
       })
       .catch(() => {})
 
     pb.collection('pontos')
-      .subscribe('*', () => loadData())
+      .subscribe('*', () => scheduleDebouncedLoad())
       .then((u) => {
         unsubPontos = u
       })
       .catch(() => {})
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
       if (unsubEscalas) unsubEscalas()
       if (unsubConvocacoes) unsubConvocacoes()
       if (unsubHistorico) unsubHistorico()
@@ -322,13 +331,20 @@ export default function CoberturaPage() {
 
     setIsConfirmingFalta(true)
     try {
-      await pb.collection('convocacoes').update(convAceita.id, { status: 'falta' })
+      const updatedConv = await pb
+        .collection('convocacoes')
+        .update<ConvocacaoRecord>(convAceita.id, {
+          status: 'falta',
+        })
+      // Patch local na convocação alterada
+      setConvocacoes((prev) =>
+        prev.map((c) => (c.id === convAceita.id ? { ...c, ...updatedConv, status: 'falta' } : c)),
+      )
       toast({
         title: 'Falta registrada com sucesso!',
         description: `No-show confirmado para ${modalFaltaAlerta.proAceito?.name || 'o profissional'}. Vaga reofertada e multa aplicada.`,
       })
       setModalFaltaAlerta(null)
-      loadData()
     } catch (err: any) {
       console.error('Erro ao confirmar falta:', err)
       toast({
@@ -1505,7 +1521,7 @@ export default function CoberturaPage() {
                       <div className="flex items-center justify-between font-semibold text-slate-800">
                         <span className="capitalize">{item.acao.replace(/_/g, ' ')}</span>
                         <span className="text-[10px] text-slate-400 font-normal">
-                          {formatDateBR(item.created)} {item.created.slice(11, 16)}
+                          {formatDateBR(item.created)} {formatTimeSP(item.created)}
                         </span>
                       </div>
                       <p className="text-slate-600 text-[11px]">{item.descricao}</p>
