@@ -16,6 +16,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Select,
@@ -88,6 +89,11 @@ export default function ConferenciaPontoPage() {
   const [modalPonto, setModalPonto] = useState<PontoRecord | null>(null)
   const [observacaoGestao, setObservacaoGestao] = useState('')
   const [isUpdatingPonto, setIsUpdatingPonto] = useState(false)
+
+  // Seleção e ação em lote para Alertas de Presença sem Convocação
+  const [selectedAlertasIds, setSelectedAlertasIds] = useState<string[]>([])
+  const [obsLoteAlertas, setObsLoteAlertas] = useState('')
+  const [isExecutingLote, setIsExecutingLote] = useState(false)
 
   const loadData = async () => {
     setIsLoading(true)
@@ -201,10 +207,23 @@ export default function ConferenciaPontoPage() {
     if (!modalPonto) return
     setIsUpdatingPonto(true)
     try {
-      await pb.collection('pontos').update(modalPonto.id, {
+      const updatedPonto = await pb.collection('pontos').update<PontoRecord>(modalPonto.id, {
         status_validacao: novoStatus,
         observacao_gestao: observacaoGestao,
       })
+
+      setPontos((prev) =>
+        prev.map((p) =>
+          p.id === modalPonto.id
+            ? {
+                ...p,
+                status_validacao: novoStatus,
+                observacao_gestao: observacaoGestao,
+                updated: updatedPonto.updated || new Date().toISOString(),
+              }
+            : p,
+        ),
+      )
 
       toast({
         title: novoStatus === 'contestado' ? 'Ponto contestado' : 'Ponto validado com sucesso',
@@ -212,7 +231,6 @@ export default function ConferenciaPontoPage() {
       })
 
       setModalPonto(null)
-      loadData()
     } catch (err) {
       console.error(err)
       toast({
@@ -222,6 +240,72 @@ export default function ConferenciaPontoPage() {
     } finally {
       setIsUpdatingPonto(false)
     }
+  }
+
+  // Validação em lote dos alertas de presença sem convocação
+  const handleAcaoLoteAlertas = async (novoStatus: 'aprovado_manual' | 'contestado') => {
+    if (selectedAlertasIds.length === 0) return
+    setIsExecutingLote(true)
+
+    const idsParaProcessar = [...selectedAlertasIds]
+    const resultados = await Promise.allSettled(
+      idsParaProcessar.map((id) =>
+        pb.collection('pontos').update(id, {
+          status_validacao: novoStatus,
+          observacao_gestao: obsLoteAlertas,
+        }),
+      ),
+    )
+
+    const sucessoIds: string[] = []
+    let falhasQtd = 0
+
+    resultados.forEach((res, index) => {
+      if (res.status === 'fulfilled') {
+        sucessoIds.push(idsParaProcessar[index])
+      } else {
+        falhasQtd++
+        console.error(`Erro ao atualizar ponto ${idsParaProcessar[index]}:`, res.reason)
+      }
+    })
+
+    if (sucessoIds.length > 0) {
+      setPontos((prev) =>
+        prev.map((p) =>
+          sucessoIds.includes(p.id)
+            ? {
+                ...p,
+                status_validacao: novoStatus,
+                observacao_gestao: obsLoteAlertas,
+              }
+            : p,
+        ),
+      )
+    }
+
+    // Limpar IDs que tiveram sucesso
+    setSelectedAlertasIds((prev) => prev.filter((id) => !sucessoIds.includes(id)))
+    if (falhasQtd === 0) {
+      setObsLoteAlertas('')
+    }
+
+    if (falhasQtd === 0) {
+      toast({
+        title:
+          novoStatus === 'aprovado_manual'
+            ? 'Alertas aprovados com sucesso'
+            : 'Alertas contestados com sucesso',
+        description: `${sucessoIds.length} registro(s) marcado(s) como "${novoStatus}".`,
+      })
+    } else {
+      toast({
+        title: 'Operação em lote concluída com divergências',
+        description: `${sucessoIds.length} registro(s) atualizado(s) com sucesso; ${falhasQtd} falha(s).`,
+        variant: sucessoIds.length > 0 ? 'default' : 'destructive',
+      })
+    }
+
+    setIsExecutingLote(false)
   }
 
   // Exportação CSV do relatório do ponto mensal com novas colunas offline/sincronização
@@ -352,7 +436,9 @@ export default function ConferenciaPontoPage() {
   }, [atestados, filtroAtestadoStatus])
 
   const alertasPresencaSemConvocacao = useMemo(() => {
-    return pontos.filter((p) => p.aviso_sem_convocacao)
+    return pontos.filter(
+      (p) => p.aviso_sem_convocacao && (!p.status_validacao || p.status_validacao === 'alerta'),
+    )
   }, [pontos])
 
   // Turnos do dia com convocação aceita sem registro de chegada (minutosDesdeInicio > 15)
@@ -422,12 +508,18 @@ export default function ConferenciaPontoPage() {
     setIsConfirmingFalta(true)
     try {
       await pb.collection('convocacoes').update(modalFaltaItem.convocacaoId, { status: 'falta' })
+
+      setConvocacoesDoDia((prev) =>
+        prev.map((c) =>
+          c.id === modalFaltaItem.convocacaoId ? { ...c, status: 'falta' as const } : c,
+        ),
+      )
+
       toast({
         title: 'Falta registrada com sucesso!',
         description: `No-show confirmado para ${modalFaltaItem.pro?.name || 'o profissional'}. Vaga reofertada e multa aplicada.`,
       })
       setModalFaltaItem(null)
-      loadData()
     } catch (err: any) {
       console.error('Erro ao confirmar falta na conferência de ponto:', err)
       toast({
@@ -461,6 +553,24 @@ export default function ConferenciaPontoPage() {
         observacao: obsAtestado,
       })
 
+      const targetId = modalAtestado.id
+      setAtestados((prev) =>
+        prev.map((a) =>
+          a.id === targetId
+            ? {
+                ...a,
+                status_validacao: status,
+                observacao_validacao: obsAtestado,
+                validado_por: user.id,
+                expand: {
+                  ...a.expand,
+                  validado_por: user,
+                },
+              }
+            : a,
+        ),
+      )
+
       toast({
         title: status === 'aprovado' ? 'Atestado aprovado!' : 'Atestado rejeitado',
         description:
@@ -471,7 +581,6 @@ export default function ConferenciaPontoPage() {
 
       setModalAtestado(null)
       setObsAtestado('')
-      loadData()
     } catch (err) {
       console.error('Erro ao validar atestado:', err)
       toast({
@@ -761,13 +870,62 @@ export default function ConferenciaPontoPage() {
             </CardContent>
           </Card>
 
+          {/* Barra de ação em lote quando houver 1+ itens selecionados */}
+          {selectedAlertasIds.length > 0 && (
+            <div className="bg-rose-100/80 border border-rose-300 rounded-xl p-3 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Badge className="bg-rose-700 text-white font-bold text-xs">
+                  {selectedAlertasIds.length} selecionado(s)
+                </Badge>
+                <span className="text-xs font-semibold text-rose-950">
+                  Ação em lote sobre os alertas selecionados
+                </span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <Input
+                  type="text"
+                  placeholder="Observação da gestão (opcional, aplicada a todos)..."
+                  value={obsLoteAlertas}
+                  onChange={(e) => setObsLoteAlertas(e.target.value)}
+                  className="h-8 text-xs bg-white border-rose-300 min-w-[240px] max-w-sm"
+                  disabled={isExecutingLote}
+                />
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    size="sm"
+                    onClick={() => handleAcaoLoteAlertas('aprovado_manual')}
+                    disabled={isExecutingLote}
+                    className="h-8 text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                    {isExecutingLote ? 'Processando...' : 'Aprovar selecionados'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => handleAcaoLoteAlertas('contestado')}
+                    disabled={isExecutingLote}
+                    className="h-8 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white"
+                  >
+                    <XCircle className="w-3.5 h-3.5 mr-1" />
+                    {isExecutingLote ? 'Processando...' : 'Contestar selecionados'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {alertasPresencaSemConvocacao.length === 0 ? (
             <Card className="text-center py-12 border-dashed border-2 border-slate-200 bg-white">
               <CardContent className="space-y-2">
                 <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
-                <h3 className="font-semibold text-slate-700">Nenhum alerta de não-intermediação</h3>
+                <h3 className="font-semibold text-slate-700">
+                  Nenhum alerta de não-intermediação pendente
+                </h3>
                 <p className="text-xs text-slate-400">
-                  Todas as presenças registradas no sistema possuíam convocação formalizada.
+                  Todas as presenças registradas no sistema possuíam convocação formalizada ou já
+                  foram tratadas.
                 </p>
               </CardContent>
             </Card>
@@ -777,6 +935,22 @@ export default function ConferenciaPontoPage() {
                 <table className="w-full text-xs text-left">
                   <thead className="bg-rose-50/50 text-rose-900 uppercase tracking-wider font-semibold border-b border-rose-200">
                     <tr>
+                      <th className="p-3 w-10 text-center">
+                        <Checkbox
+                          checked={
+                            alertasPresencaSemConvocacao.length > 0 &&
+                            selectedAlertasIds.length === alertasPresencaSemConvocacao.length
+                          }
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedAlertasIds(alertasPresencaSemConvocacao.map((p) => p.id))
+                            } else {
+                              setSelectedAlertasIds([])
+                            }
+                          }}
+                          aria-label="Selecionar todos os alertas"
+                        />
+                      </th>
                       <th className="p-3">Data / Hora Real</th>
                       <th className="p-3">Profissional</th>
                       <th className="p-3">Posto Detectado</th>
@@ -790,9 +964,29 @@ export default function ConferenciaPontoPage() {
                       const pro = p.expand?.pro
                       const posto = p.expand?.posto || p.expand?.escala?.expand?.posto
                       const fotoUrl = p.foto ? pb.files.getURL(p, p.foto) : null
+                      const isSelected = selectedAlertasIds.includes(p.id)
 
                       return (
-                        <tr key={p.id} className="hover:bg-rose-50/20 bg-rose-50/10">
+                        <tr
+                          key={p.id}
+                          className={`hover:bg-rose-50/30 transition-colors ${
+                            isSelected ? 'bg-rose-100/40' : 'bg-rose-50/10'
+                          }`}
+                        >
+                          <td className="p-3 text-center">
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedAlertasIds((prev) => [...prev, p.id])
+                                } else {
+                                  setSelectedAlertasIds((prev) => prev.filter((id) => id !== p.id))
+                                }
+                              }}
+                              aria-label={`Selecionar alerta ${p.id}`}
+                            />
+                          </td>
+
                           <td className="p-3">
                             <div className="font-bold text-slate-900">
                               {new Date(p.timestamp_real).toLocaleDateString('pt-BR')}
