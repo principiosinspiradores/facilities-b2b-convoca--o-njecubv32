@@ -871,76 +871,42 @@ onRecordUpdate((e) => {
         if (!valorDiariaFreelancer) valorDiariaFreelancer = 180
       }
 
-      const pros = $app.findRecordsByFilter(
-        'users',
-        "role = 'pro' && (status = 'ativo' || status = 'teste') && id != '" + proId + "'",
-        '-created',
-        15,
-        0,
-      )
+      // Identificar proId da convocação marcada como falta e também pro de qualquer convocação de falta da mesma escala
+      const proFaltaId = proId || record.getString('pro')
+      let proEscalaFaltaId = ''
+      try {
+        const convFaltaEscala = $app.findRecordsByFilter(
+          'convocacoes',
+          `escala = '${escalaId}' && status = 'falta'`,
+          '-updated',
+          1,
+          0,
+        )
+        if (convFaltaEscala && convFaltaEscala.length > 0) {
+          proEscalaFaltaId = convFaltaEscala[0].getString('pro')
+        }
+      } catch (_) {}
+
+      // Obter lista filtrada de profissionais elegíveis via helper compartilhado
+      let pros = []
+      if (
+        typeof ElegibilidadeReoferta !== 'undefined' &&
+        ElegibilidadeReoferta.buscarProsElegiveisReoferta
+      ) {
+        pros = ElegibilidadeReoferta.buscarProsElegiveisReoferta({
+          escala: escala,
+          posto: posto,
+          proExcluidoId: proFaltaId,
+          proEscalaFaltaId: proEscalaFaltaId,
+          now: now,
+        })
+      }
 
       const convCol = $app.findCollectionByNameOrId('convocacoes')
       let countReoferta = 0
 
-      const postoIdEscala = escala.getString('posto')
-      const dataEscalaStr = escala.getString('data').slice(0, 10)
-      const turnoInicioEscala = escala.getString('turno_inicio')
-      const turnoFimEscala = escala.getString('turno_fim')
-
-      const escalasDoPostoNaData = $app.findRecordsByFilter(
-        'escalas',
-        `posto = '${postoIdEscala}' && data ~ '${dataEscalaStr}' && status != 'cancelada'`,
-        'created',
-        100,
-        0,
-      )
-
       for (let i = 0; i < pros.length; i++) {
         const p = pros[i]
-        const bloqueadoAte = p.getString('bloqueado_ate')
-        if (bloqueadoAte) {
-          const dtBloq = new Date(bloqueadoAte)
-          if (dtBloq.getTime() > now.getTime()) {
-            continue
-          }
-        }
-
-        const existing = $app.findRecordsByFilter(
-          'convocacoes',
-          "escala = '" + escalaId + "' && pro = '" + p.id + "'",
-          '-created',
-          1,
-          0,
-        )
-        if (existing && existing.length > 0) {
-          continue
-        }
-
-        // Excluir pros que já têm convocação status='aceita' em qualquer escala do mesmo posto + mesma data com turno sobreposto
-        let temAceiteSobreposto = false
-        for (let ep = 0; ep < escalasDoPostoNaData.length; ep++) {
-          const escPosto = escalasDoPostoNaData[ep]
-          const convsAceitas = $app.findRecordsByFilter(
-            'convocacoes',
-            `escala = '${escPosto.id}' && pro = '${p.id}' && status = 'aceita'`,
-            '-created',
-            10,
-            0,
-          )
-          if (convsAceitas && convsAceitas.length > 0) {
-            const iniA = turnoInicioEscala
-            const fimA = turnoFimEscala
-            const iniB = escPosto.getString('turno_inicio')
-            const fimB = escPosto.getString('turno_fim')
-            if (iniA < fimB && iniB < fimA) {
-              temAceiteSobreposto = true
-              break
-            }
-          }
-        }
-        if (temAceiteSobreposto) {
-          continue
-        }
 
         let proValor = valorDiariaFreelancer
         let regra = 'reoferta automática por falta (no-show)'

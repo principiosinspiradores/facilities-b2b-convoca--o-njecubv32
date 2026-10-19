@@ -853,37 +853,28 @@ onRecordUpdate((e) => {
           if (!valorDiariaFreelancer) valorDiariaFreelancer = 180
         }
 
-        const pros = $app.findRecordsByFilter(
-          'users',
-          "role = 'pro' && (status = 'ativo' || status = 'teste') && id != '" + proId + "'",
-          '-created',
-          15,
-          0,
-        )
+        // Pro que cancelou/recusou a convocação
+        const proCancelouId = proId || record.getString('pro')
+
+        // Obter lista filtrada de profissionais elegíveis via helper compartilhado
+        let pros = []
+        if (
+          typeof ElegibilidadeReoferta !== 'undefined' &&
+          ElegibilidadeReoferta.buscarProsElegiveisReoferta
+        ) {
+          pros = ElegibilidadeReoferta.buscarProsElegiveisReoferta({
+            escala: escala,
+            posto: posto,
+            proExcluidoId: proCancelouId,
+            now: now,
+          })
+        }
 
         const convCol = $app.findCollectionByNameOrId('convocacoes')
         let countReoferta = 0
 
         for (let i = 0; i < pros.length; i++) {
           const p = pros[i]
-          const bloqueadoAte = p.getString('bloqueado_ate')
-          if (bloqueadoAte) {
-            const dtBloq = new Date(bloqueadoAte)
-            if (dtBloq.getTime() > now.getTime()) {
-              continue
-            }
-          }
-
-          const existing = $app.findRecordsByFilter(
-            'convocacoes',
-            "escala = '" + escalaId + "' && pro = '" + p.id + "'",
-            '-created',
-            1,
-            0,
-          )
-          if (existing && existing.length > 0) {
-            continue
-          }
 
           let proValor = valorDiariaFreelancer
           let regra = isProFixo
