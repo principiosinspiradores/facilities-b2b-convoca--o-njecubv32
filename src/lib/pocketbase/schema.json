@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-19T14:46:18.533Z",
+  "generatedAt": "2026-10-22T19:54:04.337Z",
   "collections": [
     {
       "name": "users",
@@ -977,6 +977,24 @@
         {
           "name": "vapid_subject",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "horas_trava_cancelamento",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "horas_multa_cancelamento",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "multa_cancelamento_12h",
+          "type": "number",
           "required": false,
           "system": false
         }

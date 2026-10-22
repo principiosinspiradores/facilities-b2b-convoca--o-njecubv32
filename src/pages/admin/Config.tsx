@@ -59,6 +59,9 @@ export default function ConfigPage() {
   const [multaEmpresaCancelamento, setMultaEmpresaCancelamento] = useState(0)
   const [horasBloqueioCancelamento, setHorasBloqueioCancelamento] = useState(24)
   const [limiteReincidenciaSuspensao, setLimiteReincidenciaSuspensao] = useState(2)
+  const [horasTravaCancelamento, setHorasTravaCancelamento] = useState(6)
+  const [horasMultaCancelamento, setHorasMultaCancelamento] = useState(12)
+  const [multaCancelamento12h, setMultaCancelamento12h] = useState(50)
 
   // 4. Configuração de Pagamento da Empresa
   const [payoutProvider, setPayoutProvider] = useState<'mercadopago' | 'pix_manual' | 'outro'>(
@@ -84,6 +87,9 @@ export default function ConfigPage() {
       setMultaEmpresaCancelamento(settings.multa_empresa_cancelamento ?? 0)
       setHorasBloqueioCancelamento(settings.horas_bloqueio_cancelamento ?? 24)
       setLimiteReincidenciaSuspensao(settings.limite_reincidencia_suspensao ?? 2)
+      setHorasTravaCancelamento(settings.horas_trava_cancelamento ?? 6)
+      setHorasMultaCancelamento(settings.horas_multa_cancelamento ?? 12)
+      setMultaCancelamento12h(settings.multa_cancelamento_12h ?? 50)
 
       setEmpresaPixChave(settings.empresa_pix_chave || 'financeiro@facilitiespro.com.br')
       setEmpresaPixTipo(settings.empresa_pix_tipo || 'email')
@@ -168,6 +174,9 @@ export default function ConfigPage() {
       formData.append('multa_empresa_cancelamento', String(Number(multaEmpresaCancelamento)))
       formData.append('horas_bloqueio_cancelamento', String(Number(horasBloqueioCancelamento)))
       formData.append('limite_reincidencia_suspensao', String(Number(limiteReincidenciaSuspensao)))
+      formData.append('horas_trava_cancelamento', String(Number(horasTravaCancelamento)))
+      formData.append('horas_multa_cancelamento', String(Number(horasMultaCancelamento)))
+      formData.append('multa_cancelamento_12h', String(Number(multaCancelamento12h)))
 
       formData.append('empresa_pix_chave', empresaPixChave.trim())
       formData.append('empresa_pix_tipo', empresaPixTipo.trim())
@@ -550,6 +559,60 @@ export default function ConfigPage() {
                       />
                       <p className="text-[11px] text-slate-400 mt-1">
                         Penalidade financeira opcional debitada no cancelamento pós-aceite.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        Horas Trava Cancelamento *
+                      </label>
+                      <Input
+                        type="number"
+                        value={horasTravaCancelamento}
+                        onChange={(e) => setHorasTravaCancelamento(Number(e.target.value))}
+                        min={0}
+                        max={168}
+                        required
+                      />
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Com menos de X horas para o início do turno, o cancelamento pelo pro é
+                        bloqueado (default 6h).
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        Horas Multa Cancelamento *
+                      </label>
+                      <Input
+                        type="number"
+                        value={horasMultaCancelamento}
+                        onChange={(e) => setHorasMultaCancelamento(Number(e.target.value))}
+                        min={0}
+                        max={168}
+                        required
+                      />
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        A partir da trava e antes destas horas, aplica-se multa escalonada (default
+                        12h).
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        Multa Cancelamento &lt;12h (R$)
+                      </label>
+                      <Input
+                        type="number"
+                        value={multaCancelamento12h}
+                        onChange={(e) => setMultaCancelamento12h(Number(e.target.value))}
+                        min={0}
+                      />
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Valor da multa aplicada no cancelamento tardio entre a trava e este limite
+                        (default R$ 50).
                       </p>
                     </div>
                   </div>

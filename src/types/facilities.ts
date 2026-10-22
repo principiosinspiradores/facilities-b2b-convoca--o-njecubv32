@@ -310,6 +310,9 @@ export interface SettingsRecord {
   multa_empresa_cancelamento: number
   horas_bloqueio_cancelamento?: number
   limite_reincidencia_suspensao?: number
+  horas_trava_cancelamento?: number
+  horas_multa_cancelamento?: number
+  multa_cancelamento_12h?: number
   empresa_pix_chave?: string
   empresa_pix_tipo?: string
   empresa_titular?: string

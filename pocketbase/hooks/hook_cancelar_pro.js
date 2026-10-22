@@ -586,8 +586,6 @@ onRecordUpdate((e) => {
       sendPushNotification: sendPushNotification,
     }
   })()
-  e.next()
-
   const record = e.record
   const originalStatus = e.record.original().getString('status')
   const newStatus = record.getString('status')
@@ -620,6 +618,64 @@ onRecordUpdate((e) => {
       escala = $app.findRecordById('escalas', escalaId)
       posto = $app.findRecordById('postos', escala.getString('posto'))
     } catch (_) {}
+
+    // Parâmetros dinâmicos de settings (lidos antes para uso na trava/multa escalonada)
+    let horasBloqueio = 24
+    let limiteReincidencia = 2
+    let valorMultaCancelamento = 0
+    let horasTravaCancelamento = 6
+    let horasMultaCancelamento = 12
+    let valorMulta12h = 50
+
+    try {
+      const settingsList = $app.findRecordsByFilter('settings', 'id != ""', '-created', 1, 0)
+      if (settingsList && settingsList.length > 0) {
+        const s = settingsList[0]
+        horasBloqueio = s.getInt('horas_bloqueio_cancelamento') || 24
+        limiteReincidencia = s.getInt('limite_reincidencia_suspensao') || 2
+        valorMultaCancelamento = s.getFloat('multa_cancelamento_pro') || 0
+        const hTrava = s.getInt('horas_trava_cancelamento')
+        horasTravaCancelamento = hTrava !== 0 ? hTrava || 6 : 6
+        const hMulta = s.getInt('horas_multa_cancelamento')
+        horasMultaCancelamento = hMulta !== 0 ? hMulta || 12 : 12
+        const m12 = s.getFloat('multa_cancelamento_12h')
+        valorMulta12h = m12 !== 0 ? m12 || 50 : 50
+      }
+    } catch (_) {}
+
+    // Escalonamento de penalidades no cancelamento feito pelo PRO (isCancelamentoAceito):
+    // 1. Calcular horas restantes até o início do turno no fuso America/Sao_Paulo (UTC-3 fixo).
+    // 2. Se restar MENOS que horas_trava_cancelamento: REJEITAR com erro claro ANTES de e.next()
+    // 3. Se restar menos que horas_multa_cancelamento mas >= trava: aplicar multa_cancelamento_12h
+    // 4. Se restar >= horas_multa_cancelamento: aplicar multa_cancelamento_pro (comportamento atual)
+    let multaFinalCancelamento = valorMultaCancelamento
+    if (isCancelamentoAceito) {
+      if (escala) {
+        const dataStr = escala.getString('data').slice(0, 10) // YYYY-MM-DD
+        const horaIni = (escala.getString('turno_inicio') || '08:00').trim()
+        const horaParts = horaIni.split(':')
+        const hh = (horaParts[0] || '08').padStart(2, '0')
+        const mm = (horaParts[1] || '00').padStart(2, '0')
+
+        // Data/hora de início do turno em SP (UTC-3): YYYY-MM-DDTHH:MM:00-03:00
+        const inicioTurnoSpMs = Date.parse(`${dataStr}T${hh}:${mm}:00-03:00`)
+        const agoraMs = now.getTime()
+        const diffHoras = (inicioTurnoSpMs - agoraMs) / (3600 * 1000)
+
+        if (diffHoras < horasTravaCancelamento) {
+          throw new BadRequestError(
+            `Cancelamento bloqueado: menos de ${horasTravaCancelamento}h para o início do turno. Fale com a gestão se necessário.`,
+          )
+        } else if (diffHoras < horasMultaCancelamento) {
+          multaFinalCancelamento = valorMulta12h
+        } else {
+          multaFinalCancelamento = valorMultaCancelamento
+        }
+      }
+    }
+
+    // Persistir a alteração da convocação (passou das validações/travas)
+    e.next()
 
     const proFixoId = posto ? posto.getString('pro_fixo') : ''
     const isProFixo = proFixoId && proFixoId === proId
@@ -737,20 +793,6 @@ onRecordUpdate((e) => {
       console.log('[PUSH] Erro geral ao enviar push de recusa/cancelamento:', errPushGestores)
     }
 
-    // 0. Ler parâmetros dinâmicos de settings
-    let horasBloqueio = 24
-    let limiteReincidencia = 2
-    let valorMultaCancelamento = 0
-    try {
-      const settingsList = $app.findRecordsByFilter('settings', 'id != ""', '-created', 1, 0)
-      if (settingsList && settingsList.length > 0) {
-        const s = settingsList[0]
-        horasBloqueio = s.getInt('horas_bloqueio_cancelamento') || 24
-        limiteReincidencia = s.getInt('limite_reincidencia_suspensao') || 2
-        valorMultaCancelamento = s.getFloat('multa_cancelamento_pro') || 0
-      }
-    } catch (_) {}
-
     // 1. Se foi cancelamento após aceitar: aplicar bloqueio e suspensão por reincidência
     if (isCancelamentoAceito) {
       // Reabrir a escala (status 'aberta')
@@ -804,13 +846,13 @@ onRecordUpdate((e) => {
           const ev = new Record(eventsCol)
           ev.set('payout', pay.id)
           ev.set('tipo', 'cancelamento_pro')
-          ev.set('valor', -valorMultaCancelamento)
+          ev.set('valor', -multaFinalCancelamento)
           ev.set('data', now.toISOString())
           ev.set('metadata', {
             motivo: 'Cancelamento de turno previamente aceito pelo profissional',
             escala_id: escalaId,
             pro_id: proId,
-            multa_aplicada: valorMultaCancelamento,
+            multa_aplicada: multaFinalCancelamento,
             horas_bloqueio: horasBloqueio,
             limite_reincidencia: limiteReincidencia,
           })

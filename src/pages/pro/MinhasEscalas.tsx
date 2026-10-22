@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/contexts/AuthContext'
-import { ConvocacaoRecord, AtestadoRecord } from '@/types/facilities'
+import { ConvocacaoRecord, AtestadoRecord, SettingsRecord } from '@/types/facilities'
 import { formatCurrencyBRL, formatDateBR } from '@/lib/formatters'
 import { listarAtestadosPorPro } from '@/services/atestados'
 import { ModalEnviarAtestado } from '@/components/atestados/ModalEnviarAtestado'
@@ -26,6 +26,7 @@ export default function MinhasEscalasPage() {
   const [escalas, setEscalas] = useState<ConvocacaoRecord[]>([])
   const [atestadosPro, setAtestadosPro] = useState<AtestadoRecord[]>([])
   const [prazoAtestadoHoras, setPrazoAtestadoHoras] = useState<number>(48)
+  const [settingsData, setSettingsData] = useState<SettingsRecord | null>(null)
   const [selectedConvAtestado, setSelectedConvAtestado] = useState<ConvocacaoRecord | null>(null)
   const [isModalAtestadoOpen, setIsModalAtestadoOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -44,12 +45,13 @@ export default function MinhasEscalasPage() {
         listarAtestadosPorPro(user.id).catch(() => []),
         pb
           .collection('settings')
-          .getFullList({ sort: '-created', batch: 1 })
+          .getFullList<SettingsRecord>({ sort: '-created', batch: 1 })
           .catch(() => []),
       ])
 
       if (settingsList && settingsList.length > 0) {
-        setPrazoAtestadoHoras(Number((settingsList[0] as any).prazo_atestado_horas) || 48)
+        setSettingsData(settingsList[0])
+        setPrazoAtestadoHoras(Number(settingsList[0].prazo_atestado_horas) || 48)
       }
       setAtestadosPro(atestadosList)
       setEscalas(records)
@@ -69,10 +71,44 @@ export default function MinhasEscalasPage() {
     loadData()
   }, [user])
 
+  const calcularHorasAteTurno = (conv: ConvocacaoRecord) => {
+    const escala = conv.expand?.escala
+    if (!escala?.data) return 999
+    const dataStr = escala.data.slice(0, 10)
+    const horaIni = (escala.turno_inicio || '08:00').trim()
+    const parts = horaIni.split(':')
+    const hh = (parts[0] || '08').padStart(2, '0')
+    const mm = (parts[1] || '00').padStart(2, '0')
+    const inicioMs = Date.parse(`${dataStr}T${hh}:${mm}:00-03:00`)
+    const diffMs = inicioMs - Date.now()
+    return diffMs / (3600 * 1000)
+  }
+
   const handleCancelarTurno = async (conv: ConvocacaoRecord) => {
-    const confirm = window.confirm(
-      'Atenção: o cancelamento de um turno previamente aceito reabrirá a vaga e aplicará um bloqueio preventivo de 24 horas no seu perfil. Deseja realmente prosseguir?',
-    )
+    const horasRestantes = calcularHorasAteTurno(conv)
+    const horasTrava = settingsData?.horas_trava_cancelamento ?? 6
+    const horasMulta = settingsData?.horas_multa_cancelamento ?? 12
+    const valorMulta12h = settingsData?.multa_cancelamento_12h ?? 50
+    const horasBloqueio = settingsData?.horas_bloqueio_cancelamento ?? 24
+
+    if (horasRestantes < horasTrava) {
+      toast({
+        title: 'Cancelamento bloqueado',
+        description: `Cancelamento bloqueado: menos de ${horasTrava}h para o início do turno. Fale com a gestão se necessário.`,
+        variant: 'destructive',
+      })
+      return
+    }
+
+    let mensagemConfirmacao = `Atenção: o cancelamento de um turno previamente aceito reabrirá a vaga e aplicará um bloqueio preventivo de ${horasBloqueio} horas no seu perfil.`
+
+    if (horasRestantes < horasMulta) {
+      mensagemConfirmacao += `\n\nATENÇÃO: Como faltam menos de ${horasMulta}h para o início do turno, será aplicada uma multa rescisória por cancelamento tardio no valor de ${formatCurrencyBRL(valorMulta12h)}.`
+    }
+
+    mensagemConfirmacao += '\n\nDeseja realmente prosseguir com o cancelamento?'
+
+    const confirm = window.confirm(mensagemConfirmacao)
     if (!confirm) return
 
     setCancelingId(conv.id)
@@ -83,15 +119,20 @@ export default function MinhasEscalasPage() {
 
       toast({
         title: 'Turno cancelado',
-        description: 'A escala foi reaberta e a política operacional de 24h foi acionada.',
+        description: 'A escala foi reaberta e a política operacional foi acionada.',
         variant: 'destructive',
       })
       loadData()
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
+      const errorMsg =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Não foi possível cancelar.'
       toast({
         title: 'Erro ao cancelar turno',
-        description: 'Não foi possível cancelar.',
+        description: errorMsg,
         variant: 'destructive',
       })
     } finally {
@@ -261,26 +302,46 @@ export default function MinhasEscalasPage() {
                       )
                     })()}
 
-                    {conv.status === 'aceita' && (
-                      <div className="flex items-center gap-2">
-                        <Link to="/ponto-pro">
-                          <Button size="sm" className="text-xs font-medium">
-                            <Clock className="w-3.5 h-3.5 mr-1 text-primary-foreground" />
-                            Bater Ponto
-                          </Button>
-                        </Link>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                          disabled={cancelingId === conv.id}
-                          onClick={() => handleCancelarTurno(conv)}
-                        >
-                          <Ban className="w-3.5 h-3.5 mr-1" />
-                          Cancelar presença
-                        </Button>
-                      </div>
-                    )}
+                    {conv.status === 'aceita' &&
+                      (() => {
+                        const horasRestantes = calcularHorasAteTurno(conv)
+                        const horasTrava = settingsData?.horas_trava_cancelamento ?? 6
+                        const bloqueadoTrava = horasRestantes < horasTrava
+
+                        return (
+                          <div className="flex items-center gap-2">
+                            <Link to="/ponto-pro">
+                              <Button size="sm" className="text-xs font-medium">
+                                <Clock className="w-3.5 h-3.5 mr-1 text-primary-foreground" />
+                                Bater Ponto
+                              </Button>
+                            </Link>
+                            {bloqueadoTrava ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs text-slate-400 bg-slate-100 hover:bg-slate-100 cursor-not-allowed"
+                                disabled
+                                title="Cancelamento bloqueado — menos de 6h para o turno. Fale com a gestão se necessário."
+                              >
+                                <Ban className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                                Cancelamento bloqueado (&lt;{horasTrava}h)
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                                disabled={cancelingId === conv.id}
+                                onClick={() => handleCancelarTurno(conv)}
+                              >
+                                <Ban className="w-3.5 h-3.5 mr-1" />
+                                Cancelar presença
+                              </Button>
+                            )}
+                          </div>
+                        )
+                      })()}
                   </div>
 
                   {/* Bloco de atestado para convocações marcadas com falta */}
