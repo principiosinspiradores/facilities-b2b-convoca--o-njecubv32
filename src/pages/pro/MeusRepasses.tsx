@@ -56,7 +56,23 @@ export default function MeusRepassesPage() {
           .catch(() => []),
       ])
       setPostosFixosPro(postosFixos)
-      setPayouts(records)
+
+      // Ordenar em memória pela data do turno decrescente (mais recente primeiro), desempate por turno_inicio decrescente
+      const recordsOrdenados = [...records].sort((a, b) => {
+        const dataA = a.expand?.escala?.data
+        const dataB = b.expand?.escala?.data
+        if (!dataA && !dataB) return 0
+        if (!dataA) return 1
+        if (!dataB) return -1
+        if (dataA !== dataB) {
+          return dataB.localeCompare(dataA)
+        }
+        const horaA = a.expand?.escala?.turno_inicio || ''
+        const horaB = b.expand?.escala?.turno_inicio || ''
+        return horaB.localeCompare(horaA)
+      })
+
+      setPayouts(recordsOrdenados)
     } catch (err) {
       console.error(err)
       toast({
