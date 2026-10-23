@@ -57,7 +57,7 @@ export default function MeusRepassesPage() {
       ])
       setPostosFixosPro(postosFixos)
 
-      // Ordenar em memória pela data do turno decrescente (mais recente primeiro), desempate por turno_inicio decrescente
+      // Ordenar em memória pela data do turno crescente (mais próximo primeiro), desempate por turno_inicio crescente
       const recordsOrdenados = [...records].sort((a, b) => {
         const dataA = a.expand?.escala?.data
         const dataB = b.expand?.escala?.data
@@ -65,11 +65,11 @@ export default function MeusRepassesPage() {
         if (!dataA) return 1
         if (!dataB) return -1
         if (dataA !== dataB) {
-          return dataB.localeCompare(dataA)
+          return dataA.localeCompare(dataB)
         }
         const horaA = a.expand?.escala?.turno_inicio || ''
         const horaB = b.expand?.escala?.turno_inicio || ''
-        return horaB.localeCompare(horaA)
+        return horaA.localeCompare(horaB)
       })
 
       setPayouts(recordsOrdenados)
