@@ -683,7 +683,9 @@ onRecordAfterCreateSuccess((e) => {
       </div>
     `
 
-    const isEmergencial = (regraAplicada || '').indexOf('EMERGENCIAL —') === 0 || (regraAplicada || '').indexOf('EMERGENCIAL') === 0
+    const isEmergencial =
+      (regraAplicada || '').indexOf('EMERGENCIAL —') === 0 ||
+      (regraAplicada || '').indexOf('EMERGENCIAL') === 0
 
     const emailSubject = isEmergencial
       ? `[${senderName}] Convocação EMERGENCIAL — turno de hoje`

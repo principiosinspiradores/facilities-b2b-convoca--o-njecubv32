@@ -53,7 +53,6 @@ import {
   Calculator,
   UserPlus,
   XCircle,
-  AlertTriangle,
   Flame,
   UserCheck2,
 } from 'lucide-react'
@@ -170,7 +169,9 @@ export default function EscalasPage() {
 
   // Parte B: Modal Confirmar Presença pela Gestão
   const [modalConfirmarPresenca, setModalConfirmarPresenca] = useState(false)
-  const [convocacaoParaConfirmar, setConvocacaoParaConfirmar] = useState<ConvocacaoRecord | null>(null)
+  const [convocacaoParaConfirmar, setConvocacaoParaConfirmar] = useState<ConvocacaoRecord | null>(
+    null,
+  )
   const [isConfirmandoPresenca, setIsConfirmandoPresenca] = useState(false)
 
   const loadData = async () => {
@@ -2195,10 +2196,9 @@ export default function EscalasPage() {
     if (!convocacaoParaConfirmar) return
     setIsConfirmandoPresenca(true)
     try {
-      const updated = await pb.collection('convocacoes').update<ConvocacaoRecord>(
-        convocacaoParaConfirmar.id,
-        { status: 'aceita' },
-      )
+      const updated = await pb
+        .collection('convocacoes')
+        .update<ConvocacaoRecord>(convocacaoParaConfirmar.id, { status: 'aceita' })
       setConvocacoes((prev) =>
         prev.map((c) => (c.id === convocacaoParaConfirmar.id ? { ...c, status: 'aceita' } : c)),
       )
@@ -2207,12 +2207,13 @@ export default function EscalasPage() {
       toast({
         title: 'Presença confirmada pela gestão',
         description: `${updated?.expand?.pro?.name || 'Profissional'} confirmada no turno de hoje — repasse criado normalmente.`,
-      }
-      )
+      })
     } catch (err: any) {
       console.error(err)
       const errMsg =
-        err?.response?.message || err?.message || 'Verifique se a profissional não tem conflito de agenda.'
+        err?.response?.message ||
+        err?.message ||
+        'Verifique se a profissional não tem conflito de agenda.'
       toast({
         title: 'Não foi possível confirmar a presença',
         description: errMsg,
@@ -2771,7 +2772,8 @@ export default function EscalasPage() {
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    Turno de HOJE sem aceite: disparar convocação com push e e-mail urgentes
+                                    Turno de HOJE sem aceite: disparar convocação com push e e-mail
+                                    urgentes
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
@@ -2846,7 +2848,8 @@ export default function EscalasPage() {
                                         </Button>
                                       </TooltipTrigger>
                                       <TooltipContent>
-                                        Confirmar presença pela gestão (caso a profissional tenha confirmado por telefone/WhatsApp)
+                                        Confirmar presença pela gestão (caso a profissional tenha
+                                        confirmado por telefone/WhatsApp)
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
@@ -3136,7 +3139,9 @@ export default function EscalasPage() {
                                               : 'bg-amber-50 text-amber-800 border-amber-200'
                                         }`}
                                       >
-                                        <span>{c.expand?.pro?.name || 'Pro'} ({c.status})</span>
+                                        <span>
+                                          {c.expand?.pro?.name || 'Pro'} ({c.status})
+                                        </span>
                                         {c.status === 'pendente' && (
                                           <button
                                             type="button"
@@ -4843,7 +4848,8 @@ export default function EscalasPage() {
                     Nenhuma profissional elegível encontrada para este posto hoje.
                   </p>
                   <p className="mt-1 text-slate-500 text-[11px]">
-                    Critérios: função do posto vinculada, sem outro aceite conflitante no mesmo posto/data, sem ponto de chegada no dia e sem suspensão ativa.
+                    Critérios: função do posto vinculada, sem outro aceite conflitante no mesmo
+                    posto/data, sem ponto de chegada no dia e sem suspensão ativa.
                   </p>
                 </div>
               ) : (
@@ -4908,7 +4914,10 @@ export default function EscalasPage() {
             <div className="bg-amber-50/60 border border-amber-200/80 rounded-lg p-3 text-[11px] text-amber-900 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <strong>Envio imediato:</strong> As profissionais selecionadas receberão push urgente no celular e e-mail com o assunto <em>"Convocação EMERGENCIAL — turno de hoje"</em>. A primeira que aceitar cobrirá a vaga e as demais serão canceladas automaticamente.
+                <strong>Envio imediato:</strong> As profissionais selecionadas receberão push
+                urgente no celular e e-mail com o assunto{' '}
+                <em>"Convocação EMERGENCIAL — turno de hoje"</em>. A primeira que aceitar cobrirá a
+                vaga e as demais serão canceladas automaticamente.
               </div>
             </div>
           </div>
@@ -4987,7 +4996,10 @@ export default function EscalasPage() {
                     <span className="text-slate-500 text-[11px] uppercase font-semibold">
                       Status Atual
                     </span>
-                    <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-800 border-amber-200 font-semibold">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] bg-amber-50 text-amber-800 border-amber-200 font-semibold"
+                    >
                       Pendente de Aceite
                     </Badge>
                   </div>
@@ -5019,7 +5031,9 @@ export default function EscalasPage() {
                     Confirmação por Canal Externo
                   </div>
                   <p className="text-[11px] leading-relaxed">
-                    Utilize esta opção quando a profissional já tiver confirmado o comparecimento por telefone ou WhatsApp. Ao confirmar, o sistema executa o fluxo oficial de aceite: alocação da vaga, geração do repasse/escrow e notificações cabíveis.
+                    Utilize esta opção quando a profissional já tiver confirmado o comparecimento
+                    por telefone ou WhatsApp. Ao confirmar, o sistema executa o fluxo oficial de
+                    aceite: alocação da vaga, geração do repasse/escrow e notificações cabíveis.
                   </p>
                 </div>
               </div>

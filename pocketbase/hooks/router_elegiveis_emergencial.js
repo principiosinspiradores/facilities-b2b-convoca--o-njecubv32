@@ -21,7 +21,9 @@ routerAdd('GET', '/backend/v1/facilities/pros-elegiveis-escala/{escalaId}', (e) 
 
   const role = authRecord.getString('role')
   if (role !== 'admin' && role !== 'empresa') {
-    return e.json(403, { message: 'Apenas administradores e empresas podem consultar profissionais elegíveis.' })
+    return e.json(403, {
+      message: 'Apenas administradores e empresas podem consultar profissionais elegíveis.',
+    })
   }
 
   const escalaId = e.request.pathValue('escalaId')
@@ -62,10 +64,7 @@ routerAdd('GET', '/backend/v1/facilities/pros-elegiveis-escala/{escalaId}', (e) 
   for (let i = 0; i < elegiveis.length; i++) {
     const p = elegiveis[i]
     let funcoesResolvidas = []
-    if (
-      typeof ElegibilidadeReoferta !== 'undefined' &&
-      ElegibilidadeReoferta.extrairFuncoesPro
-    ) {
+    if (typeof ElegibilidadeReoferta !== 'undefined' && ElegibilidadeReoferta.extrairFuncoesPro) {
       funcoesResolvidas = ElegibilidadeReoferta.extrairFuncoesPro(p)
     }
 
