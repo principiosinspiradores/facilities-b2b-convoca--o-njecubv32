@@ -607,6 +607,14 @@ onRecordUpdate((e) => {
     !isCanceladoPelaGestao
   const isRecusaDireta = originalStatus === 'pendente' && newStatus === 'recusada'
 
+  // Qualquer outro caminho (ex.: ACEITE pendente→aceita, edições pela gestão)
+  // deve continuar a cadeia de hooks. Sem isso, e.next() nunca é chamado e o
+  // PATCH responde 200 sem persistir (bug do aceite desde v0.0.95).
+  if (!(isCancelamentoAceito || isRecusaDireta)) {
+    e.next()
+    return
+  }
+
   if (isCancelamentoAceito || isRecusaDireta) {
     const escalaId = record.getString('escala')
     const proId = record.getString('pro')

@@ -2609,7 +2609,7 @@ export default function EscalasPage() {
                                     c.status === 'aceita'
                                       ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
                                       : c.status === 'recusada'
-                                        ? 'bg-rose-100 text-rose-800 border-rose-200'
+                                        ? 'bg-red-100 text-red-700 border-red-200'
                                         : c.status === 'cancelada'
                                           ? 'bg-slate-100 text-slate-600 border-slate-300'
                                           : 'bg-amber-100 text-amber-800 border-amber-200'
