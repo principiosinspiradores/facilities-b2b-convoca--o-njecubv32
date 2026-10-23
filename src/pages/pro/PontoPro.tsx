@@ -438,6 +438,102 @@ export default function PontoProPage() {
     setCameraActive(false)
   }
 
+  // Compressão de imagem para fotos do ponto (máx ~1280px, proporção mantida, JPEG 0.8)
+  // Reduz fotos da galeria (4-12 MB) para ~100-300 KB, evitando esgotamento de memória em celulares modestos
+  // Mantém fallback seguro para o arquivo original se a compressão falhar
+  const comprimirFotoPonto = async (
+    origem: File | Blob,
+    nomeArquivoPadrao?: string,
+  ): Promise<File> => {
+    const nomeFinal =
+      origem instanceof File && origem.name
+        ? origem.name.replace(/\.[^/.]+$/, '') + '.jpg'
+        : nomeArquivoPadrao || `ponto_pro_${Date.now()}.jpg`
+
+    return new Promise<File>((resolve) => {
+      try {
+        const urlObjeto = URL.createObjectURL(origem)
+        const img = new Image()
+
+        img.onload = () => {
+          try {
+            URL.revokeObjectURL(urlObjeto)
+            const MAX_LARGURA = 1280
+            let largura = img.naturalWidth || img.width
+            let altura = img.naturalHeight || img.height
+
+            if (largura > MAX_LARGURA) {
+              const proporcao = MAX_LARGURA / largura
+              largura = MAX_LARGURA
+              altura = Math.round(altura * proporcao)
+            }
+
+            const canvas = document.createElement('canvas')
+            canvas.width = largura
+            canvas.height = altura
+            const ctx = canvas.getContext('2d')
+
+            if (!ctx) {
+              console.warn('Canvas 2D indisponível, usando arquivo original')
+              resolve(
+                origem instanceof File
+                  ? origem
+                  : new File([origem], nomeFinal, { type: origem.type || 'image/jpeg' }),
+              )
+              return
+            }
+
+            ctx.drawImage(img, 0, 0, largura, altura)
+
+            canvas.toBlob(
+              (blob) => {
+                if (blob) {
+                  const arquivoComprimido = new File([blob], nomeFinal, { type: 'image/jpeg' })
+                  resolve(arquivoComprimido)
+                } else {
+                  console.warn('toBlob falhou, usando arquivo original')
+                  resolve(
+                    origem instanceof File
+                      ? origem
+                      : new File([origem], nomeFinal, { type: origem.type || 'image/jpeg' }),
+                  )
+                }
+              },
+              'image/jpeg',
+              0.8,
+            )
+          } catch (errCanvas) {
+            console.warn('Erro ao processar canvas para compressão, mantendo original:', errCanvas)
+            resolve(
+              origem instanceof File
+                ? origem
+                : new File([origem], nomeFinal, { type: origem.type || 'image/jpeg' }),
+            )
+          }
+        }
+
+        img.onerror = (errImg) => {
+          URL.revokeObjectURL(urlObjeto)
+          console.warn('Erro ao carregar imagem para compressão, mantendo original:', errImg)
+          resolve(
+            origem instanceof File
+              ? origem
+              : new File([origem], nomeFinal, { type: origem.type || 'image/jpeg' }),
+          )
+        }
+
+        img.src = urlObjeto
+      } catch (errGeral) {
+        console.warn('Exceção na compressão de imagem, mantendo original:', errGeral)
+        resolve(
+          origem instanceof File
+            ? origem
+            : new File([origem], nomeFinal, { type: origem.type || 'image/jpeg' }),
+        )
+      }
+    })
+  }
+
   const capturePhoto = () => {
     if (!videoRef.current) return
     const video = videoRef.current
@@ -448,11 +544,17 @@ export default function PontoProPage() {
     if (ctx) {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
       canvas.toBlob(
-        (blob) => {
+        async (blob) => {
           if (blob) {
-            const file = new File([blob], `ponto_pro_${Date.now()}.jpg`, { type: 'image/jpeg' })
+            const nomeFoto = `ponto_pro_${Date.now()}.jpg`
+            let file: File
+            try {
+              file = await comprimirFotoPonto(blob, nomeFoto)
+            } catch {
+              file = new File([blob], nomeFoto, { type: 'image/jpeg' })
+            }
             setFotoFile(file)
-            setFotoPreview(URL.createObjectURL(blob))
+            setFotoPreview(URL.createObjectURL(file))
             stopCamera()
           }
         },
@@ -462,11 +564,18 @@ export default function PontoProPage() {
     }
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const f = e.target.files[0]
-      setFotoFile(f)
-      setFotoPreview(URL.createObjectURL(f))
+      let arquivoFinal = f
+      try {
+        arquivoFinal = await comprimirFotoPonto(f)
+      } catch (err) {
+        console.warn('Falha na compressão do arquivo anexado, mantendo original:', err)
+        arquivoFinal = f
+      }
+      setFotoFile(arquivoFinal)
+      setFotoPreview(URL.createObjectURL(arquivoFinal))
       stopCamera()
     }
   }
