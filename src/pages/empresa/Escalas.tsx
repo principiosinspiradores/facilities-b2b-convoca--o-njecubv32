@@ -53,6 +53,9 @@ import {
   Calculator,
   UserPlus,
   XCircle,
+  AlertTriangle,
+  Flame,
+  UserCheck2,
 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Textarea } from '@/components/ui/textarea'
@@ -156,6 +159,19 @@ export default function EscalasPage() {
 
   // Estado de Recálculo em Andamento
   const [recalculandoId, setRecalculandoId] = useState<string | null>(null)
+
+  // Parte A: Modal Convocação Emergencial
+  const [modalEmergencial, setModalEmergencial] = useState(false)
+  const [escalaParaEmergencial, setEscalaParaEmergencial] = useState<EscalaRecord | null>(null)
+  const [prosElegiveisEmergencial, setProsElegiveisEmergencial] = useState<any[]>([])
+  const [carregandoElegiveisEmergencial, setCarregandoElegiveisEmergencial] = useState(false)
+  const [selectedProIdsEmergencial, setSelectedProIdsEmergencial] = useState<string[]>([])
+  const [isSendingEmergencial, setIsSendingEmergencial] = useState(false)
+
+  // Parte B: Modal Confirmar Presença pela Gestão
+  const [modalConfirmarPresenca, setModalConfirmarPresenca] = useState(false)
+  const [convocacaoParaConfirmar, setConvocacaoParaConfirmar] = useState<ConvocacaoRecord | null>(null)
+  const [isConfirmandoPresenca, setIsConfirmandoPresenca] = useState(false)
 
   const loadData = async () => {
     setIsLoading(true)
@@ -2033,6 +2049,180 @@ export default function EscalasPage() {
     }
   }
 
+  // Helper: data de HOJE no fuso America/Sao_Paulo (UTC-3 fixo)
+  const getDataHojeSP = (): string => {
+    const nowSP = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })
+    const d = new Date(nowSP)
+    const ano = d.getFullYear()
+    const mes = String(d.getMonth() + 1).padStart(2, '0')
+    const dia = String(d.getDate()).padStart(2, '0')
+    return `${ano}-${mes}-${dia}`
+  }
+
+  // Parte A: turno é de HOJE no fuso America/Sao_Paulo
+  const isTurnoHoje = (dataEscala: string | undefined | null): boolean => {
+    if (!dataEscala) return false
+    return (dataEscala || '').slice(0, 10) === getDataHojeSP()
+  }
+
+  // Parte A: vaga segue sem aceite (status aberta/convocada, ou todas as pendentes já expiradas/canceladas/recusadas)
+  const isVagaSemAceiteEmergencial = (escala: EscalaRecord): boolean => {
+    if (escala.status === 'aceita' || escala.status === 'coberta') return false
+    if (escala.status !== 'aberta' && escala.status !== 'convocada') return false
+    const convs = convocacoes.filter((c) => c.escala === escala.id)
+    const temPendenteAtiva = convs.some((c) => c.status === 'pendente')
+    if (temPendenteAtiva) return false
+    return true
+  }
+
+  // Parte A: abrir modal emergencial — busca pros elegíveis pela MESMA regra da reoferta
+  const handleAbrirEmergencial = async (escala: EscalaRecord) => {
+    setEscalaParaEmergencial(escala)
+    setProsElegiveisEmergencial([])
+    setSelectedProIdsEmergencial([])
+    setModalEmergencial(true)
+    setCarregandoElegiveisEmergencial(true)
+    try {
+      const res = await pb.send(`/backend/v1/facilities/pros-elegiveis-escala/${escala.id}`, {
+        method: 'GET',
+      })
+      const items = (res as any)?.items || []
+      setProsElegiveisEmergencial(items)
+    } catch (err) {
+      console.error('Erro ao buscar elegíveis para convocação emergencial', err)
+      toast({
+        title: 'Erro ao carregar profissionais elegíveis',
+        description: 'Tente novamente em instantes.',
+        variant: 'destructive',
+      })
+      setModalEmergencial(false)
+      setEscalaParaEmergencial(null)
+    } finally {
+      setCarregandoElegiveisEmergencial(false)
+    }
+  }
+
+  // Parte A: confirmar convocação emergencial — cria status='pendente' pelo mesmo caminho da reoferta
+  const handleSendEmergencial = async () => {
+    if (!escalaParaEmergencial || selectedProIdsEmergencial.length === 0) {
+      toast({ title: 'Selecione ao menos um profissional', variant: 'destructive' })
+      return
+    }
+    setIsSendingEmergencial(true)
+    let totalConvocadas = 0
+    let totalFalhas = 0
+    const criadasConvs: ConvocacaoRecord[] = []
+    const now = new Date().toISOString()
+    try {
+      for (const proId of selectedProIdsEmergencial) {
+        const proObj = pros.find((p) => p.id === proId)
+        let rule = 'tabela base'
+        let val = escalaParaEmergencial.valor_diaria || 180
+        if (proObj?.status === 'teste') {
+          val = proObj.ajuda_custo || 50
+          rule = 'ajuda de custo (teste)'
+        } else if (proObj?.valor_negociado) {
+          val = proObj.valor_negociado
+          rule = 'valor negociado'
+        }
+
+        try {
+          const recC = await pb.collection('convocacoes').create<ConvocacaoRecord>({
+            escala: escalaParaEmergencial.id,
+            pro: proId,
+            status: 'pendente',
+            valor_diaria: val,
+            regra_aplicada: `EMERGENCIAL — ${rule}`,
+            data_convocacao: now,
+          })
+          criadasConvs.push({ ...recC, expand: { pro: proObj } })
+          totalConvocadas++
+          if (escalaParaEmergencial.status === 'aberta') {
+            try {
+              await pb.collection('escalas').update(escalaParaEmergencial.id, {
+                status: 'convocada',
+              })
+            } catch {
+              /* intentionally ignored */
+            }
+          }
+        } catch (errConv: any) {
+          console.error('Falha ao convocar emergencialmente', proId, errConv)
+          totalFalhas++
+        }
+      }
+
+      if (criadasConvs.length > 0) {
+        setConvocacoes((prev) => [...criadasConvs, ...prev])
+        setEscalas((prev) =>
+          prev.map((e) =>
+            e.id === escalaParaEmergencial.id && e.status === 'aberta'
+              ? { ...e, status: 'convocada' as const }
+              : e,
+          ),
+        )
+      }
+
+      toast({
+        title: 'Convocação EMERGENCIAL disparada',
+        description:
+          totalFalhas === 0
+            ? `${totalConvocadas} profissional(is) convocado(s) com urgência (push + e-mail).`
+            : `${totalConvocadas} convocadas, ${totalFalhas} falha(s).`,
+      })
+      setModalEmergencial(false)
+      setEscalaParaEmergencial(null)
+      setSelectedProIdsEmergencial([])
+    } catch (err) {
+      console.error(err)
+      toast({
+        title: 'Erro ao disparar convocação emergencial',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSendingEmergencial(false)
+    }
+  }
+
+  // Parte B: abrir modal "Confirmar presença pela gestão"
+  const handleAbrirConfirmarPresenca = (conv: ConvocacaoRecord) => {
+    setConvocacaoParaConfirmar(conv)
+    setModalConfirmarPresenca(true)
+  }
+
+  // Parte B: confirmar aceite em nome da profissional — mesmo PATCH status='aceita' do fluxo normal
+  const handleConfirmarPresencaGestao = async () => {
+    if (!convocacaoParaConfirmar) return
+    setIsConfirmandoPresenca(true)
+    try {
+      const updated = await pb.collection('convocacoes').update<ConvocacaoRecord>(
+        convocacaoParaConfirmar.id,
+        { status: 'aceita' },
+      )
+      setConvocacoes((prev) =>
+        prev.map((c) => (c.id === convocacaoParaConfirmar.id ? { ...c, status: 'aceita' } : c)),
+      )
+      setModalConfirmarPresenca(false)
+      setConvocacaoParaConfirmar(null)
+      toast({
+        title: 'Presença confirmada pela gestão',
+        description: `${updated?.expand?.pro?.name || 'Profissional'} confirmada no turno de hoje — repasse criado normalmente.`,
+      }
+      )
+    } catch (err: any) {
+      console.error(err)
+      const errMsg =
+        err?.response?.message || err?.message || 'Verifique se a profissional não tem conflito de agenda.'
+      toast({
+        title: 'Não foi possível confirmar a presença',
+        description: errMsg,
+        variant: 'destructive',
+      })
+    } finally {
+      setIsConfirmandoPresenca(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Topo / Header da Página */}
@@ -2564,13 +2754,37 @@ export default function EscalasPage() {
                             </TooltipProvider>
                           </div>
                         ) : (
-                          <Button
-                            onClick={() => openConvocarModal(escala)}
-                            className="font-medium text-xs h-9"
-                          >
-                            <Send className="w-3.5 h-3.5 mr-1.5" />
-                            Convocar ({convsDestaEscala.length})
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            {/* Parte A: Botão Convocação Emergencial no card do turno */}
+                            {isTurnoHoje(escala.data) && isVagaSemAceiteEmergencial(escala) && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="default"
+                                      size="sm"
+                                      onClick={() => handleAbrirEmergencial(escala)}
+                                      className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs h-9 shadow-xs animate-pulse"
+                                    >
+                                      <Flame className="w-3.5 h-3.5 mr-1 text-white fill-white" />
+                                      Convocação Emergencial
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Turno de HOJE sem aceite: disparar convocação com push e e-mail urgentes
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+
+                            <Button
+                              onClick={() => openConvocarModal(escala)}
+                              className="font-medium text-xs h-9"
+                            >
+                              <Send className="w-3.5 h-3.5 mr-1.5" />
+                              Convocar ({convsDestaEscala.length})
+                            </Button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -2617,6 +2831,26 @@ export default function EscalasPage() {
                                 >
                                   {c.status}
                                 </Badge>
+                                {c.status === 'pendente' && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => handleAbrirConfirmarPresenca(c)}
+                                          className="h-6 px-1.5 text-[11px] text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 font-semibold"
+                                        >
+                                          <UserCheck2 className="w-3 h-3 mr-1 text-emerald-600" />
+                                          Confirmar presença
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        Confirmar presença pela gestão (caso a profissional tenha confirmado por telefone/WhatsApp)
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
                               </div>
                             )
                           })}
@@ -2894,7 +3128,7 @@ export default function EscalasPage() {
                                     {convsDaSub.map((c) => (
                                       <span
                                         key={c.id}
-                                        className={`px-2 py-0.5 rounded text-[11px] border ${
+                                        className={`px-2 py-0.5 rounded text-[11px] border inline-flex items-center gap-1 ${
                                           c.status === 'aceita'
                                             ? 'bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold'
                                             : c.status === 'cancelada'
@@ -2902,7 +3136,20 @@ export default function EscalasPage() {
                                               : 'bg-amber-50 text-amber-800 border-amber-200'
                                         }`}
                                       >
-                                        {c.expand?.pro?.name || 'Pro'} ({c.status})
+                                        <span>{c.expand?.pro?.name || 'Pro'} ({c.status})</span>
+                                        {c.status === 'pendente' && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              handleAbrirConfirmarPresenca(c)
+                                            }}
+                                            title="Confirmar presença pela gestão"
+                                            className="ml-1 text-emerald-700 hover:text-emerald-900 underline font-bold"
+                                          >
+                                            Confirmar
+                                          </button>
+                                        )}
                                       </span>
                                     ))}
                                   </div>
@@ -4496,6 +4743,314 @@ export default function EscalasPage() {
                     <>
                       <XCircle className="w-4 h-4 mr-1.5" />
                       Confirmar Cancelamento
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Parte A: Modal Convocação Emergencial */}
+      <Dialog
+        open={modalEmergencial}
+        onOpenChange={(open) => {
+          if (!isSendingEmergencial) {
+            setModalEmergencial(open)
+            if (!open) {
+              setEscalaParaEmergencial(null)
+              setProsElegiveisEmergencial([])
+              setSelectedProIdsEmergencial([])
+            }
+          }
+        }}
+      >
+        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              <Flame className="w-5 h-5 text-amber-600 fill-amber-600" />
+              Convocação Emergencial — Turno de Hoje
+            </DialogTitle>
+            <DialogDescription>
+              Dispare convocação urgente para a vaga de hoje com push e e-mail imediatos. Listando
+              profissionais elegíveis com os mesmos critérios de reoferta.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {escalaParaEmergencial && (
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-xs flex justify-between items-center text-amber-950">
+                <div>
+                  <div className="font-bold text-sm text-slate-900">
+                    {escalaParaEmergencial.expand?.posto?.nome ||
+                      postos.find((p) => p.id === escalaParaEmergencial.posto)?.nome ||
+                      'Posto'}
+                  </div>
+                  <div className="text-slate-600 flex items-center gap-1.5 mt-0.5">
+                    <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                    <span>HOJE ({formatDateBR(escalaParaEmergencial.data)})</span>
+                    <span>•</span>
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    <span>
+                      {escalaParaEmergencial.turno_inicio} às {escalaParaEmergencial.turno_fim}
+                    </span>
+                  </div>
+                </div>
+                {isAdmin && (
+                  <div className="text-right">
+                    <span className="text-amber-800 font-bold text-sm">
+                      {formatCurrencyBRL(escalaParaEmergencial.valor_diaria)}
+                    </span>
+                    <div className="text-[10px] text-amber-700">diária prevista</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                  Profissionais Elegíveis ({selectedProIdsEmergencial.length} selecionado(s))
+                </label>
+                {prosElegiveisEmergencial.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedProIdsEmergencial.length === prosElegiveisEmergencial.length) {
+                        setSelectedProIdsEmergencial([])
+                      } else {
+                        setSelectedProIdsEmergencial(prosElegiveisEmergencial.map((p) => p.id))
+                      }
+                    }}
+                    className="text-xs text-primary font-semibold hover:underline"
+                  >
+                    {selectedProIdsEmergencial.length === prosElegiveisEmergencial.length
+                      ? 'Desmarcar todos'
+                      : 'Selecionar todos'}
+                  </button>
+                )}
+              </div>
+
+              {carregandoElegiveisEmergencial ? (
+                <div className="py-8 text-center text-slate-500 text-xs flex flex-col items-center justify-center gap-2">
+                  <RefreshCw className="w-5 h-5 animate-spin text-amber-600" />
+                  <span>Verificando elegibilidade em tempo real (conflitos, ponto, função)...</span>
+                </div>
+              ) : prosElegiveisEmergencial.length === 0 ? (
+                <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 text-center text-xs text-slate-600">
+                  <p className="font-semibold text-slate-800">
+                    Nenhuma profissional elegível encontrada para este posto hoje.
+                  </p>
+                  <p className="mt-1 text-slate-500 text-[11px]">
+                    Critérios: função do posto vinculada, sem outro aceite conflitante no mesmo posto/data, sem ponto de chegada no dia e sem suspensão ativa.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {prosElegiveisEmergencial.map((pro) => {
+                    const isSelected = selectedProIdsEmergencial.includes(pro.id)
+                    return (
+                      <div
+                        key={pro.id}
+                        onClick={() => {
+                          setSelectedProIdsEmergencial((prev) =>
+                            prev.includes(pro.id)
+                              ? prev.filter((id) => id !== pro.id)
+                              : [...prev, pro.id],
+                          )
+                        }}
+                        className={`p-3 rounded-lg border text-xs cursor-pointer flex items-center justify-between transition-colors ${
+                          isSelected
+                            ? 'bg-amber-50/70 border-amber-400 text-amber-950 ring-1 ring-amber-400'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {}}
+                            className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                          />
+                          <div>
+                            <div className="font-semibold text-slate-900">
+                              {pro.name || pro.email}
+                            </div>
+                            <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                              <span>Status: {pro.status}</span>
+                              {pro.phone && <span>• Tel: {pro.phone}</span>}
+                              {isAdmin && pro.status === 'teste' && (
+                                <span className="text-amber-700 font-medium">(Ajuda de Custo)</span>
+                              )}
+                              {isAdmin && pro.valor_negociado > 0 && (
+                                <span className="text-emerald-700 font-medium">
+                                  ({formatCurrencyBRL(pro.valor_negociado)})
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200"
+                        >
+                          Elegível
+                        </Badge>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-amber-50/60 border border-amber-200/80 rounded-lg p-3 text-[11px] text-amber-900 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <strong>Envio imediato:</strong> As profissionais selecionadas receberão push urgente no celular e e-mail com o assunto <em>"Convocação EMERGENCIAL — turno de hoje"</em>. A primeira que aceitar cobrirá a vaga e as demais serão canceladas automaticamente.
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSendingEmergencial}
+              onClick={() => {
+                setModalEmergencial(false)
+                setEscalaParaEmergencial(null)
+                setSelectedProIdsEmergencial([])
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSendEmergencial}
+              disabled={isSendingEmergencial || selectedProIdsEmergencial.length === 0}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+            >
+              {isSendingEmergencial ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Disparando...
+                </>
+              ) : (
+                <>
+                  <Flame className="w-4 h-4 mr-1.5 fill-white" />
+                  Disparar Convocação Emergencial ({selectedProIdsEmergencial.length})
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Parte B: Modal Confirmar Presença pela Gestão */}
+      <Dialog
+        open={modalConfirmarPresenca}
+        onOpenChange={(open) => {
+          if (!isConfirmandoPresenca) {
+            setModalConfirmarPresenca(open)
+            if (!open) setConvocacaoParaConfirmar(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          {convocacaoParaConfirmar && (
+            <div>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-emerald-800">
+                  <UserCheck2 className="w-5 h-5 text-emerald-600" />
+                  Confirmar Presença pela Gestão
+                </DialogTitle>
+                <DialogDescription>
+                  Isso aceitará a convocação em nome da profissional, criando o repasse normalmente.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="py-4 space-y-3 text-xs">
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 text-[11px] uppercase font-semibold">
+                      Profissional
+                    </span>
+                    <span className="font-bold text-slate-900 text-sm">
+                      {convocacaoParaConfirmar.expand?.pro?.name ||
+                        pros.find((p) => p.id === convocacaoParaConfirmar.pro)?.name ||
+                        'Profissional'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                    <span className="text-slate-500 text-[11px] uppercase font-semibold">
+                      Status Atual
+                    </span>
+                    <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-800 border-amber-200 font-semibold">
+                      Pendente de Aceite
+                    </Badge>
+                  </div>
+                  {convocacaoParaConfirmar.valor_diaria ? (
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                      <span className="text-slate-500 text-[11px] uppercase font-semibold">
+                        Valor da Diária (Escrow)
+                      </span>
+                      <span className="font-semibold text-emerald-700">
+                        {formatCurrencyBRL(convocacaoParaConfirmar.valor_diaria)}
+                      </span>
+                    </div>
+                  ) : null}
+                  {convocacaoParaConfirmar.regra_aplicada && (
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                      <span className="text-slate-500 text-[11px] uppercase font-semibold">
+                        Regra Aplicada
+                      </span>
+                      <span className="text-slate-600 truncate max-w-[200px]">
+                        {convocacaoParaConfirmar.regra_aplicada}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-emerald-950 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-emerald-800">
+                    <Info className="w-4 h-4 text-emerald-600 shrink-0" />
+                    Confirmação por Canal Externo
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    Utilize esta opção quando a profissional já tiver confirmado o comparecimento por telefone ou WhatsApp. Ao confirmar, o sistema executa o fluxo oficial de aceite: alocação da vaga, geração do repasse/escrow e notificações cabíveis.
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isConfirmandoPresenca}
+                  onClick={() => {
+                    setModalConfirmarPresenca(false)
+                    setConvocacaoParaConfirmar(null)
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  disabled={isConfirmandoPresenca}
+                  onClick={handleConfirmarPresencaGestao}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                >
+                  {isConfirmandoPresenca ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Confirmando...
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck2 className="w-4 h-4 mr-1.5" />
+                      Confirmar Presença
                     </>
                   )}
                 </Button>

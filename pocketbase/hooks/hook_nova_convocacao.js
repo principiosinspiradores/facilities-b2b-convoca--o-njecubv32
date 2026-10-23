@@ -683,10 +683,16 @@ onRecordAfterCreateSuccess((e) => {
       </div>
     `
 
+    const isEmergencial = (regraAplicada || '').indexOf('EMERGENCIAL —') === 0 || (regraAplicada || '').indexOf('EMERGENCIAL') === 0
+
+    const emailSubject = isEmergencial
+      ? `[${senderName}] Convocação EMERGENCIAL — turno de hoje`
+      : `[${senderName}] Nova Convocação para o Posto ${postoNome}`
+
     const mailer = new MailerMessage({
       from: { address: senderEmail, name: senderName },
       to: [{ address: proEmail }],
-      subject: `[${senderName}] Nova Convocação para o Posto ${postoNome}`,
+      subject: emailSubject,
       html: html,
     })
     $app.newMailClient().send(mailer)
@@ -706,8 +712,12 @@ onRecordAfterCreateSuccess((e) => {
         20,
         0,
       )
-      const pushTitle = 'Nova convocação disponível'
-      const pushBody = `Nova convocação: ${postoNome}, ${dataEscala} ${turnoInicio} às ${turnoFim}`
+      const pushTitle = isEmergencial
+        ? 'Convocação EMERGENCIAL — turno de hoje'
+        : 'Nova convocação disponível'
+      const pushBody = isEmergencial
+        ? `Turno de HOJE urgente: ${postoNome}, ${turnoInicio} às ${turnoFim}. Acesse e responda agora!`
+        : `Nova convocação: ${postoNome}, ${dataEscala} ${turnoInicio} às ${turnoFim}`
       const pushUrl = '/convocacoes'
       const pushTag = 'nova-convocacao-' + record.id
 
