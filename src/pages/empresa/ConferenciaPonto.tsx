@@ -535,7 +535,7 @@ export default function ConferenciaPontoPage() {
     setIsRegistrandoPresenca(true)
     try {
       const dataEscala = modalPresencaItem.escala.data.slice(0, 10)
-      const timestampReal = `${dataEscala}T${horaChegadaManual}:00`
+      const timestampReal = `${dataEscala}T${horaChegadaManual}:00-03:00`
 
       const novoPonto = await pb.collection('pontos').create<PontoRecord>({
         escala: escalaId,
