@@ -75,6 +75,10 @@ export default function ConferenciaPontoPage() {
   const [convocacoesDoDia, setConvocacoesDoDia] = useState<ConvocacaoRecord[]>([])
   const [modalFaltaItem, setModalFaltaItem] = useState<ItemSemChegada | null>(null)
   const [isConfirmingFalta, setIsConfirmingFalta] = useState(false)
+  const [modalPresencaItem, setModalPresencaItem] = useState<ItemSemChegada | null>(null)
+  const [isRegistrandoPresenca, setIsRegistrandoPresenca] = useState(false)
+  const [horaChegadaManual, setHoraChegadaManual] = useState('')
+  const [obsPresencaManual, setObsPresencaManual] = useState('')
   const [isLoading, setIsLoading] = useState(true)
 
   // Filtros
@@ -500,6 +504,86 @@ export default function ConferenciaPontoPage() {
 
     return itens
   }, [convocacoesDoDia, escalasDoDia, pontos, postos, pros])
+
+  const abrirModalPresencaManual = (item: ItemSemChegada) => {
+    const horaAtualSP = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date())
+    setHoraChegadaManual(horaAtualSP)
+    setObsPresencaManual('')
+    setModalPresencaItem(item)
+  }
+
+  const handleRegistrarPresencaManual = async () => {
+    if (!modalPresencaItem) return
+    const proId = modalPresencaItem.pro?.id || (modalPresencaItem.pro as any)
+    const postoId = modalPresencaItem.posto?.id || (modalPresencaItem.posto as any)
+    const escalaId = modalPresencaItem.escala?.id
+
+    if (!horaChegadaManual || !obsPresencaManual.trim()) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Informe o horário da chegada e a observação da gestão.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsRegistrandoPresenca(true)
+    try {
+      const dataEscala = modalPresencaItem.escala.data.slice(0, 10)
+      const timestampReal = `${dataEscala}T${horaChegadaManual}:00`
+
+      const novoPonto = await pb.collection('pontos').create<PontoRecord>({
+        escala: escalaId,
+        pro: proId,
+        posto: postoId,
+        tipo: 'chegada',
+        timestamp_real: timestampReal,
+        dentro_raio: false,
+        fora_janela: false,
+        status_validacao: 'aprovado_manual',
+        observacao_gestao: obsPresencaManual.trim(),
+        ocorrencia: 'Presença registrada manualmente pela gestão (GPS do aparelho falhou)',
+      })
+
+      // Atualiza lista local de pontos para refletir no espelho e remover dos turnos sem chegada
+      setPontos((prev) => [
+        {
+          ...novoPonto,
+          expand: {
+            escala: modalPresencaItem.escala,
+            posto: modalPresencaItem.posto,
+            pro: modalPresencaItem.pro,
+          },
+        },
+        ...prev,
+      ])
+
+      const nomePro =
+        modalPresencaItem.pro?.name || modalPresencaItem.pro?.email || 'o profissional'
+      toast({
+        title: 'Presença registrada',
+        description: `Presença registrada manualmente para ${nomePro}.`,
+      })
+
+      setModalPresencaItem(null)
+      setHoraChegadaManual('')
+      setObsPresencaManual('')
+    } catch (err: any) {
+      console.error('Erro ao registrar presença manual:', err)
+      toast({
+        title: 'Erro ao registrar presença manual',
+        description: err?.message || 'Tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsRegistrandoPresenca(false)
+    }
+  }
 
   // Confirmar Falta (No-Show) a partir da Conferência de Ponto
   const handleConfirmarFaltaConferencia = async () => {
@@ -1104,15 +1188,26 @@ export default function ConferenciaPontoPage() {
                         Multa: {formatCurrencyBRL(settings?.multa_falta_pro ?? 50)}
                       </span>
                       {item.convocacao.status !== 'falta' && item.escala.status !== 'falta' && (
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => setModalFaltaItem(item)}
-                          className="h-7 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-xs"
-                        >
-                          <UserX className="w-3.5 h-3.5 mr-1" />
-                          Confirmar falta (no-show)
-                        </Button>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => abrirModalPresencaManual(item)}
+                            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 h-7 text-xs font-semibold"
+                          >
+                            <UserCheck className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                            Registrar presença manual
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => setModalFaltaItem(item)}
+                            className="h-7 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-xs"
+                          >
+                            <UserX className="w-3.5 h-3.5 mr-1" />
+                            Confirmar falta (no-show)
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -2043,6 +2138,99 @@ export default function ConferenciaPontoPage() {
             >
               <UserX className={`w-3.5 h-3.5 mr-1.5 ${isConfirmingFalta ? 'animate-spin' : ''}`} />
               {isConfirmingFalta ? 'Confirmando falta...' : 'Confirmar falta'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Registrar Presença Manual na Conferência de Ponto */}
+      <Dialog
+        open={!!modalPresencaItem}
+        onOpenChange={(open) => !open && !isRegistrandoPresenca && setModalPresencaItem(null)}
+      >
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-emerald-800 flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-emerald-600" />
+              Registrar Presença Manual
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Registrar a presença quando a profissional está no posto mas o GPS bloqueou a batida;
+              o ponto ficará marcado como aprovado manualmente pela gestão.
+            </DialogDescription>
+          </DialogHeader>
+
+          {modalPresencaItem && (
+            <div className="space-y-3 py-2 text-xs">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 space-y-1.5 text-slate-800">
+                <div>
+                  <span className="text-slate-500 font-semibold">Profissional:</span>{' '}
+                  <strong className="text-slate-900 font-bold">
+                    {modalPresencaItem.pro?.name || modalPresencaItem.pro?.email || 'Profissional'}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-semibold">Posto:</span>{' '}
+                  <strong className="text-slate-900 font-bold">
+                    {modalPresencaItem.posto.nome}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-semibold">Data e Turno:</span>{' '}
+                  <strong className="text-slate-900">
+                    {formatDateBR(modalPresencaItem.escala.data)},{' '}
+                    {modalPresencaItem.escala.turno_inicio} às {modalPresencaItem.escala.turno_fim}
+                  </strong>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Horário da chegada <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="time"
+                  value={horaChegadaManual}
+                  onChange={(e) => setHoraChegadaManual(e.target.value)}
+                  className="h-9 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Observação obrigatória <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="text"
+                  value={obsPresencaManual}
+                  onChange={(e) => setObsPresencaManual(e.target.value)}
+                  placeholder="Presenciado pela gestão / confirmado por telefone — GPS do aparelho falhou"
+                  className="h-9 text-xs"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModalPresencaItem(null)}
+              disabled={isRegistrandoPresenca}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleRegistrarPresencaManual}
+              disabled={isRegistrandoPresenca || !horaChegadaManual || !obsPresencaManual.trim()}
+              className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              <UserCheck
+                className={`w-3.5 h-3.5 mr-1.5 ${isRegistrandoPresenca ? 'animate-spin' : ''}`}
+              />
+              {isRegistrandoPresenca ? 'Registrando...' : 'Registrar presença'}
             </Button>
           </DialogFooter>
         </DialogContent>
