@@ -75,6 +75,13 @@ export default function ConferenciaPontoPage() {
   const [convocacoesDoDia, setConvocacoesDoDia] = useState<ConvocacaoRecord[]>([])
   const [modalFaltaItem, setModalFaltaItem] = useState<ItemSemChegada | null>(null)
   const [isConfirmingFalta, setIsConfirmingFalta] = useState(false)
+  const [etapaModalFalta, setEtapaModalFalta] = useState<1 | 2>(1)
+  const [opcaoFalta, setOpcaoFalta] = useState<'automatica' | 'escolher' | 'sem_convocar'>(
+    'automatica',
+  )
+  const [elegiveisReoferta, setElegiveisReoferta] = useState<any[]>([])
+  const [carregandoElegiveis, setCarregandoElegiveis] = useState(false)
+  const [selectedProIdsReoferta, setSelectedProIdsReoferta] = useState<string[]>([])
   const [modalPresencaItem, setModalPresencaItem] = useState<ItemSemChegada | null>(null)
   const [isRegistrandoPresenca, setIsRegistrandoPresenca] = useState(false)
   const [horaChegadaManual, setHoraChegadaManual] = useState('')
@@ -585,29 +592,197 @@ export default function ConferenciaPontoPage() {
     }
   }
 
-  // Confirmar Falta (No-Show) a partir da Conferência de Ponto
+  // Abrir modal de falta resetando para Etapa 1 e opção padrão "automatica"
+  const abrirModalFalta = (item: ItemSemChegada) => {
+    setModalFaltaItem(item)
+    setEtapaModalFalta(1)
+    setOpcaoFalta('automatica')
+    setElegiveisReoferta([])
+    setSelectedProIdsReoferta([])
+    setCarregandoElegiveis(false)
+  }
+
+  // Fechar modal de falta resetando estados
+  const fecharModalFalta = () => {
+    if (isConfirmingFalta) return
+    setModalFaltaItem(null)
+    setEtapaModalFalta(1)
+    setOpcaoFalta('automatica')
+    setElegiveisReoferta([])
+    setSelectedProIdsReoferta([])
+  }
+
+  // Confirmar Falta (Etapa 1: executa opção a, c ou transiciona para etapa 2 na opção b)
   const handleConfirmarFaltaConferencia = async () => {
     if (!modalFaltaItem) return
 
     setIsConfirmingFalta(true)
     try {
-      await pb.collection('convocacoes').update(modalFaltaItem.convocacaoId, { status: 'falta' })
+      if (opcaoFalta === 'automatica') {
+        // Opção (a): comportamento idêntico ao atual
+        await pb.collection('convocacoes').update(modalFaltaItem.convocacaoId, { status: 'falta' })
 
-      setConvocacoesDoDia((prev) =>
-        prev.map((c) =>
-          c.id === modalFaltaItem.convocacaoId ? { ...c, status: 'falta' as const } : c,
-        ),
-      )
+        setConvocacoesDoDia((prev) =>
+          prev.map((c) =>
+            c.id === modalFaltaItem.convocacaoId ? { ...c, status: 'falta' as const } : c,
+          ),
+        )
 
-      toast({
-        title: 'Falta registrada com sucesso!',
-        description: `No-show confirmado para ${modalFaltaItem.pro?.name || 'o profissional'}. Vaga reofertada e multa aplicada.`,
-      })
-      setModalFaltaItem(null)
+        toast({
+          title: 'Falta registrada com sucesso!',
+          description: `No-show confirmado para ${modalFaltaItem.pro?.name || 'o profissional'}. Vaga reofertada e multa aplicada.`,
+        })
+        fecharModalFalta()
+      } else {
+        // Opções (b) e (c): marcar com 'SEM REOFERTA — decisão da gestão'
+        let regraBase = modalFaltaItem.convocacao?.regra_aplicada || ''
+        if (!regraBase) {
+          try {
+            const atual = await pb
+              .collection('convocacoes')
+              .getOne<ConvocacaoRecord>(modalFaltaItem.convocacaoId)
+            regraBase = atual.regra_aplicada || ''
+          } catch {
+            /* intentionally ignored */
+          }
+        }
+        const novaRegra = regraBase
+          ? `${regraBase} | SEM REOFERTA — decisão da gestão`
+          : 'SEM REOFERTA — decisão da gestão'
+
+        await pb.collection('convocacoes').update(modalFaltaItem.convocacaoId, {
+          status: 'falta',
+          regra_aplicada: novaRegra,
+        })
+
+        setConvocacoesDoDia((prev) =>
+          prev.map((c) =>
+            c.id === modalFaltaItem.convocacaoId
+              ? { ...c, status: 'falta' as const, regra_aplicada: novaRegra }
+              : c,
+          ),
+        )
+
+        if (opcaoFalta === 'sem_convocar') {
+          // Opção (c): apenas registrar falta sem reoferta
+          toast({
+            title: 'Falta registrada sem reoferta',
+            description: `No-show registrado para ${modalFaltaItem.pro?.name || 'o profissional'}. Nenhuma nova convocação foi gerada.`,
+          })
+          fecharModalFalta()
+        } else {
+          // Opção (b): ir para Etapa 2 e carregar elegíveis
+          setEtapaModalFalta(2)
+          setCarregandoElegiveis(true)
+          try {
+            const escalaId = modalFaltaItem.escala.id
+            const res = await pb.send(`/backend/v1/facilities/pros-elegiveis-escala/${escalaId}`, {
+              method: 'GET',
+            })
+            const items = (res as any)?.items || []
+            // Excluir da lista a profissional que acabou de faltar
+            const proFaltaId = modalFaltaItem.pro?.id || modalFaltaItem.convocacao?.pro
+            const filtrados = items.filter((p: any) => p.id !== proFaltaId)
+            setElegiveisReoferta(filtrados)
+          } catch (err: any) {
+            console.error('Erro ao buscar elegíveis para reoferta manual:', err)
+            toast({
+              title: 'Erro ao carregar profissionais elegíveis',
+              description: err?.message || 'Tente novamente.',
+              variant: 'destructive',
+            })
+          } finally {
+            setCarregandoElegiveis(false)
+          }
+        }
+      }
     } catch (err: any) {
       console.error('Erro ao confirmar falta na conferência de ponto:', err)
       toast({
         title: 'Erro ao confirmar falta',
+        description: err?.message || 'Tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsConfirmingFalta(false)
+    }
+  }
+
+  // Etapa 2 da Opção (b): convocar os profissionais selecionados manualmente
+  const handleConvocarSelecionadasReoferta = async () => {
+    if (!modalFaltaItem || selectedProIdsReoferta.length === 0) {
+      toast({
+        title: 'Selecione ao menos um profissional',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsConfirmingFalta(true)
+    let totalConvocadas = 0
+    let totalFalhas = 0
+    const now = new Date().toISOString()
+    const escalaObj = modalFaltaItem.escala
+
+    try {
+      for (const proId of selectedProIdsReoferta) {
+        const proObj =
+          elegiveisReoferta.find((p) => p.id === proId) || pros.find((p) => p.id === proId)
+        let rule = 'tabela base'
+        let val = escalaObj.valor_diaria || 180
+
+        if (proObj?.status === 'teste') {
+          val = proObj.ajuda_custo || 50
+          rule = 'ajuda de custo (teste)'
+        } else if (proObj?.valor_negociado) {
+          val = proObj.valor_negociado
+          rule = 'valor negociado'
+        }
+
+        try {
+          await pb.collection('convocacoes').create({
+            escala: escalaObj.id,
+            pro: proId,
+            status: 'pendente',
+            valor_diaria: val,
+            regra_aplicada: `REOFERTA MANUAL — ${rule}`,
+            data_convocacao: now,
+          })
+          totalConvocadas++
+        } catch (errConv: any) {
+          console.error('Falha ao criar convocação manual:', proId, errConv)
+          totalFalhas++
+        }
+      }
+
+      // Se a escala ficou com status='falta', atualizá-la para 'convocada' (espelha o hook na reoferta automática)
+      try {
+        const escalaAtual = await pb.collection('escalas').getOne<EscalaRecord>(escalaObj.id)
+        if (escalaAtual.status === 'falta') {
+          await pb.collection('escalas').update(escalaObj.id, {
+            status: 'convocada',
+          })
+          setEscalasDoDia((prev) =>
+            prev.map((e) => (e.id === escalaObj.id ? { ...e, status: 'convocada' as const } : e)),
+          )
+        }
+      } catch {
+        /* intentionally ignored */
+      }
+
+      toast({
+        title: 'Falta registrada com reoferta manual',
+        description:
+          totalFalhas === 0
+            ? `Falta registrada. Convocações criadas para ${totalConvocadas} profissional(is).`
+            : `Convocações criadas para ${totalConvocadas} profissional(is); ${totalFalhas} falha(s).`,
+      })
+
+      fecharModalFalta()
+    } catch (err: any) {
+      console.error('Erro ao convocar profissionais selecionadas:', err)
+      toast({
+        title: 'Erro ao criar convocações',
         description: err?.message || 'Tente novamente.',
         variant: 'destructive',
       })
@@ -1201,7 +1376,7 @@ export default function ConferenciaPontoPage() {
                           <Button
                             size="sm"
                             variant="destructive"
-                            onClick={() => setModalFaltaItem(item)}
+                            onClick={() => abrirModalFalta(item)}
                             className="h-7 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-xs"
                           >
                             <UserX className="w-3.5 h-3.5 mr-1" />
@@ -2065,23 +2240,27 @@ export default function ConferenciaPontoPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Confirmar Falta (No-Show) na Conferência de Ponto */}
+      {/* Modal Confirmar Falta (No-Show) na Conferência de Ponto - 2 Etapas */}
       <Dialog
         open={!!modalFaltaItem}
-        onOpenChange={(open) => !open && !isConfirmingFalta && setModalFaltaItem(null)}
+        onOpenChange={(open) => !open && !isConfirmingFalta && fecharModalFalta()}
       >
-        <DialogContent className="max-w-md bg-white">
+        <DialogContent className={`bg-white ${etapaModalFalta === 2 ? 'max-w-xl' : 'max-w-md'}`}>
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-red-700 flex items-center gap-2">
               <UserX className="w-5 h-5 text-red-600" />
-              Confirmar Falta (No-Show)
+              {etapaModalFalta === 1
+                ? `Confirmar falta de ${modalFaltaItem?.pro?.name || modalFaltaItem?.pro?.email || 'Profissional'} — ${modalFaltaItem?.posto.nome || 'Posto'}, ${modalFaltaItem ? formatDateBR(modalFaltaItem.escala.data) : ''}`
+                : `Escolher profissionais para convocar — ${modalFaltaItem?.posto.nome || 'Posto'}`}
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
-              Esta ação registrará a ausência do profissional que aceitou o turno e não compareceu.
+              {etapaModalFalta === 1
+                ? 'Escolha como proceder com a reoferta da vaga deste turno e confirme o registro da falta.'
+                : 'Selecione os profissionais elegíveis que receberão a convocação emergencial para cobrir este posto.'}
             </DialogDescription>
           </DialogHeader>
 
-          {modalFaltaItem && (
+          {modalFaltaItem && etapaModalFalta === 1 && (
             <div className="space-y-3 py-2 text-xs">
               <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-1.5 text-slate-800">
                 <div>
@@ -2102,43 +2281,274 @@ export default function ConferenciaPontoPage() {
                   </strong>
                 </div>
                 <div className="pt-1 border-t border-red-200/80 flex items-center justify-between">
-                  <span className="text-slate-600 font-semibold">Valor da Multa:</span>
+                  <span className="text-slate-600 font-semibold">
+                    Multa Aplicada à Profissional:
+                  </span>
                   <span className="font-bold text-red-700 text-sm">
                     {formatCurrencyBRL(settings?.multa_falta_pro ?? 50)}
                   </span>
                 </div>
               </div>
 
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <p className="leading-relaxed">
-                  Ao confirmar, a vaga será reofertada automaticamente para os profissionais
-                  elegíveis e a multa será aplicada.
-                </p>
+              {/* Seletor de Ação de Reoferta */}
+              <div className="space-y-2 pt-1">
+                <label className="font-semibold text-slate-700 text-xs block">
+                  Como deseja proceder com a vaga?
+                </label>
+
+                {/* Opção A: Reoferta automática */}
+                <label
+                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                    opcaoFalta === 'automatica'
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                      : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="opcao_falta"
+                    value="automatica"
+                    checked={opcaoFalta === 'automatica'}
+                    onChange={() => setOpcaoFalta('automatica')}
+                    className="mt-0.5 text-primary focus:ring-primary"
+                  />
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-slate-900 block text-xs">
+                      Reoferta automática (comportamento atual)
+                    </span>
+                    <span className="text-[11px] text-slate-500 block leading-relaxed">
+                      O sistema dispara convocação urgente para todas as profissionais elegíveis
+                      cadastradas.
+                    </span>
+                  </div>
+                </label>
+
+                {/* Opção B: Escolher profissionais */}
+                <label
+                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                    opcaoFalta === 'escolher'
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                      : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="opcao_falta"
+                    value="escolher"
+                    checked={opcaoFalta === 'escolher'}
+                    onChange={() => setOpcaoFalta('escolher')}
+                    className="mt-0.5 text-primary focus:ring-primary"
+                  />
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-slate-900 block text-xs">
+                      Escolher profissionais para convocar
+                    </span>
+                    <span className="text-[11px] text-slate-500 block leading-relaxed">
+                      Selecione manualmente quais profissionais elegíveis devem receber o chamado de
+                      cobertura.
+                    </span>
+                  </div>
+                </label>
+
+                {/* Opção C: Registrar falta sem convocar */}
+                <label
+                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                    opcaoFalta === 'sem_convocar'
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                      : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="opcao_falta"
+                    value="sem_convocar"
+                    checked={opcaoFalta === 'sem_convocar'}
+                    onChange={() => setOpcaoFalta('sem_convocar')}
+                    className="mt-0.5 text-primary focus:ring-primary"
+                  />
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-slate-900 block text-xs">
+                      Registrar falta sem convocar
+                    </span>
+                    <span className="text-[11px] text-slate-500 block leading-relaxed">
+                      Ideal quando já há profissional cobrindo o posto ou a vaga não será
+                      reofertada. Aplica a multa normalmente.
+                    </span>
+                  </div>
+                </label>
               </div>
             </div>
           )}
 
+          {modalFaltaItem && etapaModalFalta === 2 && (
+            <div className="space-y-3 py-2 text-xs">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-emerald-900 text-xs">
+                Falta de <strong>{modalFaltaItem.pro?.name || modalFaltaItem.pro?.email}</strong>{' '}
+                registrada com sucesso. Selecione abaixo quem deve ser convocada para cobrir a vaga:
+              </div>
+
+              {carregandoElegiveis ? (
+                <div className="flex flex-col items-center justify-center py-8 space-y-2">
+                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-xs text-slate-500">
+                    Buscando profissionais elegíveis...
+                  </span>
+                </div>
+              ) : elegiveisReoferta.length === 0 ? (
+                <div className="text-center py-8 border border-dashed border-slate-200 rounded-lg p-4 space-y-2">
+                  <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto" />
+                  <p className="font-semibold text-slate-700">
+                    Nenhum profissional elegível encontrado
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    Não há outros profissionais ativos com a função deste posto ou disponíveis na
+                    data.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between border-b pb-1">
+                    <span className="font-semibold text-slate-700">
+                      Profissionais elegíveis ({elegiveisReoferta.length})
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setSelectedProIdsReoferta(elegiveisReoferta.map((p) => p.id))
+                        }
+                        className="text-[11px] h-6 px-2 text-primary"
+                      >
+                        Marcar todas
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSelectedProIdsReoferta([])}
+                        className="text-[11px] h-6 px-2 text-slate-500"
+                      >
+                        Desmarcar
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+                    {elegiveisReoferta.map((p: any) => {
+                      const isSelected = selectedProIdsReoferta.includes(p.id)
+                      let valDisplay = modalFaltaItem.escala.valor_diaria || 180
+                      let tagVal = 'Tabela base'
+                      if (p.status === 'teste') {
+                        valDisplay = p.ajuda_custo || 50
+                        tagVal = 'Ajuda de custo (teste)'
+                      } else if (p.valor_negociado) {
+                        valDisplay = p.valor_negociado
+                        tagVal = 'Valor negociado'
+                      }
+
+                      return (
+                        <label
+                          key={p.id}
+                          className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-all ${
+                            isSelected
+                              ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                              : 'border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedProIdsReoferta((prev) => [...prev, p.id])
+                                } else {
+                                  setSelectedProIdsReoferta((prev) =>
+                                    prev.filter((id) => id !== p.id),
+                                  )
+                                }
+                              }}
+                            />
+                            <div>
+                              <div className="font-semibold text-slate-900">
+                                {p.name || p.email}
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                {p.email} {p.phone ? `• ${p.phone}` : ''}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-bold text-slate-900">
+                              {formatCurrencyBRL(valDisplay)}
+                            </div>
+                            <span className="text-[10px] text-slate-500">{tagVal}</span>
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setModalFaltaItem(null)}
-              disabled={isConfirmingFalta}
-              className="text-xs"
-            >
-              Cancelar
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={handleConfirmarFaltaConferencia}
-              disabled={isConfirmingFalta}
-              className="text-xs font-semibold bg-red-600 hover:bg-red-700 text-white"
-            >
-              <UserX className={`w-3.5 h-3.5 mr-1.5 ${isConfirmingFalta ? 'animate-spin' : ''}`} />
-              {isConfirmingFalta ? 'Confirmando falta...' : 'Confirmar falta'}
-            </Button>
+            {etapaModalFalta === 1 ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fecharModalFalta}
+                  disabled={isConfirmingFalta}
+                  className="text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleConfirmarFaltaConferencia}
+                  disabled={isConfirmingFalta}
+                  className="text-xs font-semibold bg-red-600 hover:bg-red-700 text-white"
+                >
+                  <UserX
+                    className={`w-3.5 h-3.5 mr-1.5 ${isConfirmingFalta ? 'animate-spin' : ''}`}
+                  />
+                  {isConfirmingFalta
+                    ? 'Confirmando falta...'
+                    : opcaoFalta === 'escolher'
+                      ? 'Confirmar falta e escolher...'
+                      : 'Confirmar falta'}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fecharModalFalta}
+                  disabled={isConfirmingFalta}
+                  className="text-xs"
+                >
+                  Concluir sem convocar mais
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleConvocarSelecionadasReoferta}
+                  disabled={isConfirmingFalta || selectedProIdsReoferta.length === 0}
+                  className="text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  <RefreshCw
+                    className={`w-3.5 h-3.5 mr-1.5 ${isConfirmingFalta ? 'animate-spin' : ''}`}
+                  />
+                  {isConfirmingFalta
+                    ? 'Disparando...'
+                    : `Convocar selecionadas (${selectedProIdsReoferta.length})`}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

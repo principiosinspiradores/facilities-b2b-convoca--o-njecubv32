@@ -845,6 +845,14 @@ onRecordUpdate((e) => {
 
     // 4. Auto-reofertar o turno para freelancers elegíveis
     try {
+      const regraAplicadaAtual = record.getString('regra_aplicada') || ''
+      if (regraAplicadaAtual.indexOf('SEM REOFERTA') !== -1) {
+        console.log(
+          `[no-show] Reoferta pulada para escala ${escalaId} (decisão da gestão: ${regraAplicadaAtual})`,
+        )
+        return
+      }
+
       if (!escala) escala = $app.findRecordById('escalas', escalaId)
       const posto = $app.findRecordById('postos', escala.getString('posto'))
       const cargaHoraria = posto.getInt('carga_horaria') || 8
