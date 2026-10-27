@@ -2733,6 +2733,25 @@ export default function EscalasPage() {
                                   </span>
                                 )}
                               </div>
+                              {/* Indicador de confirmação de presença (pré-ponto) */}
+                              <div className="mt-1 flex items-center justify-end">
+                                {aceito.confirmacao_presenca === 'confirmada' ? (
+                                  <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-[10px] font-semibold gap-1 py-0.5 px-1.5">
+                                    Confirmada ✓
+                                  </Badge>
+                                ) : aceito.confirmacao_presenca === 'nao_vai' ? (
+                                  <Badge className="bg-rose-600 hover:bg-rose-600 text-white text-[10px] font-semibold gap-1 py-0.5 px-1.5">
+                                    Disse que NÃO vai — emergencial disparada
+                                  </Badge>
+                                ) : (
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-amber-50 text-amber-900 border-amber-300 text-[10px] font-semibold py-0.5 px-1.5"
+                                  >
+                                    Não confirmou
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                             {/* Botão Cancelar convocação aceita */}
                             <TooltipProvider>
@@ -2833,6 +2852,26 @@ export default function EscalasPage() {
                                 >
                                   {c.status}
                                 </Badge>
+                                {c.status === 'aceita' && (
+                                  <span className="ml-1">
+                                    {c.confirmacao_presenca === 'confirmada' ? (
+                                      <Badge className="bg-emerald-600 text-white text-[10px] py-0 px-1.5 font-semibold">
+                                        Confirmada ✓
+                                      </Badge>
+                                    ) : c.confirmacao_presenca === 'nao_vai' ? (
+                                      <Badge className="bg-rose-600 text-white text-[10px] py-0 px-1.5 font-semibold">
+                                        Disse que NÃO vai — emergencial disparada
+                                      </Badge>
+                                    ) : (
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-amber-50 text-amber-800 border-amber-300 text-[10px] py-0 px-1.5 font-semibold"
+                                      >
+                                        Não confirmou
+                                      </Badge>
+                                    )}
+                                  </span>
+                                )}
                                 {c.status === 'pendente' && (
                                   <TooltipProvider>
                                     <Tooltip>
@@ -3115,8 +3154,24 @@ export default function EscalasPage() {
                                   {subAceito ? 'Coberta' : subEscala.status}
                                 </Badge>
                                 {subAceito ? (
-                                  <span className="font-semibold text-emerald-900">
+                                  <span className="font-semibold text-emerald-900 flex items-center gap-1.5">
                                     Profissional: {subAceito.expand?.pro?.name || 'Pro'}
+                                    {subAceito.confirmacao_presenca === 'confirmada' ? (
+                                      <Badge className="bg-emerald-600 text-white text-[10px] py-0 px-1.5 font-semibold">
+                                        Confirmada ✓
+                                      </Badge>
+                                    ) : subAceito.confirmacao_presenca === 'nao_vai' ? (
+                                      <Badge className="bg-rose-600 text-white text-[10px] py-0 px-1.5 font-semibold">
+                                        Disse que NÃO vai — emergencial disparada
+                                      </Badge>
+                                    ) : (
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-amber-50 text-amber-800 border-amber-300 text-[10px] py-0 px-1.5 font-semibold"
+                                      >
+                                        Não confirmou
+                                      </Badge>
+                                    )}
                                   </span>
                                 ) : (
                                   <span className="text-slate-500">

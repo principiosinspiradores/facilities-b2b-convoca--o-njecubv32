@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-27T11:13:37.847Z",
+  "generatedAt": "2026-10-27T15:37:39.025Z",
   "collections": [
     {
       "name": "users",
@@ -447,6 +447,19 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "confirmacao_presenca",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["nao_confirmada", "confirmada", "nao_vai"]
+        },
+        {
+          "name": "confirmacao_data",
+          "type": "date",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

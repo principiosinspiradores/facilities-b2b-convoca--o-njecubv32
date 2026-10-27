@@ -1017,6 +1017,36 @@ export default function CoberturaPage() {
                           </Badge>
                         )}
 
+                        {/* Indicador de confirmação de presença (pré-ponto) quando há convocação aceita */}
+                        {alerta.convocacoesAtivas.some((c) => c.status === 'aceita') &&
+                          (() => {
+                            const convAceita = alerta.convocacoesAtivas.find(
+                              (c) => c.status === 'aceita',
+                            )
+                            if (!convAceita) return null
+                            if (convAceita.confirmacao_presenca === 'confirmada') {
+                              return (
+                                <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-[11px] font-semibold gap-1 py-0.5 px-2">
+                                  Confirmada ✓
+                                </Badge>
+                              )
+                            }
+                            if (convAceita.confirmacao_presenca === 'nao_vai') {
+                              return (
+                                <Badge className="bg-rose-600 hover:bg-rose-600 text-white text-[11px] font-semibold gap-1 py-0.5 px-2">
+                                  Disse que NÃO vai — emergencial disparada
+                                </Badge>
+                              )
+                            }
+                            return (
+                              <Badge
+                                variant="outline"
+                                className="bg-amber-50 text-amber-900 border-amber-300 text-[11px] font-semibold py-0.5 px-2"
+                              >
+                                Não confirmou
+                              </Badge>
+                            )
+                          })()}
                         {isPostoComFixa && (
                           <Badge
                             variant="outline"

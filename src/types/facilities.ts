@@ -187,6 +187,8 @@ export type ConvocacaoStatus =
   | 'coberta'
   | 'falta'
 
+export type ConfirmacaoPresencaStatus = 'nao_confirmada' | 'confirmada' | 'nao_vai'
+
 export interface ConvocacaoRecord {
   id: string
   escala: string
@@ -195,6 +197,8 @@ export interface ConvocacaoRecord {
   valor_diaria?: number
   regra_aplicada?: string
   data_convocacao?: string
+  confirmacao_presenca?: ConfirmacaoPresencaStatus
+  confirmacao_data?: string
   created: string
   updated: string
   expand?: {

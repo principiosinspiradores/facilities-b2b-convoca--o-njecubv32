@@ -26,6 +26,7 @@ import {
   FileText,
   RefreshCw,
   Download,
+  Ban,
 } from 'lucide-react'
 
 export default function ConvocacoesPage() {
@@ -43,6 +44,10 @@ export default function ConvocacoesPage() {
   const [modalDesktopOpen, setModalDesktopOpen] = useState(false)
   const [pwaInstalledLocal, setPwaInstalledLocal] = useState(false)
   const pwaInstalled = pwaInstalledHook || pwaInstalledLocal
+  const [confirmandoPresencaId, setConfirmandoPresencaId] = useState<string | null>(null)
+  const [recusandoPresencaId, setRecusandoPresencaId] = useState<string | null>(null)
+  const [dialogNaoVaiOpen, setDialogNaoVaiOpen] = useState(false)
+  const [convNaoVaiSelected, setConvNaoVaiSelected] = useState<ConvocacaoRecord | null>(null)
 
   const handleInstallPwa = async () => {
     if (canInstallNatively) {
@@ -233,6 +238,81 @@ export default function ConvocacoesPage() {
     }
   }
 
+  const isTurnoHoje = (conv: ConvocacaoRecord) => {
+    const escala = conv.expand?.escala
+    if (!escala?.data) return false
+    const dataStr = escala.data.slice(0, 10)
+    const hojeSp = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date())
+    return dataStr === hojeSp
+  }
+
+  const handleConfirmarPresenca = async (conv: ConvocacaoRecord) => {
+    setConfirmandoPresencaId(conv.id)
+    try {
+      await pb.send(`/backend/v1/facilities/confirmar-presenca/${conv.id}`, {
+        method: 'POST',
+      })
+      toast({
+        title: 'Presença confirmada!',
+        description: 'Sua confirmação de presença no turno foi registrada com sucesso.',
+        className: 'bg-emerald-600 text-white border-emerald-700',
+      })
+      loadConvocacoes()
+    } catch (err: any) {
+      console.error('Erro ao confirmar presença:', err)
+      const errorMsg =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Não foi possível confirmar a presença.'
+      toast({
+        title: 'Erro ao confirmar presença',
+        description: errorMsg,
+        variant: 'destructive',
+      })
+    } finally {
+      setConfirmandoPresencaId(null)
+    }
+  }
+
+  const handleDispararNaoVouHoje = async () => {
+    if (!convNaoVaiSelected) return
+    const convId = convNaoVaiSelected.id
+    setRecusandoPresencaId(convId)
+    try {
+      const res: any = await pb.send(`/backend/v1/facilities/recusar-presenca-hoje/${convId}`, {
+        method: 'POST',
+      })
+      toast({
+        title: 'Aviso registrado',
+        description: `Informado que não comparecerá. Convocação emergencial disparada automaticamente (${res?.total_convocadas ?? 0} profissionais notificadas).`,
+        variant: 'destructive',
+      })
+      setDialogNaoVaiOpen(false)
+      setConvNaoVaiSelected(null)
+      loadConvocacoes()
+    } catch (err: any) {
+      console.error('Erro ao registrar não vou hoje:', err)
+      const errorMsg =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Não foi possível registrar o aviso.'
+      toast({
+        title: 'Erro ao registrar',
+        description: errorMsg,
+        variant: 'destructive',
+      })
+    } finally {
+      setRecusandoPresencaId(null)
+    }
+  }
+
   const filteredConvocacoes = convocacoes.filter((c) => {
     if (activeTab === 'pendentes') {
       // Trava de segurança: filtrar fora qualquer convocação cuja data do turno seja anterior a hoje (America/Sao_Paulo)
@@ -288,6 +368,70 @@ export default function ConvocacoesPage() {
           loadConvocacoes()
         }}
       />
+
+      {/* Dialog de Confirmação 'Não vou hoje' */}
+      {dialogNaoVaiOpen && convNaoVaiSelected && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl border border-slate-200 space-y-4">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="p-3 bg-rose-100 rounded-full">
+                <AlertTriangle className="w-6 h-6 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Não vou hoje</h3>
+                <p className="text-xs text-slate-500">Confirmação de ausência no turno</p>
+              </div>
+            </div>
+
+            <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-xs text-rose-900 space-y-2">
+              <p className="font-semibold text-rose-950">
+                O posto buscará outra profissional imediatamente.
+              </p>
+              <p>
+                Ao confirmar que não comparecerá ao turno de hoje (
+                <strong>{convNaoVaiSelected.expand?.escala?.turno_inicio}</strong> no{' '}
+                <strong>{convNaoVaiSelected.expand?.escala?.expand?.posto?.nome}</strong>), uma
+                convocação emergencial será disparada em tempo real para as profissionais elegíveis.
+              </p>
+              <p className="text-[11px] text-rose-800 font-medium">
+                Sua escala aceita não é cancelada nem é aplicada multa neste momento — a gestão
+                recebe o alerta imediatamente para providenciar a substituição.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setDialogNaoVaiOpen(false)
+                  setConvNaoVaiSelected(null)
+                }}
+                disabled={recusandoPresencaId === convNaoVaiSelected.id}
+              >
+                Voltar
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="font-semibold"
+                disabled={recusandoPresencaId === convNaoVaiSelected.id}
+                onClick={handleDispararNaoVouHoje}
+              >
+                {recusandoPresencaId === convNaoVaiSelected.id ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Disparando emergencial...
+                  </span>
+                ) : (
+                  'Confirmar que não vou'
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modais de Instalação PWA (iOS e Desktop) */}
       <ModalInstalarApp
         iosOpen={modalIosOpen}
@@ -571,41 +715,137 @@ export default function ConvocacoesPage() {
                         </Button>
                       </div>
                     ) : (
-                      <div className="w-full flex items-center justify-between bg-emerald-50 text-emerald-800 p-2 rounded-lg text-xs">
-                        <span className="flex items-center gap-1.5 font-semibold">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          Turno confirmado no seu calendário
-                        </span>
-                        {(() => {
-                          const isFixaDoPosto = posto?.pro_fixo === user?.id
-                          const forma = posto?.forma_de_contratacao || posto?.tipo_remuneracao_fixa
-                          const isMensalista =
-                            isFixaDoPosto && (forma === 'mensalista' || forma === 'mensal')
-                          const isHorista =
-                            isFixaDoPosto && (forma === 'horista' || forma === 'por_hora')
+                      <div className="space-y-3">
+                        <div className="w-full flex items-center justify-between bg-emerald-50 text-emerald-800 p-2 rounded-lg text-xs">
+                          <span className="flex items-center gap-1.5 font-semibold">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            Turno confirmado no seu calendário
+                          </span>
+                          {(() => {
+                            const isFixaDoPosto = posto?.pro_fixo === user?.id
+                            const forma =
+                              posto?.forma_de_contratacao || posto?.tipo_remuneracao_fixa
+                            const isMensalista =
+                              isFixaDoPosto && (forma === 'mensalista' || forma === 'mensal')
+                            const isHorista =
+                              isFixaDoPosto && (forma === 'horista' || forma === 'por_hora')
 
-                          if (isMensalista) {
+                            if (isMensalista) {
+                              return (
+                                <span className="text-[11px] bg-primary/10 text-primary px-2 py-0.5 rounded font-bold border border-primary/20">
+                                  Contrato Mensal Fixo
+                                </span>
+                              )
+                            }
+
+                            if (isHorista) {
+                              return (
+                                <span className="text-[11px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-bold border border-blue-200">
+                                  Contrato Horista
+                                </span>
+                              )
+                            }
+
                             return (
-                              <span className="text-[11px] bg-primary/10 text-primary px-2 py-0.5 rounded font-bold border border-primary/20">
-                                Contrato Mensal Fixo
+                              <span className="text-[11px] bg-emerald-200/60 text-emerald-900 px-2 py-0.5 rounded font-bold">
+                                Escrow Provisionado
                               </span>
                             )
-                          }
+                          })()}
+                        </div>
 
-                          if (isHorista) {
-                            return (
-                              <span className="text-[11px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-bold border border-blue-200">
-                                Contrato Horista
-                              </span>
-                            )
-                          }
+                        {/* Destaque Confirmação de Presença (pré-ponto) para turnos de hoje aceitos */}
+                        {isTurnoHoje(conv) && (
+                          <div className="border rounded-xl p-3.5 bg-gradient-to-r from-slate-50 to-emerald-50/30 border-slate-200">
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <div className="flex items-center gap-2">
+                                <Clock className="w-4 h-4 text-primary" />
+                                <span className="text-xs font-bold text-slate-800">
+                                  Turno hoje às {escala?.turno_inicio}
+                                </span>
+                              </div>
+                              {conv.confirmacao_presenca === 'confirmada' && (
+                                <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-xs font-semibold gap-1 py-1 px-2.5 shadow-xs">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Presença confirmada ✓
+                                </Badge>
+                              )}
+                              {conv.confirmacao_presenca === 'nao_vai' && (
+                                <Badge className="bg-rose-600 hover:bg-rose-600 text-white text-xs font-semibold gap-1 py-1 px-2.5 shadow-xs">
+                                  <Ban className="w-3.5 h-3.5" />
+                                  Disse que NÃO vai
+                                </Badge>
+                              )}
+                              {(!conv.confirmacao_presenca ||
+                                conv.confirmacao_presenca === 'nao_confirmada') && (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-amber-50 text-amber-800 border-amber-300 text-[11px] font-semibold"
+                                >
+                                  Aguardando confirmação
+                                </Badge>
+                              )}
+                            </div>
 
-                          return (
-                            <span className="text-[11px] bg-emerald-200/60 text-emerald-900 px-2 py-0.5 rounded font-bold">
-                              Escrow Provisionado
-                            </span>
-                          )
-                        })()}
+                            {conv.confirmacao_presenca === 'confirmada' ? (
+                              <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-2 flex items-center justify-between">
+                                <span className="flex items-center gap-1.5 font-medium">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                  Sua ida está confirmada para a gestão!
+                                </span>
+                                <span className="text-[11px] text-emerald-700">
+                                  Ponto obrigatório no posto
+                                </span>
+                              </div>
+                            ) : conv.confirmacao_presenca === 'nao_vai' ? (
+                              <div className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-lg p-2">
+                                <span className="font-semibold">Ausência informada.</span>{' '}
+                                Convocação emergencial de substituição acionada automaticamente para
+                                o posto.
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <p className="text-[11px] text-slate-600">
+                                  Por favor, confirme se você comparecerá ao posto no horário
+                                  combinado:
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    size="sm"
+                                    className="flex-1 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                                    disabled={confirmandoPresencaId === conv.id}
+                                    onClick={() => handleConfirmarPresenca(conv)}
+                                  >
+                                    {confirmandoPresencaId === conv.id ? (
+                                      <span className="flex items-center gap-1">
+                                        <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        Confirmando...
+                                      </span>
+                                    ) : (
+                                      <>
+                                        <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                                        Confirmar presença
+                                      </>
+                                    )}
+                                  </Button>
+
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1 text-xs font-semibold border-rose-300 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                                    onClick={() => {
+                                      setConvNaoVaiSelected(conv)
+                                      setDialogNaoVaiOpen(true)
+                                    }}
+                                  >
+                                    <Ban className="w-3.5 h-3.5 mr-1 text-rose-600" />
+                                    Não vou hoje
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 
