@@ -139,7 +139,36 @@ function buscarProsElegiveisReoferta(params) {
     0,
   )
 
+  // Novo filtro: excluir pro que seja fixa em algum posto (referenciada no campo pro_fixo de qualquer registro de postos)
+  const proFixosSet = {}
+  try {
+    const postosComFixo = $app.findRecordsByFilter('postos', "pro_fixo != ''", 'created', 500, 0)
+    if (postosComFixo && postosComFixo.length > 0) {
+      for (let pfIdx = 0; pfIdx < postosComFixo.length; pfIdx++) {
+        const pfId = postosComFixo[pfIdx].getString('pro_fixo')
+        if (pfId) {
+          proFixosSet[pfId] = true
+        }
+      }
+    }
+  } catch (errPF) {
+    console.log('[REOFERTA] Erro ao carregar pros fixas dos postos:', errPF)
+  }
+
+  // Contadores para log detalhado de exclusões
+  const contadoresExclusao = {
+    totalCandidatas: prosCandidatas ? prosCandidatas.length : 0,
+    excluidasFuncao: 0,
+    excluidasSobreposicao: 0,
+    excluidasPendenteDia: 0,
+    excluidasBloqueio: 0,
+    excluidasPontoDia: 0,
+    excluidasFixa: 0,
+    excluidasOutras: 0, // proExcluidoId, proEscalaFaltaId, jaConvocadaNestaEscala
+  }
+
   if (!prosCandidatas || prosCandidatas.length === 0) {
+    console.log('[REOFERTA_FILTROS]', JSON.stringify(contadoresExclusao))
     return []
   }
 
@@ -169,16 +198,25 @@ function buscarProsElegiveisReoferta(params) {
     const p = prosCandidatas[pIdx]
     const pid = p.id
 
+    // Exclusão de pro fixa em qualquer posto
+    if (proFixosSet[pid]) {
+      contadoresExclusao.excluidasFixa++
+      continue
+    }
+
     // Regra 3: Excluir a pro que faltou / pro da convocação de origem
     if (proExcluidoId && pid === proExcluidoId) {
+      contadoresExclusao.excluidasOutras++
       continue
     }
     if (proEscalaFaltaId && pid === proEscalaFaltaId) {
+      contadoresExclusao.excluidasOutras++
       continue
     }
 
     // Regra 1: Filtro de função
     if (!proTemFuncaoDoPosto(p, funcaoPosto)) {
+      contadoresExclusao.excluidasFuncao++
       continue
     }
 
@@ -187,11 +225,12 @@ function buscarProsElegiveisReoferta(params) {
     if (bloqueadoAte) {
       const dtBloq = new Date(bloqueadoAte)
       if (dtBloq.getTime() > now.getTime()) {
+        contadoresExclusao.excluidasBloqueio++
         continue
       }
     }
 
-    // Exclusão: pro já convocada nesta mesma escala
+    // Exclusão: pro já convocada nesta mesma escala (a menos que seja chamada de retomada que trata isso externamente)
     let jaConvocadaNestaEscala = false
     try {
       const existing = $app.findRecordsByFilter(
@@ -205,7 +244,8 @@ function buscarProsElegiveisReoferta(params) {
         jaConvocadaNestaEscala = true
       }
     } catch (_) {}
-    if (jaConvocadaNestaEscala) {
+    if (jaConvocadaNestaEscala && !params.ignorarJaConvocadaNestaEscala) {
+      contadoresExclusao.excluidasOutras++
       continue
     }
 
@@ -233,12 +273,13 @@ function buscarProsElegiveisReoferta(params) {
       console.log('[REOFERTA] Erro ao checar pontos de chegada da pro ' + pid + ':', errPt)
     }
     if (temPontoChegadaNoDia) {
+      contadoresExclusao.excluidasPontoDia++
       continue
     }
 
     // Regra 2 (a) e (c): Convocação status='aceita' com turno sobreposto em QUALQUER posto
     // OU convocação status='pendente' em QUALQUER escala do mesmo dia
-    let temConflitoConvocacao = false
+    let conflitoTipo = null // 'sobreposicao' | 'pendente'
     try {
       const convsPro = $app.findRecordsByFilter(
         'convocacoes',
@@ -270,7 +311,7 @@ function buscarProsElegiveisReoferta(params) {
 
           // (c) convocação status='pendente' em qualquer escala do mesmo dia (já está na fila de decisão)
           if (cStatus === 'pendente') {
-            temConflitoConvocacao = true
+            conflitoTipo = 'pendente'
             break
           }
 
@@ -279,7 +320,7 @@ function buscarProsElegiveisReoferta(params) {
             const iniB = escRef.getString('turno_inicio') || '00:00'
             const fimB = escRef.getString('turno_fim') || '23:59'
             if (turnosSobrepoem(turnoInicioEscala, turnoFimEscala, iniB, fimB)) {
-              temConflitoConvocacao = true
+              conflitoTipo = 'sobreposicao'
               break
             }
           }
@@ -289,11 +330,32 @@ function buscarProsElegiveisReoferta(params) {
       console.log('[REOFERTA] Erro ao checar convocações ativas da pro ' + pid + ':', errConv)
     }
 
-    if (temConflitoConvocacao) {
+    if (conflitoTipo === 'pendente') {
+      contadoresExclusao.excluidasPendenteDia++
+      continue
+    }
+    if (conflitoTipo === 'sobreposicao') {
+      contadoresExclusao.excluidasSobreposicao++
       continue
     }
 
     prosElegiveis.push(p)
+  }
+
+  // Log detalhado de exclusões por categoria
+  console.log(
+    `[REOFERTA_FILTROS] Total candidatas: ${contadoresExclusao.totalCandidatas} | ` +
+      `Excluídas - Fixa: ${contadoresExclusao.excluidasFixa}, Função: ${contadoresExclusao.excluidasFuncao}, ` +
+      `Sobreposição: ${contadoresExclusao.excluidasSobreposicao}, Pendente no dia: ${contadoresExclusao.excluidasPendenteDia}, ` +
+      `Bloqueio: ${contadoresExclusao.excluidasBloqueio}, Ponto no dia: ${contadoresExclusao.excluidasPontoDia}, ` +
+      `Outras: ${contadoresExclusao.excluidasOutras} | Aprovadas: ${prosElegiveis.length}`,
+  )
+
+  if (params.retornarContadores) {
+    return {
+      pros: prosElegiveis,
+      contadores: contadoresExclusao,
+    }
   }
 
   return prosElegiveis

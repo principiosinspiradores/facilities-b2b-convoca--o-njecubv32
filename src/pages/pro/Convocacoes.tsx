@@ -78,6 +78,9 @@ export default function ConvocacoesPage() {
   const [isModalAtestadoOpen, setIsModalAtestadoOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [convEmergencialConfirmar, setConvEmergencialConfirmar] = useState<ConvocacaoRecord | null>(
+    null,
+  )
 
   const loadConvocacoes = useCallback(async () => {
     if (!user) return
@@ -170,6 +173,14 @@ export default function ConvocacoesPage() {
   }, [loadConvocacoes, user])
 
   const handleAceitar = async (conv: ConvocacaoRecord) => {
+    // Confirmação dupla no aceite de emergencial
+    // Quando regra_aplicada começa com 'EMERGENCIAL', abrir dialog de confirmação destacada
+    const isEmergencial = (conv.regra_aplicada || '').toUpperCase().startsWith('EMERGENCIAL')
+    if (isEmergencial && !convEmergencialConfirmar) {
+      setConvEmergencialConfirmar(conv)
+      return
+    }
+
     setActionLoading(conv.id)
     try {
       const escala = conv.expand?.escala
@@ -196,6 +207,7 @@ export default function ConvocacoesPage() {
         title: 'Convocação aceita com sucesso!',
         description: toastDesc,
       })
+      setConvEmergencialConfirmar(null)
       loadConvocacoes()
     } catch (err: any) {
       console.error('Erro ao aceitar:', err)
@@ -368,6 +380,114 @@ export default function ConvocacoesPage() {
           loadConvocacoes()
         }}
       />
+
+      {/* Dialog de Confirmação Dupla para Aceite Emergencial */}
+      {convEmergencialConfirmar && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl border-2 border-amber-500 space-y-4">
+            <div className="flex items-center gap-3 text-amber-700">
+              <div className="p-3 bg-amber-100 rounded-full border border-amber-300">
+                <AlertTriangle className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">
+                  Atenção: Convocação EMERGENCIAL
+                </h3>
+                <p className="text-xs text-amber-800 font-medium">
+                  Confirme o posto e o horário antes de aceitar
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50/70 border border-amber-300 rounded-lg p-3.5 space-y-2 text-xs">
+              <p className="text-slate-800 font-semibold leading-relaxed">
+                Atenção: esta é uma convocação EMERGENCIAL para o posto{' '}
+                <strong className="text-amber-950 font-bold">
+                  {convEmergencialConfirmar.expand?.escala?.expand?.posto?.nome || 'Posto Indicado'}
+                </strong>
+                . Confirme que é este posto antes de aceitar.
+              </p>
+
+              <div className="bg-white p-3 rounded-md border border-amber-200 space-y-1.5 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium uppercase text-[10px]">Posto:</span>
+                  <span className="font-bold text-slate-900 text-right">
+                    {convEmergencialConfirmar.expand?.escala?.expand?.posto?.nome || 'Posto'}
+                  </span>
+                </div>
+                {(() => {
+                  const end = convEmergencialConfirmar.expand?.escala?.expand?.posto
+                    ?.endereco as any
+                  const endFormatado = end
+                    ? [end.logradouro, end.numero, end.bairro, end.cidade, end.uf]
+                        .filter(Boolean)
+                        .join(', ')
+                    : ''
+                  return endFormatado ? (
+                    <div className="flex justify-between items-start pt-1 border-t border-slate-100">
+                      <span className="text-slate-500 font-medium uppercase text-[10px] shrink-0">
+                        Endereço:
+                      </span>
+                      <span className="text-slate-700 text-right text-[11px] font-medium ml-2">
+                        {endFormatado}
+                      </span>
+                    </div>
+                  ) : null
+                })()}
+                <div className="flex justify-between items-center pt-1 border-t border-slate-100">
+                  <span className="text-slate-500 font-medium uppercase text-[10px]">Data:</span>
+                  <span className="font-bold text-slate-900">
+                    {formatDateBR(convEmergencialConfirmar.expand?.escala?.data)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center pt-1 border-t border-slate-100">
+                  <span className="text-slate-500 font-medium uppercase text-[10px]">Horário:</span>
+                  <span className="font-bold text-slate-900">
+                    {convEmergencialConfirmar.expand?.escala?.turno_inicio} às{' '}
+                    {convEmergencialConfirmar.expand?.escala?.turno_fim}
+                  </span>
+                </div>
+                {convEmergencialConfirmar.valor_diaria ? (
+                  <div className="flex justify-between items-center pt-1 border-t border-slate-100">
+                    <span className="text-slate-500 font-medium uppercase text-[10px]">
+                      Diária:
+                    </span>
+                    <span className="font-bold text-emerald-700 text-sm">
+                      {formatCurrencyBRL(convEmergencialConfirmar.valor_diaria)}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConvEmergencialConfirmar(null)}
+                disabled={actionLoading === convEmergencialConfirmar.id}
+              >
+                Voltar
+              </Button>
+              <Button
+                size="sm"
+                className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+                disabled={actionLoading === convEmergencialConfirmar.id}
+                onClick={() => handleAceitar(convEmergencialConfirmar)}
+              >
+                {actionLoading === convEmergencialConfirmar.id ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Confirmando aceite...
+                  </span>
+                ) : (
+                  'Confirmar aceite'
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Dialog de Confirmação 'Não vou hoje' */}
       {dialogNaoVaiOpen && convNaoVaiSelected && (

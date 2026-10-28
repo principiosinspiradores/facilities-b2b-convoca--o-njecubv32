@@ -116,34 +116,56 @@ routerAdd('POST', '/backend/v1/facilities/recusar-presenca-hoje/{convocacaoId}',
     } catch (_) {}
   }
 
-  // 3. Buscar profissionais elegíveis
-  // Exclusões: proExcluidoId = proId (a pro que disse que não vai NÃO recebe nova convocação)
-  let elegiveis = []
+  // 3. Garantir carregamento explícito da lib ElegibilidadeReoferta (globalThis / require defensivo)
+  let elegibilidadeMotor = null
   if (
     typeof ElegibilidadeReoferta !== 'undefined' &&
+    ElegibilidadeReoferta &&
     ElegibilidadeReoferta.buscarProsElegiveisReoferta
   ) {
-    elegiveis = ElegibilidadeReoferta.buscarProsElegiveisReoferta({
+    elegibilidadeMotor = ElegibilidadeReoferta
+  } else if (
+    typeof globalThis !== 'undefined' &&
+    globalThis.ElegibilidadeReoferta &&
+    globalThis.ElegibilidadeReoferta.buscarProsElegiveisReoferta
+  ) {
+    elegibilidadeMotor = globalThis.ElegibilidadeReoferta
+  } else if (typeof require !== 'undefined') {
+    try {
+      elegibilidadeMotor = require(`${__hooks}/lib_elegibilidade_reoferta.js`)
+    } catch (_) {
+      try {
+        elegibilidadeMotor = require('./lib_elegibilidade_reoferta.js')
+      } catch (_) {}
+    }
+  }
+
+  // ELIMINAR FALLBACK: Se o motor de elegibilidade estiver indisponível:
+  // NÃO criar convocações, NÃO marcar como broadcast feito, retornar 200 com convocadas: 0 e aviso, logar erro claro.
+  if (!elegibilidadeMotor || !elegibilidadeMotor.buscarProsElegiveisReoferta) {
+    console.log(
+      `[EMERGENCIAL_NAO_VOU_HOJE] ERRO CRÍTICO: Motor ElegibilidadeReoferta indisponível ao processar convocação ${convocacaoId}. Nenhuma convocação emergencial foi gerada. A convocação de origem segue com nao_vai.`,
+    )
+    return e.json(200, {
+      success: true,
+      convocacao_id: conv.id,
+      confirmacao_presenca: 'nao_vai',
+      convocadas: 0,
+      total_convocadas: 0,
+      aviso: 'motor_elegibilidade_indisponivel',
+      message:
+        'Presença atualizada para não_vai. Nenhuma convocação disparada pois o motor de elegibilidade está indisponível.',
+    })
+  }
+
+  // Buscar profissionais elegíveis via motor com filtros rigorosos
+  const elegiveis =
+    elegibilidadeMotor.buscarProsElegiveisReoferta({
       escala: escala,
       posto: posto,
       proExcluidoId: proId,
       now: now,
-    })
-  } else {
-    // Fallback defensivo: buscar pros ativas/teste
-    try {
-      const candidates = $app.findRecordsByFilter(
-        'users',
-        `role = 'pro' && (status = 'ativo' || status = 'teste') && id != '${proId}'`,
-        'created',
-        50,
-        0,
-      )
-      elegiveis = candidates || []
-    } catch (_) {
-      elegiveis = []
-    }
-  }
+    }) || []
 
   // 4. Criar convocações pendentes com regra_aplicada prefixada 'EMERGENCIAL NÃO VOU HOJE — ' + regra
   const convocacoesCol = $app.findCollectionByNameOrId('convocacoes')

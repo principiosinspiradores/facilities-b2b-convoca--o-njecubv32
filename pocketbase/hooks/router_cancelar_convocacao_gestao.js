@@ -278,10 +278,189 @@ routerAdd('POST', '/backend/v1/facilities/cancelar-convocacao-gestao', (e) => {
     console.log('[CANCELAR_GESTAO] Erro ao enviar e-mail de cancelamento para pro:', errEmail)
   }
 
+  // 6. RECUPERAÇÃO / RETOMADA DE CANDIDATOS (Reofertar opcional, default false)
+  // Caso reofertar === true:
+  // - Não reofertar se já houver convocação status='pendente' nesta mesma escala.
+  // - Buscar convocações da MESMA escala com regra_aplicada = 'Vaga já preenchida' (exclusivamente essas).
+  // - Cruzar com buscarProsElegiveisReoferta (excluindo a pro do aceite cancelado e quem não for mais elegível).
+  // - Criar pendentes com regra_aplicada = 'EMERGENCIAL RETOMADA — ' + regra do motor.
+  // - Push / e-mail disparados automaticamente pelo hook_nova_convocacao.
+  const reofertar = body.reofertar === true || body.reofertar === 'true'
+  let retomadasCriadas = 0
+  const retomadasIds = []
+
+  if (reofertar && escalaRecord) {
+    try {
+      // Verificar se já existe convocação pendente na mesma escala
+      const pendentesExistentes = $app.findRecordsByFilter(
+        'convocacoes',
+        `escala = '${escalaId}' && status = 'pendente'`,
+        '-created',
+        1,
+        0,
+      )
+
+      if (pendentesExistentes && pendentesExistentes.length > 0) {
+        console.log(
+          `[CANCELAR_GESTAO] Reoferta abortada: escala ${escalaId} já possui convocação pendente ativa.`,
+        )
+      } else {
+        // Carregar motor de elegibilidade
+        let elegibilidadeMotor = null
+        if (
+          typeof ElegibilidadeReoferta !== 'undefined' &&
+          ElegibilidadeReoferta &&
+          ElegibilidadeReoferta.buscarProsElegiveisReoferta
+        ) {
+          elegibilidadeMotor = ElegibilidadeReoferta
+        } else if (
+          typeof globalThis !== 'undefined' &&
+          globalThis.ElegibilidadeReoferta &&
+          globalThis.ElegibilidadeReoferta.buscarProsElegiveisReoferta
+        ) {
+          elegibilidadeMotor = globalThis.ElegibilidadeReoferta
+        } else if (typeof require !== 'undefined') {
+          try {
+            elegibilidadeMotor = require(`${__hooks}/lib_elegibilidade_reoferta.js`)
+          } catch (_) {
+            try {
+              elegibilidadeMotor = require('./lib_elegibilidade_reoferta.js')
+            } catch (_) {}
+          }
+        }
+
+        if (!elegibilidadeMotor || !elegibilidadeMotor.buscarProsElegiveisReoferta) {
+          console.log(
+            `[CANCELAR_GESTAO] Motor ElegibilidadeReoferta indisponível para retomada de escala ${escalaId}.`,
+          )
+        } else {
+          // Buscar convocações da MESMA escala com regra_aplicada = 'Vaga já preenchida' (apenas essas; recusadas/expiradas fora)
+          const convsPreenchidas = $app.findRecordsByFilter(
+            'convocacoes',
+            `escala = '${escalaId}' && regra_aplicada = 'Vaga já preenchida'`,
+            'created',
+            100,
+            0,
+          )
+
+          if (convsPreenchidas && convsPreenchidas.length > 0) {
+            // Mapear IDs das pros que estavam com "Vaga já preenchida"
+            const prosPreenchidasMap = {}
+            for (let cpIdx = 0; cpIdx < convsPreenchidas.length; cpIdx++) {
+              const cpProId = convsPreenchidas[cpIdx].getString('pro')
+              if (cpProId && cpProId !== proId) {
+                prosPreenchidasMap[cpProId] = convsPreenchidas[cpIdx]
+              }
+            }
+
+            // Consultar motor de elegibilidade com ignorarJaConvocadaNestaEscala=true
+            // (pois essas pros já tinham registro cancelado nesta mesma escala)
+            const prosElegiveis =
+              elegibilidadeMotor.buscarProsElegiveisReoferta({
+                escala: escalaRecord,
+                posto: postoRecord,
+                proExcluidoId: proId,
+                now: new Date(),
+                ignorarJaConvocadaNestaEscala: true,
+              }) || []
+
+            const valDiariaBase =
+              escalaRecord.getFloat('valor_diaria') ||
+              (postoRecord ? postoRecord.getFloat('valor_diaria_base') : 0) ||
+              180
+            const convocacoesCol = $app.findCollectionByNameOrId('convocacoes')
+            const nowIso = new Date().toISOString()
+
+            for (let peIdx = 0; peIdx < prosElegiveis.length; peIdx++) {
+              const candidata = prosElegiveis[peIdx]
+              const cId = candidata.id
+
+              // Só convocar se era da lista de "Vaga já preenchida" da mesma escala e não for a pro do aceite cancelado
+              if (!prosPreenchidasMap[cId] || cId === proId) {
+                continue
+              }
+
+              // Mesma lógica de valor e regra do motor
+              let regraMotor = 'tabela base'
+              let valDiaria = valDiariaBase
+
+              if (candidata.getString('status') === 'teste') {
+                valDiaria = candidata.getFloat('ajuda_custo') || 50
+                regraMotor = 'ajuda de custo (teste)'
+              } else if (candidata.getFloat('valor_negociado')) {
+                valDiaria = candidata.getFloat('valor_negociado')
+                regraMotor = 'valor negociado'
+              }
+
+              const regraAplicada = `EMERGENCIAL RETOMADA — ${regraMotor}`
+
+              try {
+                const novaConv = new Record(convocacoesCol)
+                novaConv.set('escala', escalaId)
+                novaConv.set('pro', cId)
+                novaConv.set('status', 'pendente')
+                novaConv.set('valor_diaria', valDiaria)
+                novaConv.set('regra_aplicada', regraAplicada)
+                novaConv.set('data_convocacao', nowIso)
+                novaConv.set('confirmacao_presenca', 'nao_confirmada')
+                $app.save(novaConv)
+
+                retomadasCriadas++
+                retomadasIds.push(novaConv.id)
+              } catch (errSaveRetomada) {
+                console.log(
+                  `[CANCELAR_GESTAO] Falha ao recriar convocação retomada para pro ${cId}:`,
+                  errSaveRetomada,
+                )
+              }
+            }
+
+            if (retomadasCriadas > 0) {
+              try {
+                escalaRecord.set('status', 'convocada')
+                $app.save(escalaRecord)
+              } catch (_) {}
+
+              // Registrar no histórico da escala
+              try {
+                const histCol = $app.findCollectionByNameOrId('historico_escalas')
+                const hist = new Record(histCol)
+                hist.set('escala', escalaId)
+                hist.set('usuario', authRecord.id)
+                hist.set('acao', 'reoferta_emergencial')
+                hist.set(
+                  'descricao',
+                  `Cancelamento pela gestão com retomada emergencial disparada para ${retomadasCriadas} profissional(is) ex-'Vaga já preenchida'.`,
+                )
+                hist.set(
+                  'detalhes',
+                  JSON.stringify({
+                    convocacao_cancelada: convRecord.id,
+                    pro_cancelada: proId,
+                    retomadas_criadas: retomadasCriadas,
+                    convocacoes_ids: retomadasIds,
+                  }),
+                )
+                $app.save(hist)
+              } catch (_) {}
+            }
+          }
+        }
+      }
+    } catch (errRetomada) {
+      console.log('[CANCELAR_GESTAO] Erro no fluxo de retomada:', errRetomada)
+    }
+  }
+
   return e.json(200, {
     success: true,
-    message: 'Convocação cancelada com sucesso pela gestão.',
+    message:
+      retomadasCriadas > 0
+        ? `Convocação cancelada pela gestão. Retomada emergencial disparada para ${retomadasCriadas} candidato(s) anterior(es).`
+        : 'Convocação cancelada com sucesso pela gestão.',
     convocacao_id: convRecord.id,
     payouts_cancelados: payoutsAfetados,
+    retomadas_criadas: retomadasCriadas,
+    retomadas_ids: retomadasIds,
   })
 })

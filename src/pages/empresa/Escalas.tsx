@@ -155,6 +155,7 @@ export default function EscalasPage() {
   const [escalaConvocacaoParaCancelar, setEscalaConvocacaoParaCancelar] =
     useState<EscalaRecord | null>(null)
   const [isCancelingConvocacao, setIsCancelingConvocacao] = useState(false)
+  const [reofertarAposCancelar, setReofertarAposCancelar] = useState(true)
 
   // Estado de Recálculo em Andamento
   const [recalculandoId, setRecalculandoId] = useState<string | null>(null)
@@ -1385,6 +1386,15 @@ export default function EscalasPage() {
   const handleAbrirCancelarConvocacao = (conv: ConvocacaoRecord, esc: EscalaRecord) => {
     setConvocacaoParaCancelar(conv)
     setEscalaConvocacaoParaCancelar(esc)
+    // Marcar checkbox por padrão se o turno for de hoje (America/Sao_Paulo)
+    const dataEscStr = (esc?.data || '').slice(0, 10)
+    const hojeSp = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date())
+    setReofertarAposCancelar(dataEscStr === hojeSp)
     setModalCancelarConvocacao(true)
   }
 
@@ -1394,13 +1404,17 @@ export default function EscalasPage() {
 
     setIsCancelingConvocacao(true)
     try {
-      const resp = await pb.send<{ success: boolean; message: string }>(
-        '/backend/v1/facilities/cancelar-convocacao-gestao',
-        {
-          method: 'POST',
-          body: { convocacao_id: convocacaoParaCancelar.id },
+      const resp = await pb.send<{
+        success: boolean
+        message: string
+        retomadas_criadas?: number
+      }>('/backend/v1/facilities/cancelar-convocacao-gestao', {
+        method: 'POST',
+        body: {
+          convocacao_id: convocacaoParaCancelar.id,
+          reofertar: reofertarAposCancelar,
         },
-      )
+      })
 
       // Patch local: atualizar status da convocação para cancelada e da escala para aberta
       const canceledConvId = convocacaoParaCancelar.id
@@ -1415,7 +1429,17 @@ export default function EscalasPage() {
       )
       if (targetEscalaId) {
         setEscalas((prev) =>
-          prev.map((e) => (e.id === targetEscalaId ? { ...e, status: 'aberta' as const } : e)),
+          prev.map((e) =>
+            e.id === targetEscalaId
+              ? {
+                  ...e,
+                  status:
+                    resp?.retomadas_criadas && resp.retomadas_criadas > 0
+                      ? ('convocada' as const)
+                      : ('aberta' as const),
+                }
+              : e,
+          ),
         )
       }
 
@@ -1429,6 +1453,8 @@ export default function EscalasPage() {
       setModalCancelarConvocacao(false)
       setConvocacaoParaCancelar(null)
       setEscalaConvocacaoParaCancelar(null)
+      // Recarregar para puxar as convocações retomadas se geradas
+      recarregarEscalasFiltro()
     } catch (err: any) {
       console.error('Erro ao cancelar convocação pela gestão:', err)
       const msgErro =
@@ -4771,6 +4797,28 @@ export default function EscalasPage() {
                     e sem qualquer penalidade para o perfil da profissional. A vaga voltará a ficar
                     aberta e poderá ser reconvocada normalmente.
                   </p>
+                </div>
+
+                {/* Opção de Retomada Emergencial para ex-"Vaga já preenchida" */}
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={reofertarAposCancelar}
+                      onChange={(e) => setReofertarAposCancelar(e.target.checked)}
+                      className="mt-0.5 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="font-semibold text-slate-800 text-xs">
+                        A vaga continua em aberto — reoferecer aos demais candidatos que não
+                        chegaram a decidir
+                      </span>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Reenvia convocação emergencial aos candidatos que foram cancelados por "Vaga
+                        já preenchida" e continuam elegíveis hoje.
+                      </p>
+                    </div>
+                  </label>
                 </div>
               </div>
 
