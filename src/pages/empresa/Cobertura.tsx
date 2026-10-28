@@ -89,7 +89,7 @@ export default function CoberturaPage() {
 
   // Filtros
   const [filtroPosto, setFiltroPosto] = useState<string>('todos')
-  const [filtroPeriodo, setFiltroPeriodo] = useState<'hoje' | '7dias' | 'custom' | 'todos'>('todos')
+  const [filtroPeriodo, setFiltroPeriodo] = useState<'hoje' | '7dias' | 'custom' | 'todos'>('hoje')
   const [filtroTipoAlerta, setFiltroTipoAlerta] = useState<string>('todos')
   const [dataInicioCustom, setDataInicioCustom] = useState<string>('')
   const [dataFimCustom, setDataFimCustom] = useState<string>('')

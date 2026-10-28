@@ -100,7 +100,7 @@ export default function EscalasPage() {
   // Filtros de período e visualização
   const [filtroPeriodo, setFiltroPeriodo] = useState<
     'hoje' | 'semana' | 'mes' | 'custom' | 'todos'
-  >('semana')
+  >('hoje')
   const [dataDeCustom, setDataDeCustom] = useState('')
   const [dataAteCustom, setDataAteCustom] = useState('')
   const [filtroPosto, setFiltroPosto] = useState('todos')
@@ -2449,7 +2449,7 @@ export default function EscalasPage() {
           </div>
 
           {/* Limpar Filtros */}
-          {(filtroPeriodo !== 'semana' ||
+          {(filtroPeriodo !== 'hoje' ||
             filtroPosto !== 'todos' ||
             filtroStatus !== 'todos' ||
             buscaTexto ||
@@ -2463,7 +2463,7 @@ export default function EscalasPage() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  setFiltroPeriodo('semana')
+                  setFiltroPeriodo('hoje')
                   setFiltroPosto('todos')
                   setFiltroStatus('todos')
                   setBuscaTexto('')

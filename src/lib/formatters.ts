@@ -66,7 +66,7 @@ export function formatTimeSP(dateTimeStr?: string | null): string {
 }
 
 export function formatDateTimeSP(dateTimeStr?: string | null): string {
-  if (!dateTimeStr) return '—'
+  if (!dateTimeStr) return ''
   try {
     const d = new Date(dateTimeStr)
     if (isNaN(d.getTime())) return String(dateTimeStr)
@@ -82,4 +82,16 @@ export function formatDateTimeSP(dateTimeStr?: string | null): string {
   } catch {
     return String(dateTimeStr)
   }
+}
+
+/**
+ * Retorna a data de HOJE em formato YYYY-MM-DD no fuso America/Sao_Paulo
+ */
+export function getDataHojeSP(): string {
+  const nowSP = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })
+  const d = new Date(nowSP)
+  const ano = d.getFullYear()
+  const mes = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}`
 }
