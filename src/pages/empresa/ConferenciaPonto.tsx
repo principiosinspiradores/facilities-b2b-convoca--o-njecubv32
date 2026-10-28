@@ -11,7 +11,8 @@ import {
 import { listarAtestados, validarAtestado, getAtestadoArquivoUrl } from '@/services/atestados'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
-import { formatDateBR, formatCurrencyBRL } from '@/lib/formatters'
+import { formatDateBR, formatCurrencyBRL, getDataHojeSP } from '@/lib/formatters'
+import { getCoordenadasPosto } from '@/services/ponto'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -48,6 +49,7 @@ import {
   ExternalLink,
   UserCheck,
   UserX,
+  LogOut,
 } from 'lucide-react'
 
 interface ItemSemChegada {
@@ -57,6 +59,16 @@ interface ItemSemChegada {
   posto: PostoRecord
   pro: UserRecord | undefined
   minutosDesdeInicio: number
+}
+
+interface ItemSemSaida {
+  convocacaoId: string
+  convocacao: ConvocacaoRecord
+  escala: EscalaRecord
+  posto: PostoRecord
+  pro: UserRecord | undefined
+  horaChegadaFormatada?: string
+  pontoChegada?: PontoRecord
 }
 
 export default function ConferenciaPontoPage() {
@@ -86,6 +98,9 @@ export default function ConferenciaPontoPage() {
   const [isRegistrandoPresenca, setIsRegistrandoPresenca] = useState(false)
   const [horaChegadaManual, setHoraChegadaManual] = useState('')
   const [obsPresencaManual, setObsPresencaManual] = useState('')
+  const [modalSaidaItem, setModalSaidaItem] = useState<ItemSemSaida | null>(null)
+  const [isRegistrandoSaida, setIsRegistrandoSaida] = useState(false)
+  const [obsSaidaManual, setObsSaidaManual] = useState('')
   const [isLoading, setIsLoading] = useState(true)
 
   // Filtros
@@ -109,7 +124,7 @@ export default function ConferenciaPontoPage() {
   const loadData = async () => {
     setIsLoading(true)
     try {
-      const hojeIso = new Date().toISOString().slice(0, 10)
+      const hojeIso = getDataHojeSP()
       const [pontosRes, postosRes, prosRes, atestadosRes, escalasRes, convsRes] = await Promise.all(
         [
           pb.collection('pontos').getFullList<PontoRecord>({
@@ -455,7 +470,7 @@ export default function ConferenciaPontoPage() {
   // Turnos do dia com convocação aceita sem registro de chegada (minutosDesdeInicio > 15)
   const turnosSemChegadaDoDia = useMemo(() => {
     const agora = new Date()
-    const hojeStr = agora.toISOString().slice(0, 10)
+    const hojeStr = getDataHojeSP()
     const itens: ItemSemChegada[] = []
 
     for (const conv of convocacoesDoDia) {
@@ -511,6 +526,146 @@ export default function ConferenciaPontoPage() {
 
     return itens
   }, [convocacoesDoDia, escalasDoDia, pontos, postos, pros])
+
+  // Turnos de hoje com convocação aceita, chegada registrada e saída pendente (fuso America/Sao_Paulo)
+  const turnosSemSaidaDoDia = useMemo(() => {
+    const hojeStr = getDataHojeSP()
+    const itens: ItemSemSaida[] = []
+
+    for (const conv of convocacoesDoDia) {
+      if (conv.status !== 'aceita') continue
+      const escala = conv.expand?.escala || escalasDoDia.find((e) => e.id === conv.escala)
+      if (!escala) continue
+      if (escala.status === 'falta' || escala.status === 'cancelada') continue
+
+      const dataEscalaStr = (escala.data || '').slice(0, 10)
+      if (dataEscalaStr !== hojeStr) continue
+
+      const proId = conv.pro
+      // Verificar se possui ponto de chegada
+      const pontoChegada = pontos.find((p) => {
+        if (p.pro !== proId) return false
+        if (p.tipo !== 'chegada') return false
+        if (p.escala && p.escala === escala.id) return true
+        const dataPontoStr = (p.timestamp_real || p.created || '').slice(0, 10)
+        return dataPontoStr === dataEscalaStr
+      })
+
+      if (!pontoChegada) continue
+
+      // Verificar se já possui ponto de saída
+      const temPontoSaida = pontos.some((p) => {
+        if (p.pro !== proId) return false
+        if (p.tipo !== 'saida') return false
+        if (p.escala && p.escala === escala.id) return true
+        const dataPontoStr = (p.timestamp_real || p.created || '').slice(0, 10)
+        return dataPontoStr === dataEscalaStr
+      })
+
+      if (!temPontoSaida) {
+        const posto =
+          escala.expand?.posto || postos.find((p) => p.id === escala.posto) || ({} as PostoRecord)
+        const proObj = conv.expand?.pro || pros.find((p) => p.id === proId)
+
+        let horaChegadaFormatada = ''
+        if (pontoChegada.timestamp_real) {
+          try {
+            horaChegadaFormatada = new Intl.DateTimeFormat('pt-BR', {
+              timeZone: 'America/Sao_Paulo',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false,
+            }).format(new Date(pontoChegada.timestamp_real))
+          } catch {
+            horaChegadaFormatada = ''
+          }
+        }
+
+        itens.push({
+          convocacaoId: conv.id,
+          convocacao: conv,
+          escala,
+          posto,
+          pro: proObj,
+          horaChegadaFormatada,
+          pontoChegada,
+        })
+      }
+    }
+
+    return itens
+  }, [convocacoesDoDia, escalasDoDia, pontos, postos, pros])
+
+  const abrirModalSaidaManual = (item: ItemSemSaida) => {
+    setObsSaidaManual('')
+    setModalSaidaItem(item)
+  }
+
+  const handleRegistrarSaidaManual = async () => {
+    if (!modalSaidaItem) return
+    const proId = modalSaidaItem.pro?.id || (modalSaidaItem.pro as any)
+    const postoId = modalSaidaItem.posto?.id || (modalSaidaItem.posto as any)
+    const escalaId = modalSaidaItem.escala?.id
+
+    setIsRegistrandoSaida(true)
+    try {
+      const agora = new Date().toISOString()
+      const obsTexto = obsSaidaManual.trim()
+      const obsGestao = obsTexto
+        ? `Saída manual registrada pela gestão — ${obsTexto}`
+        : 'Saída manual registrada pela gestão'
+
+      const postoCoords = getCoordenadasPosto(modalSaidaItem.posto)
+      const raioPosto = modalSaidaItem.posto?.raio_geocerca_m || 100
+
+      const novoPonto = await pb.collection('pontos').create<PontoRecord>({
+        escala: escalaId,
+        pro: proId,
+        posto: postoId,
+        tipo: 'saida',
+        timestamp_real: agora,
+        latitude: postoCoords.lat,
+        longitude: postoCoords.lng,
+        raio_posto_m: raioPosto,
+        dentro_raio: false,
+        fora_janela: false,
+        status_validacao: 'aprovado_manual',
+        observacao_gestao: obsGestao,
+        ocorrencia: 'Saída registrada manualmente pela gestão',
+      })
+
+      // Atualiza lista local de pontos para refletir no espelho e remover dos turnos sem saída
+      setPontos((prev) => [
+        {
+          ...novoPonto,
+          expand: {
+            escala: modalSaidaItem.escala,
+            posto: modalSaidaItem.posto,
+            pro: modalSaidaItem.pro,
+          },
+        },
+        ...prev,
+      ])
+
+      const nomePro = modalSaidaItem.pro?.name || modalSaidaItem.pro?.email || 'o profissional'
+      toast({
+        title: 'Saída registrada',
+        description: `Saída manual registrada para ${nomePro}.`,
+      })
+
+      setModalSaidaItem(null)
+      setObsSaidaManual('')
+    } catch (err: any) {
+      console.error('Erro ao registrar saída manual:', err)
+      toast({
+        title: 'Erro ao registrar saída manual',
+        description: err?.message || 'Tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsRegistrandoSaida(false)
+    }
+  }
 
   const abrirModalPresencaManual = (item: ItemSemChegada) => {
     const horaAtualSP = new Intl.DateTimeFormat('pt-BR', {
@@ -1384,6 +1539,70 @@ export default function ConferenciaPontoPage() {
                           </Button>
                         </div>
                       )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* BANNER DE TURNOS DO DIA COM CHEGADA SEM REGISTRO DE SAÍDA */}
+          {turnosSemSaidaDoDia.length > 0 && (
+            <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4 shadow-sm">
+              <div className="flex items-start sm:items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700 shrink-0">
+                    <LogOut className="w-5 h-5 text-blue-700" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-blue-950 flex items-center gap-2">
+                      Turnos de Hoje com Chegada sem Registro de Saída
+                      <Badge className="bg-blue-600 text-white font-bold text-xs">
+                        {turnosSemSaidaDoDia.length} turno(s)
+                      </Badge>
+                    </h3>
+                    <p className="text-xs text-blue-800 mt-0.5">
+                      Profissionais que registraram chegada no turno de hoje e ainda não registraram
+                      o ponto de saída.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {turnosSemSaidaDoDia.map((item) => (
+                  <div
+                    key={item.convocacaoId}
+                    className="bg-white rounded-lg p-3 border border-blue-200 shadow-2xs flex flex-col justify-between gap-2.5"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900 text-xs">
+                          {item.pro?.name || item.pro?.email || 'Profissional'}
+                        </span>
+                        <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 text-[10px] font-bold">
+                          Entrada: {item.horaChegadaFormatada || 'Registrada'}
+                        </Badge>
+                      </div>
+                      <div className="text-slate-600 text-[11px] mt-1">
+                        Posto: <strong>{item.posto.nome || 'Posto'}</strong>
+                      </div>
+                      <div className="text-slate-500 text-[11px]">
+                        Turno: {formatDateBR(item.escala.data)} ({item.escala.turno_inicio} às{' '}
+                        {item.escala.turno_fim})
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => abrirModalSaidaManual(item)}
+                        className="border-blue-300 text-blue-700 hover:bg-blue-50 h-7 text-xs font-semibold"
+                      >
+                        <LogOut className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                        Registrar saída manual
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -2641,6 +2860,93 @@ export default function ConferenciaPontoPage() {
                 className={`w-3.5 h-3.5 mr-1.5 ${isRegistrandoPresenca ? 'animate-spin' : ''}`}
               />
               {isRegistrandoPresenca ? 'Registrando...' : 'Registrar presença'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Registrar Saída Manual na Conferência de Ponto */}
+      <Dialog
+        open={!!modalSaidaItem}
+        onOpenChange={(open) => !open && !isRegistrandoSaida && setModalSaidaItem(null)}
+      >
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-blue-900 flex items-center gap-2">
+              <LogOut className="w-5 h-5 text-blue-600" />
+              Registrar Saída Manual
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Registrar a saída da profissional para este turno; o ponto ficará marcado como
+              aprovado manualmente pela gestão.
+            </DialogDescription>
+          </DialogHeader>
+
+          {modalSaidaItem && (
+            <div className="space-y-3 py-2 text-xs">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-1.5 text-slate-800">
+                <div>
+                  <span className="text-slate-500 font-semibold">Profissional:</span>{' '}
+                  <strong className="text-slate-900 font-bold">
+                    {modalSaidaItem.pro?.name || modalSaidaItem.pro?.email || 'Profissional'}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-semibold">Posto:</span>{' '}
+                  <strong className="text-slate-900 font-bold">{modalSaidaItem.posto.nome}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-semibold">Data e Turno:</span>{' '}
+                  <strong className="text-slate-900">
+                    {formatDateBR(modalSaidaItem.escala.data)}, {modalSaidaItem.escala.turno_inicio}{' '}
+                    às {modalSaidaItem.escala.turno_fim}
+                  </strong>
+                </div>
+                {modalSaidaItem.horaChegadaFormatada && (
+                  <div>
+                    <span className="text-slate-500 font-semibold">Horário da Chegada:</span>{' '}
+                    <strong className="text-emerald-700">
+                      {modalSaidaItem.horaChegadaFormatada}
+                    </strong>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Observação da gestão (opcional)
+                </label>
+                <Input
+                  type="text"
+                  value={obsSaidaManual}
+                  onChange={(e) => setObsSaidaManual(e.target.value)}
+                  placeholder="Ex: Saída confirmada com a liderança no posto"
+                  className="h-9 text-xs"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModalSaidaItem(null)}
+              disabled={isRegistrandoSaida}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleRegistrarSaidaManual}
+              disabled={isRegistrandoSaida}
+              className="text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <LogOut
+                className={`w-3.5 h-3.5 mr-1.5 ${isRegistrandoSaida ? 'animate-spin' : ''}`}
+              />
+              {isRegistrandoSaida ? 'Registrando...' : 'Confirmar saída manual'}
             </Button>
           </DialogFooter>
         </DialogContent>

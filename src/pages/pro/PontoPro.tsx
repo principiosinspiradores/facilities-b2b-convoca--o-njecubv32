@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { ConvocacaoRecord, EscalaRecord, PontoRecord, PostoRecord } from '@/types/facilities'
-import { formatDateBR } from '@/lib/formatters'
+import { formatDateBR, getDataHojeSP } from '@/lib/formatters'
 import {
   calcularDistanciaMetros,
   getCoordenadasPosto,
@@ -74,6 +74,246 @@ export default function PontoProPage() {
     }, 1000)
     return () => clearInterval(timer)
   }, [])
+
+  // Separação de turnos de hoje vs outros turnos (passados e futuros)
+  const hojeSP = getDataHojeSP()
+
+  const turnosHoje = useMemo(() => {
+    return escalasHoje.filter((conv) => {
+      const dataEscala = (conv.expand?.escala?.data || '').slice(0, 10)
+      return dataEscala === hojeSP
+    })
+  }, [escalasHoje, hojeSP])
+
+  const outrosTurnos = useMemo(() => {
+    return escalasHoje.filter((conv) => {
+      const dataEscala = (conv.expand?.escala?.data || '').slice(0, 10)
+      return dataEscala !== hojeSP
+    })
+  }, [escalasHoje, hojeSP])
+
+  // Renderiza o card padrão de uma escala para registro de ponto
+  const renderCardEscala = (conv: ConvocacaoRecord) => {
+    const escala = conv.expand?.escala
+    const posto = escala?.expand?.posto
+    const end = posto?.endereco as any
+
+    // Pontos já registrados no servidor para esta escala
+    const pontosEscala = pontosRegistrados.filter((p) => p.escala === escala?.id)
+    const pontoChegadaServidor = pontosEscala.find((p) => p.tipo === 'chegada')
+    const pontoSaidaServidor = pontosEscala.find((p) => p.tipo === 'saida')
+
+    // Pontos pendentes na fila local offline
+    const pendentesEscala = pontosPendentes.filter((p) => p.escala === escala?.id)
+    const pendenteChegada = pendentesEscala.find((p) => p.tipo === 'chegada')
+    const pendenteSaida = pendentesEscala.find((p) => p.tipo === 'saida')
+
+    const temChegada = !!pontoChegadaServidor || !!pendenteChegada
+    const temSaida = !!pontoSaidaServidor || !!pendenteSaida
+
+    // Obter intervalo mínimo (lido de settings ou fallback 10 min)
+    const intervaloMinSaidaMin =
+      Number(settings?.ponto_intervalo_min_saida_min) > 0
+        ? Number(settings?.ponto_intervalo_min_saida_min)
+        : 10
+
+    const pontoChegadaRef = pendenteChegada || pontoChegadaServidor
+    let horaChegadaFormatada = ''
+    let minRestantes = 0
+    let saidaBloqueadaPorIntervalo = false
+
+    if (pontoChegadaRef) {
+      const tChegada = new Date(pontoChegadaRef.timestamp_real).getTime()
+      horaChegadaFormatada = new Date(pontoChegadaRef.timestamp_real).toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+      const msPassados = currentTime - tChegada
+      const msNecessarios = intervaloMinSaidaMin * 60 * 1000
+      const msRestantes = msNecessarios - msPassados
+      if (msRestantes > 0) {
+        saidaBloqueadaPorIntervalo = true
+        minRestantes = Math.floor(msRestantes / 60000)
+      }
+    }
+
+    const labelChegada = temChegada
+      ? `Chegada registrada às ${horaChegadaFormatada}`
+      : 'Registrar Chegada'
+
+    let labelSaida = 'Registrar Saída'
+    if (temSaida) {
+      labelSaida = 'Saída Registrada'
+    } else if (temChegada && saidaBloqueadaPorIntervalo) {
+      labelSaida =
+        minRestantes <= 0 ? 'Saída liberada em segundos' : `Saída liberada em ${minRestantes} min`
+    }
+
+    const saidaDesabilitada = !temChegada || temSaida || saidaBloqueadaPorIntervalo
+
+    return (
+      <Card key={conv.id} className="border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/50">
+          <div className="flex items-center justify-between">
+            <Badge
+              variant="outline"
+              className="bg-primary/5 text-primary border-primary/20 text-xs font-semibold"
+            >
+              {posto?.funcao || 'Operacional'}
+            </Badge>
+            <div className="text-xs text-slate-500 font-medium">{formatDateBR(escala?.data)}</div>
+          </div>
+          <CardTitle className="text-base font-bold text-slate-900 mt-1">{posto?.nome}</CardTitle>
+          <CardDescription className="text-xs flex items-center gap-1 text-slate-500">
+            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            {end?.logradouro}, {end?.numero} - {end?.bairro} ({end?.cidade})
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="pt-4 space-y-4">
+          <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+            <div>
+              <span className="text-[10px] uppercase font-semibold text-slate-400 block">
+                Horário do Turno
+              </span>
+              <span className="font-bold text-slate-800">
+                {escala?.turno_inicio} às {escala?.turno_fim}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-semibold text-slate-400 block">
+                Cerca Digital & Tolerância
+              </span>
+              <span className="font-semibold text-primary">
+                Raio de {posto?.raio_geocerca_m || 100}m &bull; Tol.{' '}
+                {posto?.tolerancia_entrada_minutos || 10}min
+              </span>
+            </div>
+          </div>
+
+          {!postoTemCoordenadas(posto) && (
+            <div className="p-2 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-[11px] flex items-start gap-1.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <strong>Posto sem coordenadas</strong> — a cerca digital não funcionará
+                corretamente. Contate o gestor da empresa para configurar a localização exata do
+                posto.
+              </div>
+            </div>
+          )}
+
+          {/* Status dos registros */}
+          <div className="space-y-2 text-xs">
+            {/* Chegada */}
+            <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
+              <span className="font-medium text-slate-600">Chegada:</span>
+              {pendenteChegada ? (
+                <div className="flex items-center gap-1.5 font-semibold text-amber-700">
+                  <Clock className="w-4 h-4 text-amber-600" />
+                  {new Date(pendenteChegada.timestamp_real).toLocaleTimeString('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                  <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px]">
+                    Ponto registrado ✓ aguardando envio
+                  </Badge>
+                </div>
+              ) : pontoChegadaServidor ? (
+                <div className="flex items-center gap-1.5 font-semibold text-primary">
+                  <CheckCheck className="w-4 h-4 text-primary" />
+                  {new Date(pontoChegadaServidor.timestamp_real).toLocaleTimeString('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                  <Badge className="bg-primary/10 text-primary border-primary/30 text-[10px]">
+                    Enviado ao sistema
+                  </Badge>
+                </div>
+              ) : (
+                <span className="text-slate-400 italic">Pendente</span>
+              )}
+            </div>
+
+            {/* Saída */}
+            <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
+              <span className="font-medium text-slate-600">Saída:</span>
+              {pendenteSaida ? (
+                <div className="flex items-center gap-1.5 font-semibold text-amber-700">
+                  <Clock className="w-4 h-4 text-amber-600" />
+                  {new Date(pendenteSaida.timestamp_real).toLocaleTimeString('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                  <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px]">
+                    Ponto registrado ✓ aguardando envio
+                  </Badge>
+                </div>
+              ) : pontoSaidaServidor ? (
+                <div className="flex items-center gap-1.5 font-semibold text-primary">
+                  <CheckCheck className="w-4 h-4 text-primary" />
+                  {new Date(pontoSaidaServidor.timestamp_real).toLocaleTimeString('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                  <Badge className="bg-primary/10 text-primary border-primary/30 text-[10px]">
+                    Enviado ao sistema
+                  </Badge>
+                </div>
+              ) : (
+                <span className="text-slate-400 italic">Pendente</span>
+              )}
+            </div>
+          </div>
+
+          {/* Botões de Ação com trava anti-duplicação e intervalo mínimo */}
+          {temChegada && temSaida ? (
+            <div className="pt-1">
+              <Button
+                size="sm"
+                disabled
+                variant="outline"
+                className="w-full text-xs font-semibold bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed"
+              >
+                <CheckCheck className="w-3.5 h-3.5 mr-1.5 text-primary" />
+                Ponto completo do turno
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Button
+                size="sm"
+                disabled={temChegada}
+                onClick={() => openRegistroModal(conv, 'chegada')}
+                className="text-xs font-semibold"
+                title={temChegada ? labelChegada : undefined}
+              >
+                <Camera className="w-3.5 h-3.5 mr-1" />
+                <span className="truncate">{labelChegada}</span>
+              </Button>
+
+              <Button
+                size="sm"
+                disabled={saidaDesabilitada}
+                onClick={() => openRegistroModal(conv, 'saida')}
+                variant={temSaida ? 'outline' : 'secondary'}
+                className="text-xs font-semibold"
+                title={
+                  saidaBloqueadaPorIntervalo
+                    ? minRestantes <= 0
+                      ? `Aguarde alguns segundos para registrar a saída (intervalo mínimo de ${intervaloMinSaidaMin} min)`
+                      : `Aguarde ${minRestantes} min para registrar a saída (intervalo mínimo de ${intervaloMinSaidaMin} min)`
+                    : undefined
+                }
+              >
+                <Clock className="w-3.5 h-3.5 mr-1" />
+                <span className="truncate">{labelSaida}</span>
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
 
   // Status de conectividade
   const [isOnline, setIsOnline] = useState<boolean>(
@@ -954,278 +1194,50 @@ export default function PontoProPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Turnos disponíveis para bater ponto */}
+          {/* SEÇÃO DESTACADA: HOJE (PRIMEIRA COISA VISÍVEL NA PÁGINA) */}
+          <div className="space-y-3 bg-primary/5 border-2 border-primary/30 rounded-xl p-4 shadow-xs">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-primary" />
+                Hoje ({formatDateBR(hojeSP)})
+              </h2>
+              {turnosHoje.length > 0 && (
+                <Badge className="bg-primary text-white text-xs font-bold">
+                  {turnosHoje.length} turno(s) hoje
+                </Badge>
+              )}
+            </div>
+
+            {turnosHoje.length === 0 ? (
+              <div className="py-4 text-center">
+                <p className="text-xs text-slate-500 font-medium">Nenhum turno hoje</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {turnosHoje.map((conv) => renderCardEscala(conv))}
+              </div>
+            )}
+          </div>
+
+          {/* Turnos disponíveis para bater ponto (outros turnos: passados e futuros) */}
           <div className="space-y-3">
             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-primary" />
-              Escalas Confirmadas & Registro do Dia
+              <Calendar className="w-4 h-4 text-slate-500" />
+              Outras Escalas Confirmadas
             </h2>
 
-            {escalasHoje.length === 0 ? (
-              <Card className="text-center py-8 border-dashed border border-slate-200 bg-white">
-                <CardContent className="space-y-3">
-                  <Clock className="w-8 h-8 text-slate-300 mx-auto" />
-                  <p className="text-sm text-slate-600 font-medium">
-                    Você não tem escalas com convocação aceita programadas para registrar ponto no
-                    momento.
-                  </p>
-                  <p className="text-xs text-slate-400 max-w-md mx-auto">
-                    Caso você tenha comparecido presencialmente a um posto sem convocação formal
-                    registrada, você pode registrar sua presença como alerta transparente abaixo.
+            {outrosTurnos.length === 0 ? (
+              <Card className="text-center py-6 border-dashed border border-slate-200 bg-white">
+                <CardContent className="space-y-2">
+                  <Clock className="w-7 h-7 text-slate-300 mx-auto" />
+                  <p className="text-xs text-slate-500 font-medium">
+                    Nenhuma outra escala com convocação aceita programada no momento.
                   </p>
                 </CardContent>
               </Card>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {escalasHoje.map((conv) => {
-                  const escala = conv.expand?.escala
-                  const posto = escala?.expand?.posto
-                  const end = posto?.endereco as any
-
-                  // Pontos já registrados no servidor para esta escala
-                  const pontosEscala = pontosRegistrados.filter((p) => p.escala === escala?.id)
-                  const pontoChegadaServidor = pontosEscala.find((p) => p.tipo === 'chegada')
-                  const pontoSaidaServidor = pontosEscala.find((p) => p.tipo === 'saida')
-
-                  // Pontos pendentes na fila local offline
-                  const pendentesEscala = pontosPendentes.filter((p) => p.escala === escala?.id)
-                  const pendenteChegada = pendentesEscala.find((p) => p.tipo === 'chegada')
-                  const pendenteSaida = pendentesEscala.find((p) => p.tipo === 'saida')
-
-                  const temChegada = !!pontoChegadaServidor || !!pendenteChegada
-                  const temSaida = !!pontoSaidaServidor || !!pendenteSaida
-
-                  return (
-                    <Card
-                      key={conv.id}
-                      className="border border-slate-200 bg-white shadow-sm overflow-hidden"
-                    >
-                      <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/50">
-                        <div className="flex items-center justify-between">
-                          <Badge
-                            variant="outline"
-                            className="bg-primary/5 text-primary border-primary/20 text-xs font-semibold"
-                          >
-                            {posto?.funcao || 'Operacional'}
-                          </Badge>
-                          <div className="text-xs text-slate-500 font-medium">
-                            {formatDateBR(escala?.data)}
-                          </div>
-                        </div>
-                        <CardTitle className="text-base font-bold text-slate-900 mt-1">
-                          {posto?.nome}
-                        </CardTitle>
-                        <CardDescription className="text-xs flex items-center gap-1 text-slate-500">
-                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          {end?.logradouro}, {end?.numero} - {end?.bairro} ({end?.cidade})
-                        </CardDescription>
-                      </CardHeader>
-
-                      <CardContent className="pt-4 space-y-4">
-                        <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                          <div>
-                            <span className="text-[10px] uppercase font-semibold text-slate-400 block">
-                              Horário do Turno
-                            </span>
-                            <span className="font-bold text-slate-800">
-                              {escala?.turno_inicio} às {escala?.turno_fim}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-[10px] uppercase font-semibold text-slate-400 block">
-                              Cerca Digital & Tolerância
-                            </span>
-                            <span className="font-semibold text-primary">
-                              Raio de {posto?.raio_geocerca_m || 100}m &bull; Tol.{' '}
-                              {posto?.tolerancia_entrada_minutos || 10}min
-                            </span>
-                          </div>
-                        </div>
-
-                        {!postoTemCoordenadas(posto) && (
-                          <div className="p-2 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-[11px] flex items-start gap-1.5">
-                            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                            <div>
-                              <strong>Posto sem coordenadas</strong> — a cerca digital não
-                              funcionará corretamente. Contate o gestor da empresa para configurar a
-                              localização exata do posto.
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Status dos registros */}
-                        <div className="space-y-2 text-xs">
-                          {/* Chegada */}
-                          <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
-                            <span className="font-medium text-slate-600">Chegada:</span>
-                            {pendenteChegada ? (
-                              <div className="flex items-center gap-1.5 font-semibold text-amber-700">
-                                <Clock className="w-4 h-4 text-amber-600" />
-                                {new Date(pendenteChegada.timestamp_real).toLocaleTimeString(
-                                  'pt-BR',
-                                  {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  },
-                                )}
-                                <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px]">
-                                  Ponto registrado ✓ aguardando envio
-                                </Badge>
-                              </div>
-                            ) : pontoChegadaServidor ? (
-                              <div className="flex items-center gap-1.5 font-semibold text-primary">
-                                <CheckCheck className="w-4 h-4 text-primary" />
-                                {new Date(pontoChegadaServidor.timestamp_real).toLocaleTimeString(
-                                  'pt-BR',
-                                  {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  },
-                                )}
-                                <Badge className="bg-primary/10 text-primary border-primary/30 text-[10px]">
-                                  Enviado ao sistema
-                                </Badge>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400 italic">Pendente</span>
-                            )}
-                          </div>
-
-                          {/* Saída */}
-                          <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
-                            <span className="font-medium text-slate-600">Saída:</span>
-                            {pendenteSaida ? (
-                              <div className="flex items-center gap-1.5 font-semibold text-amber-700">
-                                <Clock className="w-4 h-4 text-amber-600" />
-                                {new Date(pendenteSaida.timestamp_real).toLocaleTimeString(
-                                  'pt-BR',
-                                  {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  },
-                                )}
-                                <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px]">
-                                  Ponto registrado ✓ aguardando envio
-                                </Badge>
-                              </div>
-                            ) : pontoSaidaServidor ? (
-                              <div className="flex items-center gap-1.5 font-semibold text-primary">
-                                <CheckCheck className="w-4 h-4 text-primary" />
-                                {new Date(pontoSaidaServidor.timestamp_real).toLocaleTimeString(
-                                  'pt-BR',
-                                  {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  },
-                                )}
-                                <Badge className="bg-primary/10 text-primary border-primary/30 text-[10px]">
-                                  Enviado ao sistema
-                                </Badge>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400 italic">Pendente</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Botões de Ação com trava anti-duplicação e intervalo mínimo */}
-                        {(() => {
-                          // Obter intervalo mínimo (lido de settings ou fallback 10 min)
-                          const intervaloMinSaidaMin =
-                            Number(settings?.ponto_intervalo_min_saida_min) > 0
-                              ? Number(settings?.ponto_intervalo_min_saida_min)
-                              : 10
-
-                          const pontoChegadaRef = pendenteChegada || pontoChegadaServidor
-                          let horaChegadaFormatada = ''
-                          let minRestantes = 0
-                          let saidaBloqueadaPorIntervalo = false
-
-                          if (pontoChegadaRef) {
-                            const tChegada = new Date(pontoChegadaRef.timestamp_real).getTime()
-                            horaChegadaFormatada = new Date(
-                              pontoChegadaRef.timestamp_real,
-                            ).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                            const msPassados = currentTime - tChegada
-                            const msNecessarios = intervaloMinSaidaMin * 60 * 1000
-                            const msRestantes = msNecessarios - msPassados
-                            if (msRestantes > 0) {
-                              saidaBloqueadaPorIntervalo = true
-                              // Se faltar menos de 1 minuto (ex: 45s), minRestantes pode ser 0 ou usar a regra de segundos
-                              minRestantes = Math.floor(msRestantes / 60000)
-                            }
-                          }
-
-                          if (temChegada && temSaida) {
-                            return (
-                              <div className="pt-1">
-                                <Button
-                                  size="sm"
-                                  disabled
-                                  variant="outline"
-                                  className="w-full text-xs font-semibold bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed"
-                                >
-                                  <CheckCheck className="w-3.5 h-3.5 mr-1.5 text-primary" />
-                                  Ponto completo do turno
-                                </Button>
-                              </div>
-                            )
-                          }
-
-                          const labelChegada = temChegada
-                            ? `Chegada registrada às ${horaChegadaFormatada}`
-                            : 'Registrar Chegada'
-
-                          let labelSaida = 'Registrar Saída'
-                          if (temSaida) {
-                            labelSaida = 'Saída Registrada'
-                          } else if (temChegada && saidaBloqueadaPorIntervalo) {
-                            labelSaida =
-                              minRestantes <= 0
-                                ? 'Saída liberada em segundos'
-                                : `Saída liberada em ${minRestantes} min`
-                          }
-
-                          const saidaDesabilitada =
-                            !temChegada || temSaida || saidaBloqueadaPorIntervalo
-
-                          return (
-                            <div className="grid grid-cols-2 gap-2 pt-1">
-                              <Button
-                                size="sm"
-                                disabled={temChegada}
-                                onClick={() => openRegistroModal(conv, 'chegada')}
-                                className="text-xs font-semibold"
-                                title={temChegada ? labelChegada : undefined}
-                              >
-                                <Camera className="w-3.5 h-3.5 mr-1" />
-                                <span className="truncate">{labelChegada}</span>
-                              </Button>
-
-                              <Button
-                                size="sm"
-                                disabled={saidaDesabilitada}
-                                onClick={() => openRegistroModal(conv, 'saida')}
-                                variant={temSaida ? 'outline' : 'secondary'}
-                                className="text-xs font-semibold"
-                                title={
-                                  saidaBloqueadaPorIntervalo
-                                    ? minRestantes <= 0
-                                      ? `Aguarde alguns segundos para registrar a saída (intervalo mínimo de ${intervaloMinSaidaMin} min)`
-                                      : `Aguarde ${minRestantes} min para registrar a saída (intervalo mínimo de ${intervaloMinSaidaMin} min)`
-                                    : undefined
-                                }
-                              >
-                                <Clock className="w-3.5 h-3.5 mr-1" />
-                                <span className="truncate">{labelSaida}</span>
-                              </Button>
-                            </div>
-                          )
-                        })()}
-                      </CardContent>
-                    </Card>
-                  )
-                })}
+                {outrosTurnos.map((conv) => renderCardEscala(conv))}
               </div>
             )}
           </div>
