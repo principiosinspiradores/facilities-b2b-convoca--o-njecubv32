@@ -82,72 +82,77 @@ export default function ConvocacoesPage() {
     null,
   )
 
-  const loadConvocacoes = useCallback(async () => {
-    if (!user) return
-    setIsLoading(true)
-    try {
-      const [records, atestadosList, settingsList] = await Promise.all([
-        pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
-          filter: `pro = "${user.id}"`,
-          sort: '-created',
-          expand: 'escala,escala.posto',
-        }),
-        listarAtestadosPorPro(user.id).catch(() => []),
-        pb
-          .collection('settings')
-          .getFullList({ sort: '-created', batch: 1 })
-          .catch(() => []),
-      ])
-
-      if (settingsList && settingsList.length > 0) {
-        setPrazoAtestadoHoras(Number((settingsList[0] as any).prazo_atestado_horas) || 48)
+  const loadConvocacoes = useCallback(
+    async (silencioso = false) => {
+      if (!user) return
+      if (!silencioso) {
+        setIsLoading(true)
       }
-      setAtestadosPro(atestadosList)
+      try {
+        const [records, atestadosList, settingsList] = await Promise.all([
+          pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
+            filter: `pro = "${user.id}"`,
+            sort: '-created',
+            expand: 'escala,escala.posto',
+          }),
+          listarAtestadosPorPro(user.id).catch(() => []),
+          pb
+            .collection('settings')
+            .getFullList({ sort: '-created', batch: 1 })
+            .catch(() => []),
+        ])
 
-      // Recalcular e atualizar em tempo real o valor exato da diária e a regra aplicada
-      const updated = await Promise.all(
-        records.map(async (c) => {
-          if (c.status === 'pendente' && c.escala) {
-            try {
-              const calc = await calcularDiariaEngine(c.escala, user.id)
-              return {
-                ...c,
-                valor_diaria: calc.valor,
-                regra_aplicada: calc.regra_aplicada,
-              }
-            } catch {
-              return c
-            }
-          }
-          return c
-        }),
-      )
-
-      // Ordenar pela DATA DO TURNO em ordem CRESCENTE (da mais próxima para a mais distante),
-      // com desempate por turno_inicio
-      updated.sort((a, b) => {
-        const dataA = a.expand?.escala?.data ? a.expand.escala.data.slice(0, 10) : ''
-        const dataB = b.expand?.escala?.data ? b.expand.escala.data.slice(0, 10) : ''
-        if (dataA !== dataB) {
-          return dataA.localeCompare(dataB)
+        if (settingsList && settingsList.length > 0) {
+          setPrazoAtestadoHoras(Number((settingsList[0] as any).prazo_atestado_horas) || 48)
         }
-        const horaA = a.expand?.escala?.turno_inicio || ''
-        const horaB = b.expand?.escala?.turno_inicio || ''
-        return horaA.localeCompare(horaB)
-      })
+        setAtestadosPro(atestadosList)
 
-      setConvocacoes(updated)
-    } catch (err) {
-      console.error('Erro ao buscar convocações:', err)
-      toast({
-        title: 'Erro ao carregar convocações',
-        description: 'Não foi possível carregar a lista do servidor.',
-        variant: 'destructive',
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }, [user])
+        // Recalcular e atualizar em tempo real o valor exato da diária e a regra aplicada
+        const updated = await Promise.all(
+          records.map(async (c) => {
+            if (c.status === 'pendente' && c.escala) {
+              try {
+                const calc = await calcularDiariaEngine(c.escala, user.id)
+                return {
+                  ...c,
+                  valor_diaria: calc.valor,
+                  regra_aplicada: calc.regra_aplicada,
+                }
+              } catch {
+                return c
+              }
+            }
+            return c
+          }),
+        )
+
+        // Ordenar pela DATA DO TURNO em ordem CRESCENTE (da mais próxima para a mais distante),
+        // com desempate por turno_inicio
+        updated.sort((a, b) => {
+          const dataA = a.expand?.escala?.data ? a.expand.escala.data.slice(0, 10) : ''
+          const dataB = b.expand?.escala?.data ? b.expand.escala.data.slice(0, 10) : ''
+          if (dataA !== dataB) {
+            return dataA.localeCompare(dataB)
+          }
+          const horaA = a.expand?.escala?.turno_inicio || ''
+          const horaB = b.expand?.escala?.turno_inicio || ''
+          return horaA.localeCompare(horaB)
+        })
+
+        setConvocacoes(updated)
+      } catch (err) {
+        console.error('Erro ao buscar convocações:', err)
+        toast({
+          title: 'Erro ao carregar convocações',
+          description: 'Não foi possível carregar a lista do servidor.',
+          variant: 'destructive',
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [user],
+  )
 
   useEffect(() => {
     loadConvocacoes()
@@ -182,6 +187,19 @@ export default function ConvocacoesPage() {
     }
 
     setActionLoading(conv.id)
+    const estadoAnterior = conv.status
+    // Atualização otimista imediata no estado local: status muda para 'aceita'
+    setConvocacoes((prev) =>
+      prev.map((c) =>
+        c.id === conv.id
+          ? {
+              ...c,
+              status: 'aceita' as const,
+              confirmacao_presenca: c.confirmacao_presenca || ('nao_confirmada' as const),
+            }
+          : c,
+      ),
+    )
     try {
       const escala = conv.expand?.escala
       const posto = escala?.expand?.posto
@@ -208,9 +226,14 @@ export default function ConvocacoesPage() {
         description: toastDesc,
       })
       setConvEmergencialConfirmar(null)
-      loadConvocacoes()
+      // Recarga silenciosa em background (sem spinner de página inteira)
+      loadConvocacoes(true)
     } catch (err: any) {
       console.error('Erro ao aceitar:', err)
+      // Rollback se falhar
+      setConvocacoes((prev) =>
+        prev.map((c) => (c.id === conv.id ? { ...c, status: estadoAnterior } : c)),
+      )
       const msgErro =
         err?.response?.message ||
         err?.data?.message ||
@@ -228,6 +251,11 @@ export default function ConvocacoesPage() {
 
   const handleRecusar = async (conv: ConvocacaoRecord) => {
     setActionLoading(conv.id)
+    const estadoAnterior = conv.status
+    // Atualização otimista imediata no estado local: status muda para 'recusada'
+    setConvocacoes((prev) =>
+      prev.map((c) => (c.id === conv.id ? { ...c, status: 'recusada' as const } : c)),
+    )
     try {
       await pb.collection('convocacoes').update(conv.id, {
         status: 'recusada',
@@ -237,9 +265,14 @@ export default function ConvocacoesPage() {
         title: 'Convocação recusada',
         description: 'O turno será reofertado para outros profissionais.',
       })
-      loadConvocacoes()
+      // Recarga silenciosa em background (sem spinner de página inteira)
+      loadConvocacoes(true)
     } catch (err) {
       console.error('Erro ao recusar:', err)
+      // Rollback se falhar
+      setConvocacoes((prev) =>
+        prev.map((c) => (c.id === conv.id ? { ...c, status: estadoAnterior } : c)),
+      )
       toast({
         title: 'Erro ao recusar turno',
         description: 'Tente novamente.',
@@ -265,6 +298,12 @@ export default function ConvocacoesPage() {
 
   const handleConfirmarPresenca = async (conv: ConvocacaoRecord) => {
     setConfirmandoPresencaId(conv.id)
+    // Atualização otimista imediata no estado local
+    setConvocacoes((prev) =>
+      prev.map((c) =>
+        c.id === conv.id ? { ...c, confirmacao_presenca: 'confirmada' as const } : c,
+      ),
+    )
     try {
       await pb.send(`/backend/v1/facilities/confirmar-presenca/${conv.id}`, {
         method: 'POST',
@@ -274,9 +313,16 @@ export default function ConvocacoesPage() {
         description: 'Sua confirmação de presença no turno foi registrada com sucesso.',
         className: 'bg-emerald-600 text-white border-emerald-700',
       })
-      loadConvocacoes()
+      // Recarga silenciosa em background (sem spinner de página inteira)
+      loadConvocacoes(true)
     } catch (err: any) {
       console.error('Erro ao confirmar presença:', err)
+      // Rollback se falhar
+      setConvocacoes((prev) =>
+        prev.map((c) =>
+          c.id === conv.id ? { ...c, confirmacao_presenca: conv.confirmacao_presenca } : c,
+        ),
+      )
       const errorMsg =
         err?.response?.data?.message ||
         err?.data?.message ||
@@ -295,7 +341,12 @@ export default function ConvocacoesPage() {
   const handleDispararNaoVouHoje = async () => {
     if (!convNaoVaiSelected) return
     const convId = convNaoVaiSelected.id
+    const estadoAnteriorPresenca = convNaoVaiSelected.confirmacao_presenca
     setRecusandoPresencaId(convId)
+    // Atualização otimista imediata no estado local
+    setConvocacoes((prev) =>
+      prev.map((c) => (c.id === convId ? { ...c, confirmacao_presenca: 'nao_vai' as const } : c)),
+    )
     try {
       const res: any = await pb.send(`/backend/v1/facilities/recusar-presenca-hoje/${convId}`, {
         method: 'POST',
@@ -307,9 +358,16 @@ export default function ConvocacoesPage() {
       })
       setDialogNaoVaiOpen(false)
       setConvNaoVaiSelected(null)
-      loadConvocacoes()
+      // Recarga silenciosa em background (sem spinner de página inteira)
+      loadConvocacoes(true)
     } catch (err: any) {
       console.error('Erro ao registrar não vou hoje:', err)
+      // Rollback se falhar
+      setConvocacoes((prev) =>
+        prev.map((c) =>
+          c.id === convId ? { ...c, confirmacao_presenca: estadoAnteriorPresenca } : c,
+        ),
+      )
       const errorMsg =
         err?.response?.data?.message ||
         err?.data?.message ||
@@ -570,7 +628,7 @@ export default function ConvocacoesPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={loadConvocacoes}
+              onClick={() => loadConvocacoes()}
               disabled={isLoading}
               className="text-xs border-slate-300 hover:bg-slate-50 font-semibold"
             >

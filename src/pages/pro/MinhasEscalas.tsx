@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { ConvocacaoRecord, AtestadoRecord, SettingsRecord } from '@/types/facilities'
-import { formatCurrencyBRL, formatDateBR } from '@/lib/formatters'
+import { formatCurrencyBRL, formatDateBR, getDataHojeSP } from '@/lib/formatters'
 import { listarAtestadosPorPro } from '@/services/atestados'
 import { ModalEnviarAtestado } from '@/components/atestados/ModalEnviarAtestado'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,13 +13,26 @@ import {
   Calendar,
   Clock,
   MapPin,
-  AlertCircle,
   Ban,
   CheckCircle2,
   FileText,
   AlertTriangle,
+  Filter,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
+
+type FiltroPeriodoEscala = 'hoje' | '7dias' | 'todos'
+
+// Helper SP: calcula data de hoje + N dias no formato YYYY-MM-DD (fuso America/Sao_Paulo)
+function getDataOffsetSP(diasOffset: number): string {
+  const nowSP = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })
+  const d = new Date(nowSP)
+  d.setDate(d.getDate() + diasOffset)
+  const ano = d.getFullYear()
+  const mes = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}`
+}
 
 export default function MinhasEscalasPage() {
   const { user } = useAuth()
@@ -30,15 +43,18 @@ export default function MinhasEscalasPage() {
   const [selectedConvAtestado, setSelectedConvAtestado] = useState<ConvocacaoRecord | null>(null)
   const [isModalAtestadoOpen, setIsModalAtestadoOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [filtroPeriodo, setFiltroPeriodo] = useState<FiltroPeriodoEscala>('hoje')
   const [cancelingId, setCancelingId] = useState<string | null>(null)
   const [confirmandoPresencaId, setConfirmandoPresencaId] = useState<string | null>(null)
   const [recusandoPresencaId, setRecusandoPresencaId] = useState<string | null>(null)
   const [dialogNaoVaiOpen, setDialogNaoVaiOpen] = useState(false)
   const [convNaoVaiSelected, setConvNaoVaiSelected] = useState<ConvocacaoRecord | null>(null)
 
-  const loadData = async () => {
+  const loadData = async (silencioso = false) => {
     if (!user) return
-    setIsLoading(true)
+    if (!silencioso) {
+      setIsLoading(true)
+    }
     try {
       const [records, atestadosList, settingsList] = await Promise.all([
         pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
@@ -108,17 +124,33 @@ export default function MinhasEscalasPage() {
     const escala = conv.expand?.escala
     if (!escala?.data) return false
     const dataStr = escala.data.slice(0, 10)
-    const hojeSp = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Sao_Paulo',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date())
-    return dataStr === hojeSp
+    return dataStr === getDataHojeSP()
   }
+
+  // Filtragem de período mantendo a ordenação crescente existente
+  const hojeStr = getDataHojeSP()
+  const limite7DiasStr = getDataOffsetSP(6) // hoje + 6 dias = 7 dias
+
+  const escalasFiltradas = escalas.filter((conv) => {
+    const dataTurno = conv.expand?.escala?.data?.slice(0, 10) || ''
+    if (filtroPeriodo === 'hoje') {
+      return dataTurno === hojeStr
+    }
+    if (filtroPeriodo === '7dias') {
+      return dataTurno >= hojeStr && dataTurno <= limite7DiasStr
+    }
+    // 'todos': exatamente a listagem de hoje em diante como está (crescente), sem mudar ordem; turnos passados seguem visíveis nessa opção
+    return true
+  })
 
   const handleConfirmarPresenca = async (conv: ConvocacaoRecord) => {
     setConfirmandoPresencaId(conv.id)
+    // Atualização otimista imediata no estado local
+    setEscalas((prev) =>
+      prev.map((item) =>
+        item.id === conv.id ? { ...item, confirmacao_presenca: 'confirmada' as const } : item,
+      ),
+    )
     try {
       await pb.send(`/backend/v1/facilities/confirmar-presenca/${conv.id}`, {
         method: 'POST',
@@ -128,9 +160,16 @@ export default function MinhasEscalasPage() {
         description: 'Sua confirmação de presença no turno foi registrada com sucesso.',
         className: 'bg-emerald-600 text-white border-emerald-700',
       })
-      loadData()
+      // Recarga em segundo plano silenciosa (sem spinner de tela inteira)
+      loadData(true)
     } catch (err: any) {
       console.error('Erro ao confirmar presença:', err)
+      // Rollback em caso de falha
+      setEscalas((prev) =>
+        prev.map((item) =>
+          item.id === conv.id ? { ...item, confirmacao_presenca: conv.confirmacao_presenca } : item,
+        ),
+      )
       const errorMsg =
         err?.response?.data?.message ||
         err?.data?.message ||
@@ -149,7 +188,14 @@ export default function MinhasEscalasPage() {
   const handleDispararNaoVouHoje = async () => {
     if (!convNaoVaiSelected) return
     const convId = convNaoVaiSelected.id
+    const estadoAnteriorPresenca = convNaoVaiSelected.confirmacao_presenca
     setRecusandoPresencaId(convId)
+    // Atualização otimista imediata no estado local
+    setEscalas((prev) =>
+      prev.map((item) =>
+        item.id === convId ? { ...item, confirmacao_presenca: 'nao_vai' as const } : item,
+      ),
+    )
     try {
       const res: any = await pb.send(`/backend/v1/facilities/recusar-presenca-hoje/${convId}`, {
         method: 'POST',
@@ -161,9 +207,16 @@ export default function MinhasEscalasPage() {
       })
       setDialogNaoVaiOpen(false)
       setConvNaoVaiSelected(null)
-      loadData()
+      // Recarga em segundo plano silenciosa (sem spinner de tela inteira)
+      loadData(true)
     } catch (err: any) {
       console.error('Erro ao registrar não vou hoje:', err)
+      // Rollback em caso de erro
+      setEscalas((prev) =>
+        prev.map((item) =>
+          item.id === convId ? { ...item, confirmacao_presenca: estadoAnteriorPresenca } : item,
+        ),
+      )
       const errorMsg =
         err?.response?.data?.message ||
         err?.data?.message ||
@@ -338,23 +391,72 @@ export default function MinhasEscalasPage() {
         </div>
       </div>
 
+      {/* Barra de Filtros: Hoje (padrão) / Próximos 7 dias / Todos */}
+      <div className="flex flex-wrap items-center gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+        <span className="text-xs font-semibold text-slate-500 mr-1 flex items-center gap-1.5">
+          <Filter className="w-3.5 h-3.5 text-primary" /> Período:
+        </span>
+        {[
+          { id: 'hoje', label: 'Hoje' },
+          { id: '7dias', label: 'Próximos 7 dias' },
+          { id: 'todos', label: 'Todos' },
+        ].map((p) => {
+          const isSelected = filtroPeriodo === p.id
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setFiltroPeriodo(p.id as FiltroPeriodoEscala)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                isSelected
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+              }`}
+            >
+              {p.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Destaque no topo para a opção "Hoje" */}
+      {filtroPeriodo === 'hoje' && (
+        <div className="flex items-center justify-between bg-primary/5 border border-primary/20 px-4 py-3 rounded-xl">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-primary" />
+            <span className="text-sm font-bold text-slate-900">Hoje — {formatDateBR(hojeStr)}</span>
+          </div>
+          <span className="text-xs font-semibold text-primary">
+            {escalasFiltradas.length} {escalasFiltradas.length === 1 ? 'turno hoje' : 'turnos hoje'}
+          </span>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="flex justify-center py-12">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
         </div>
-      ) : escalas.length === 0 ? (
+      ) : escalasFiltradas.length === 0 ? (
         <Card className="text-center py-12 border-dashed border-2 border-slate-200">
           <CardContent className="space-y-2">
             <Calendar className="w-10 h-10 text-slate-300 mx-auto" />
-            <h3 className="font-semibold text-slate-700">Nenhuma escala programada</h3>
+            <h3 className="font-semibold text-slate-700">
+              {filtroPeriodo === 'hoje'
+                ? 'Nenhum turno programado para hoje'
+                : filtroPeriodo === '7dias'
+                  ? 'Nenhum turno nos próximos 7 dias'
+                  : 'Nenhuma escala programada'}
+            </h3>
             <p className="text-sm text-slate-400">
-              Quando você aceita convocações na sua caixa de entrada, seus turnos aparecem aqui.
+              {filtroPeriodo === 'hoje'
+                ? 'Você não possui turnos agendados para hoje. Selecione "Próximos 7 dias" ou "Todos" para ver suas outras datas.'
+                : 'Quando você aceita convocações na sua caixa de entrada, seus turnos aparecem aqui.'}
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {escalas.map((conv) => {
+          {escalasFiltradas.map((conv) => {
             const escala = conv.expand?.escala
             const posto = escala?.expand?.posto
             const end = posto?.endereco as any
