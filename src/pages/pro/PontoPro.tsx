@@ -108,7 +108,24 @@ export default function PontoProPage() {
     const pendenteChegada = pendentesEscala.find((p) => p.tipo === 'chegada')
     const pendenteSaida = pendentesEscala.find((p) => p.tipo === 'saida')
 
-    const temChegada = !!pontoChegadaServidor || !!pendenteChegada
+    // Se não há chegada na escala, verificar se existe ponto de chegada com aviso_sem_convocacao=true
+    // da mesma pro no MESMO posto no mesmo dia (buscar pontos do pro do dia sem filtro de escala)
+    const dataEscalaStr = (escala?.data || '').slice(0, 10)
+    const postoIdEscala = posto?.id || escala?.posto
+    const alertaGeocercaChegada =
+      !pontoChegadaServidor && !pendenteChegada && postoIdEscala && dataEscalaStr
+        ? pontosRegistrados.find((p) => {
+            if (p.tipo !== 'chegada' || !p.aviso_sem_convocacao) return false
+            const dataP = (p.timestamp_real || p.created || '').slice(0, 10)
+            if (dataP !== dataEscalaStr) return false
+            const pPostoId = (p.expand?.posto as any)?.id || p.posto
+            return pPostoId === postoIdEscala
+          })
+        : null
+
+    const temChegada = !!pontoChegadaServidor || !!pendenteChegada || !!alertaGeocercaChegada
+    const temChegadaPorGeocerca =
+      !pontoChegadaServidor && !pendenteChegada && !!alertaGeocercaChegada
     const temSaida = !!pontoSaidaServidor || !!pendenteSaida
 
     // Obter intervalo mínimo (lido de settings ou fallback 10 min)
@@ -117,7 +134,7 @@ export default function PontoProPage() {
         ? Number(settings?.ponto_intervalo_min_saida_min)
         : 10
 
-    const pontoChegadaRef = pendenteChegada || pontoChegadaServidor
+    const pontoChegadaRef = pendenteChegada || pontoChegadaServidor || alertaGeocercaChegada
     let horaChegadaFormatada = ''
     let minRestantes = 0
     let saidaBloqueadaPorIntervalo = false
@@ -229,6 +246,17 @@ export default function PontoProPage() {
                     Enviado ao sistema
                   </Badge>
                 </div>
+              ) : alertaGeocercaChegada ? (
+                <div className="flex items-center gap-1.5 font-semibold text-emerald-700">
+                  <CheckCheck className="w-4 h-4 text-emerald-600" />
+                  {new Date(alertaGeocercaChegada.timestamp_real).toLocaleTimeString('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                  <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]">
+                    Confirmada pela geocerca
+                  </Badge>
+                </div>
               ) : (
                 <span className="text-slate-400 italic">Pendente</span>
               )}
@@ -308,6 +336,13 @@ export default function PontoProPage() {
                 <Clock className="w-3.5 h-3.5 mr-1" />
                 <span className="truncate">{labelSaida}</span>
               </Button>
+            </div>
+          )}
+
+          {temChegadaPorGeocerca && !temSaida && (
+            <div className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded p-2 text-center">
+              Presença confirmada pela geocerca — chegada automática registrada às{' '}
+              {horaChegadaFormatada}
             </div>
           )}
         </CardContent>

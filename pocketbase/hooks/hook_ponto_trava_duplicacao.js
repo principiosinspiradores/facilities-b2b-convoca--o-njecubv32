@@ -144,34 +144,78 @@ onRecordCreate((e) => {
         throw new BadRequestError('Você já registrou sua saída para este turno')
       }
 
-      // (c) saída SEM chegada anterior -> bloquear com:
-      // "Registre sua chegada antes da saída"
-      if (!chegadaExistente) {
-        console.log(
-          `[TRAVA_PONTO] Bloqueio: Pro ${proId} tentou registrar saída sem chegada prévia para escala ${escalaId}.`,
-        )
-        throw new BadRequestError('Registre sua chegada antes da saída')
+      // (c) saída SEM chegada anterior:
+      // NÃO se aplica a registros com status_validacao='aprovado_manual' (saída manual da gestão).
+      // ANTES de bloquear, buscar ponto tipo='chegada' com aviso_sem_convocacao=true, mesmo pro, mesmo posto, mesmo dia.
+      // Se existir, PERMITIR a saída (a geocerca já comprovou a presença) e logar no console.
+      const statusValidacao = record.getString('status_validacao')
+      const isAprovadoManual = statusValidacao === 'aprovado_manual'
+
+      let pontoReferenciaChegada = chegadaExistente
+
+      if (!pontoReferenciaChegada && !isAprovadoManual) {
+        // Obter o posto do ponto que está sendo criado ou da escala associada
+        let postoId = record.getString('posto')
+        if (!postoId && escalaId) {
+          try {
+            const escRec = $app.findRecordById('escalas', escalaId)
+            postoId = escRec.getString('posto')
+          } catch (_) {
+            /* ignorado */
+          }
+        }
+
+        if (postoId) {
+          try {
+            const filtroAlertaGeocerca = `pro = '${proId}' && posto = '${postoId}' && tipo = 'chegada' && aviso_sem_convocacao = true && timestamp_real ~ '${dataPontoDia}'`
+            const alertasGeocerca = $app.findRecordsByFilter(
+              'pontos',
+              filtroAlertaGeocerca,
+              'timestamp_real',
+              1,
+              0,
+            )
+            if (alertasGeocerca && alertasGeocerca.length > 0) {
+              pontoReferenciaChegada = alertasGeocerca[0]
+              console.log(
+                `[TRAVA_PONTO] Presença comprovada pela geocerca: saída permitida para pro ${proId} no posto ${postoId} com base no alerta ${pontoReferenciaChegada.id} (aviso_sem_convocacao=true).`,
+              )
+            }
+          } catch (errAlerta) {
+            console.log('[TRAVA_PONTO] Erro ao consultar alerta de geocerca:', errAlerta)
+          }
+        }
+
+        if (!pontoReferenciaChegada) {
+          console.log(
+            `[TRAVA_PONTO] Bloqueio: Pro ${proId} tentou registrar saída sem chegada prévia e sem alerta de geocerca para escala ${escalaId}.`,
+          )
+          throw new BadRequestError('Registre sua chegada antes da saída')
+        }
       }
 
       // (d) saída com chegada há MENOS de 10 minutos (ou intervaloMinimoMin) -> bloquear com:
       // "Saída muito próxima da chegada — aguarde alguns minutos"
-      const timestampChegadaStr =
-        chegadaExistente.getString('timestamp_real') ||
-        chegadaExistente.getString('created') ||
-        new Date().toISOString()
-      const timestampSaidaStr = rawTimestamp
+      // Se for aprovado_manual sem ponto de referência de chegada, não aplica trava de intervalo
+      if (pontoReferenciaChegada) {
+        const timestampChegadaStr =
+          pontoReferenciaChegada.getString('timestamp_real') ||
+          pontoReferenciaChegada.getString('created') ||
+          new Date().toISOString()
+        const timestampSaidaStr = rawTimestamp
 
-      const tChegada = new Date(timestampChegadaStr).getTime()
-      const tSaida = new Date(timestampSaidaStr).getTime()
+        const tChegada = new Date(timestampChegadaStr).getTime()
+        const tSaida = new Date(timestampSaidaStr).getTime()
 
-      const diffMs = tSaida - tChegada
-      const diffMinutos = diffMs / 60000
+        const diffMs = tSaida - tChegada
+        const diffMinutos = diffMs / 60000
 
-      if (diffMinutos < intervaloMinimoMin) {
-        console.log(
-          `[TRAVA_PONTO] Bloqueio: Pro ${proId} tentou saída muito próxima da chegada (${diffMinutos.toFixed(1)} min < ${intervaloMinimoMin} min).`,
-        )
-        throw new BadRequestError('Saída muito próxima da chegada — aguarde alguns minutos')
+        if (diffMinutos < intervaloMinimoMin) {
+          console.log(
+            `[TRAVA_PONTO] Bloqueio: Pro ${proId} tentou saída muito próxima da chegada (${diffMinutos.toFixed(1)} min < ${intervaloMinimoMin} min).`,
+          )
+          throw new BadRequestError('Saída muito próxima da chegada — aguarde alguns minutos')
+        }
       }
     }
   } catch (err) {

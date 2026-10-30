@@ -100,6 +100,7 @@ export default function ConferenciaPontoPage() {
   const [obsPresencaManual, setObsPresencaManual] = useState('')
   const [modalSaidaItem, setModalSaidaItem] = useState<ItemSemSaida | null>(null)
   const [isRegistrandoSaida, setIsRegistrandoSaida] = useState(false)
+  const [horaSaidaManual, setHoraSaidaManual] = useState('')
   const [obsSaidaManual, setObsSaidaManual] = useState('')
   const [isLoading, setIsLoading] = useState(true)
 
@@ -527,7 +528,8 @@ export default function ConferenciaPontoPage() {
     return itens
   }, [convocacoesDoDia, escalasDoDia, pontos, postos, pros])
 
-  // Turnos de hoje com convocação aceita, chegada registrada e saída pendente (fuso America/Sao_Paulo)
+  // Turnos de hoje com convocação aceita e saída pendente (fuso America/Sao_Paulo)
+  // Inclui turnos com chegada registrada e também turnos sem chegada registrada (para saída manual pela gestão)
   const turnosSemSaidaDoDia = useMemo(() => {
     const hojeStr = getDataHojeSP()
     const itens: ItemSemSaida[] = []
@@ -542,7 +544,7 @@ export default function ConferenciaPontoPage() {
       if (dataEscalaStr !== hojeStr) continue
 
       const proId = conv.pro
-      // Verificar se possui ponto de chegada
+      // Verificar se possui ponto de chegada (na escala ou no dia)
       const pontoChegada = pontos.find((p) => {
         if (p.pro !== proId) return false
         if (p.tipo !== 'chegada') return false
@@ -550,8 +552,6 @@ export default function ConferenciaPontoPage() {
         const dataPontoStr = (p.timestamp_real || p.created || '').slice(0, 10)
         return dataPontoStr === dataEscalaStr
       })
-
-      if (!pontoChegada) continue
 
       // Verificar se já possui ponto de saída
       const temPontoSaida = pontos.some((p) => {
@@ -568,7 +568,7 @@ export default function ConferenciaPontoPage() {
         const proObj = conv.expand?.pro || pros.find((p) => p.id === proId)
 
         let horaChegadaFormatada = ''
-        if (pontoChegada.timestamp_real) {
+        if (pontoChegada && pontoChegada.timestamp_real) {
           try {
             horaChegadaFormatada = new Intl.DateTimeFormat('pt-BR', {
               timeZone: 'America/Sao_Paulo',
@@ -587,8 +587,8 @@ export default function ConferenciaPontoPage() {
           escala,
           posto,
           pro: proObj,
-          horaChegadaFormatada,
-          pontoChegada,
+          horaChegadaFormatada: horaChegadaFormatada || undefined,
+          pontoChegada: pontoChegada || undefined,
         })
       }
     }
@@ -597,6 +597,13 @@ export default function ConferenciaPontoPage() {
   }, [convocacoesDoDia, escalasDoDia, pontos, postos, pros])
 
   const abrirModalSaidaManual = (item: ItemSemSaida) => {
+    const horaAtualSP = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date())
+    setHoraSaidaManual(horaAtualSP)
     setObsSaidaManual('')
     setModalSaidaItem(item)
   }
@@ -607,9 +614,38 @@ export default function ConferenciaPontoPage() {
     const postoId = modalSaidaItem.posto?.id || (modalSaidaItem.posto as any)
     const escalaId = modalSaidaItem.escala?.id
 
+    if (!horaSaidaManual) {
+      toast({
+        title: 'Horário obrigatório',
+        description: 'Informe o horário da saída.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const dataEscala = modalSaidaItem.escala.data.slice(0, 10)
+    const timestampReal = `${dataEscala}T${horaSaidaManual}:00-03:00`
+
+    // Se existir chegada e a hora da saída for anterior à dela, toast de erro e não gravar
+    if (modalSaidaItem.pontoChegada) {
+      const tsChegadaStr =
+        modalSaidaItem.pontoChegada.timestamp_real || modalSaidaItem.pontoChegada.created || ''
+      if (tsChegadaStr) {
+        const tChegada = new Date(tsChegadaStr).getTime()
+        const tSaida = new Date(timestampReal).getTime()
+        if (tSaida < tChegada) {
+          toast({
+            title: 'Horário inválido',
+            description: 'O horário da saída não pode ser anterior ao horário da chegada.',
+            variant: 'destructive',
+          })
+          return
+        }
+      }
+    }
+
     setIsRegistrandoSaida(true)
     try {
-      const agora = new Date().toISOString()
       const obsTexto = obsSaidaManual.trim()
       const obsGestao = obsTexto
         ? `Saída manual registrada pela gestão — ${obsTexto}`
@@ -623,7 +659,7 @@ export default function ConferenciaPontoPage() {
         pro: proId,
         posto: postoId,
         tipo: 'saida',
-        timestamp_real: agora,
+        timestamp_real: timestampReal,
         latitude: postoCoords.lat,
         longitude: postoCoords.lng,
         raio_posto_m: raioPosto,
@@ -1580,9 +1616,15 @@ export default function ConferenciaPontoPage() {
                         <span className="font-bold text-slate-900 text-xs">
                           {item.pro?.name || item.pro?.email || 'Profissional'}
                         </span>
-                        <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 text-[10px] font-bold">
-                          Entrada: {item.horaChegadaFormatada || 'Registrada'}
-                        </Badge>
+                        {item.horaChegadaFormatada ? (
+                          <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 text-[10px] font-bold">
+                            Entrada: {item.horaChegadaFormatada}
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] font-bold">
+                            Sem chegada registrada
+                          </Badge>
+                        )}
                       </div>
                       <div className="text-slate-600 text-[11px] mt-1">
                         Posto: <strong>{item.posto.nome || 'Posto'}</strong>
@@ -2902,14 +2944,31 @@ export default function ConferenciaPontoPage() {
                     às {modalSaidaItem.escala.turno_fim}
                   </strong>
                 </div>
-                {modalSaidaItem.horaChegadaFormatada && (
+                {modalSaidaItem.horaChegadaFormatada ? (
                   <div>
                     <span className="text-slate-500 font-semibold">Horário da Chegada:</span>{' '}
                     <strong className="text-emerald-700">
                       {modalSaidaItem.horaChegadaFormatada}
                     </strong>
                   </div>
+                ) : (
+                  <div className="p-2 rounded bg-amber-50 border border-amber-200 text-amber-800 text-[11px]">
+                    Esta profissional não registrou chegada — se desejar, registre a presença manual
+                    também.
+                  </div>
                 )}
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Horário da saída <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="time"
+                  value={horaSaidaManual}
+                  onChange={(e) => setHoraSaidaManual(e.target.value)}
+                  className="h-9 text-xs"
+                />
               </div>
 
               <div>
@@ -2940,7 +2999,7 @@ export default function ConferenciaPontoPage() {
             <Button
               size="sm"
               onClick={handleRegistrarSaidaManual}
-              disabled={isRegistrandoSaida}
+              disabled={isRegistrandoSaida || !horaSaidaManual}
               className="text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
             >
               <LogOut
