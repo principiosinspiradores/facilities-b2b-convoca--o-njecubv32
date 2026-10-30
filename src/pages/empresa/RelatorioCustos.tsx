@@ -84,7 +84,7 @@ export default function RelatorioCustoPostoPage() {
         pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
           filter: 'status = "aceita" || status = "coberta"',
           sort: '-created',
-          expand: 'pro,escala',
+          expand: 'escala',
         }),
         pb.collection('pontos').getFullList<PontoRecord>({
           sort: '-timestamp_real',

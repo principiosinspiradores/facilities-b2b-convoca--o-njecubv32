@@ -214,7 +214,9 @@ export function detectarAlertasCobertura(
     // 4. Recusa do pro fixo (Fixa recusou, empresa deve ser informada)
 
     if (faltaComReofertaPendente) {
-      const proFaltouObj = convsFalta[0]?.expand?.pro
+      const faltaProId = convsFalta[0]?.pro
+      const proFaltouObj =
+        convsFalta[0]?.expand?.pro || prosElegiveisAtivos.find((p) => p.id === faltaProId)
       alertas.push({
         id: `falta_${escala.id}`,
         escala,

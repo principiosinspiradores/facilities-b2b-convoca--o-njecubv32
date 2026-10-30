@@ -194,7 +194,6 @@ export default function EscalasPage() {
         }),
         pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
           sort: '-created',
-          expand: 'pro',
         }),
       ])
 
@@ -1516,15 +1515,6 @@ export default function EscalasPage() {
       // Fechar modal de confirmação de vaga extra
       setModalAdicionarVagaExtra(false)
 
-      // Montar objeto de grupo atualizado incluindo a nova escala
-      const escalasAtualizadas = [...(grupo.escalas || []), novaEscala]
-      const grupoAtualizado = {
-        ...grupo,
-        totalVagas: novoTotalVagas,
-        isGrupoMultiVagas: true,
-        escalas: escalasAtualizadas,
-      }
-
       // Patch local: inserir nova escala criada na grade em memória
       const novaEscalaComExpand = {
         ...novaEscala,
@@ -1533,6 +1523,21 @@ export default function EscalasPage() {
         },
       }
       setEscalas((prev) => [...prev, novaEscalaComExpand])
+
+      // Montar objeto de grupo atualizado com a nova escala como PRIMEIRA da lista de escalas do grupo
+      // e gravando novaVagaExtraId para garantir prioridade máxima de envio
+      const escalasAtualizadas = [
+        novaEscalaComExpand,
+        ...(grupo.escalas || []).filter((e: EscalaRecord) => e.id !== novaEscala.id),
+      ]
+      const grupoAtualizado = {
+        ...grupo,
+        totalVagas: novoTotalVagas,
+        isGrupoMultiVagas: true,
+        primeiraEscala: novaEscalaComExpand,
+        novaVagaExtraId: novaEscala.id,
+        escalas: escalasAtualizadas,
+      }
 
       // 3. Abrir o modal de convocação existente para o usuário escolher a profissional extra
       openConvocarGrupoModal(grupoAtualizado)
@@ -1655,9 +1660,7 @@ export default function EscalasPage() {
           sort: 'data,turno_inicio',
           expand: 'posto',
         }),
-        pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
-          expand: 'pro',
-        }),
+        pb.collection('convocacoes').getFullList<ConvocacaoRecord>({}),
       ])
       setEscalas(resEscalas || [])
       setConvocacoes(resConvocacoes || [])
@@ -1979,13 +1982,49 @@ export default function EscalasPage() {
     try {
       const now = new Date().toISOString()
 
-      // Se estamos convocando para um grupo multi-vagas, distribuir ou associar às escalas abertas do grupo
-      const escalasAlvo = selectedGrupoParaConvocar
-        ? selectedGrupoParaConvocar.escalas.filter((esc: EscalaRecord) => {
-            const convs = convocacoes.filter((c) => c.escala === esc.id)
-            return !convs.some((c) => c.status === 'aceita' || c.status === 'coberta')
+      // Se estamos convocando para um grupo multi-vagas, distribuir ou associar às escalas abertas do grupo,
+      // PRIORIZANDO escalas sem NENHUMA convocação ativa (sem status pendente/aceita/coberta) — as vagas limpas primeiro,
+      // entre elas a vaga extra recém-criada; só depois (se não houver vaga limpa) as escalas sem aceite que já têm pendente.
+      let escalasAlvo: EscalaRecord[] = [selectedEscala]
+      if (selectedGrupoParaConvocar) {
+        const semAceite = selectedGrupoParaConvocar.escalas.filter((esc: EscalaRecord) => {
+          const convs = convocacoes.filter((c) => c.escala === esc.id)
+          return (
+            !convs.some((c) => c.status === 'aceita' || c.status === 'coberta') &&
+            esc.status !== 'aceita' &&
+            esc.status !== 'coberta'
+          )
+        })
+
+        const limpasSemAtiva = semAceite.filter((esc: EscalaRecord) => {
+          const convs = convocacoes.filter((c) => c.escala === esc.id)
+          return !convs.some(
+            (c) => c.status === 'pendente' || c.status === 'aceita' || c.status === 'coberta',
+          )
+        })
+
+        const comPendenteApenas = semAceite.filter((esc: EscalaRecord) => {
+          const convs = convocacoes.filter((c) => c.escala === esc.id)
+          return convs.some((c) => c.status === 'pendente')
+        })
+
+        // Se uma vaga extra foi recém-criada no grupo, garantir que ela seja a primeira entre as limpas
+        const extraId = selectedGrupoParaConvocar.novaVagaExtraId
+        if (extraId) {
+          limpasSemAtiva.sort((a: EscalaRecord, b: EscalaRecord) => {
+            if (a.id === extraId) return -1
+            if (b.id === extraId) return 1
+            return 0
           })
-        : [selectedEscala]
+        }
+
+        escalasAlvo =
+          limpasSemAtiva.length > 0
+            ? [...limpasSemAtiva, ...comPendenteApenas]
+            : comPendenteApenas.length > 0
+              ? comPendenteApenas
+              : semAceite
+      }
 
       const alvos = escalasAlvo.length > 0 ? escalasAlvo : [selectedEscala]
 
@@ -2232,7 +2271,7 @@ export default function EscalasPage() {
       setConvocacaoParaConfirmar(null)
       toast({
         title: 'Presença confirmada pela gestão',
-        description: `${updated?.expand?.pro?.name || 'Profissional'} confirmada no turno de hoje — repasse criado normalmente.`,
+        description: `${pros.find((p) => p.id === convocacaoParaConfirmar.pro)?.name || updated?.expand?.pro?.name || 'Profissional'} confirmada no turno de hoje — repasse criado normalmente.`,
       })
     } catch (err: any) {
       console.error(err)
@@ -2752,7 +2791,9 @@ export default function EscalasPage() {
                                 Turno Coberto:
                               </div>
                               <div className="font-semibold text-slate-900 truncate max-w-[140px]">
-                                {aceito.expand?.pro?.name || 'Profissional'}
+                                {pros.find((p) => p.id === aceito.pro)?.name ||
+                                  aceito.expand?.pro?.name ||
+                                  'Profissional'}
                                 {isPostoComFixa && aceito.pro === posto?.pro_fixo && (
                                   <span className="ml-1 text-[10px] text-primary font-bold">
                                     (Fixa)
@@ -2854,7 +2895,9 @@ export default function EscalasPage() {
                                 }`}
                               >
                                 <span className="font-semibold">
-                                  {c.expand?.pro?.name || 'Pro'}
+                                  {pros.find((p) => p.id === c.pro)?.name ||
+                                    c.expand?.pro?.name ||
+                                    'Pro'}
                                   {isProFixoDestePosto && ' (Fixa do Posto)'}
                                 </span>
                                 {isAdmin && (
@@ -3007,7 +3050,14 @@ export default function EscalasPage() {
                         {prosAceitos.length > 0 && (
                           <span className="text-emerald-700 font-semibold flex items-center gap-1">
                             <CheckCircle2 className="w-3.5 h-3.5" />
-                            {prosAceitos.map((c) => c.expand?.pro?.name || 'Pro').join(', ')}
+                            {prosAceitos
+                              .map(
+                                (c) =>
+                                  pros.find((p) => p.id === c.pro)?.name ||
+                                  c.expand?.pro?.name ||
+                                  'Pro',
+                              )
+                              .join(', ')}
                           </span>
                         )}
                       </div>
@@ -3181,7 +3231,10 @@ export default function EscalasPage() {
                                 </Badge>
                                 {subAceito ? (
                                   <span className="font-semibold text-emerald-900 flex items-center gap-1.5">
-                                    Profissional: {subAceito.expand?.pro?.name || 'Pro'}
+                                    Profissional:{' '}
+                                    {pros.find((p) => p.id === subAceito.pro)?.name ||
+                                      subAceito.expand?.pro?.name ||
+                                      'Pro'}
                                     {subAceito.confirmacao_presenca === 'confirmada' ? (
                                       <Badge className="bg-emerald-600 text-white text-[10px] py-0 px-1.5 font-semibold">
                                         Confirmada ✓
@@ -3221,7 +3274,10 @@ export default function EscalasPage() {
                                         }`}
                                       >
                                         <span>
-                                          {c.expand?.pro?.name || 'Pro'} ({c.status})
+                                          {pros.find((p) => p.id === c.pro)?.name ||
+                                            c.expand?.pro?.name ||
+                                            'Pro'}{' '}
+                                          ({c.status})
                                         </span>
                                         {c.status === 'pendente' && (
                                           <button
@@ -4745,7 +4801,9 @@ export default function EscalasPage() {
                       Profissional
                     </span>
                     <span className="font-bold text-slate-900 text-sm">
-                      {convocacaoParaCancelar.expand?.pro?.name || 'Profissional'}
+                      {pros.find((p) => p.id === convocacaoParaCancelar.pro)?.name ||
+                        convocacaoParaCancelar.expand?.pro?.name ||
+                        'Profissional'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between pt-1 border-t border-slate-100">
@@ -5090,8 +5148,8 @@ export default function EscalasPage() {
                       Profissional
                     </span>
                     <span className="font-bold text-slate-900 text-sm">
-                      {convocacaoParaConfirmar.expand?.pro?.name ||
-                        pros.find((p) => p.id === convocacaoParaConfirmar.pro)?.name ||
+                      {pros.find((p) => p.id === convocacaoParaConfirmar.pro)?.name ||
+                        convocacaoParaConfirmar.expand?.pro?.name ||
                         'Profissional'}
                     </span>
                   </div>

@@ -124,7 +124,7 @@ export default function CoberturaPage() {
           }),
           pb.collection('convocacoes').getFullList<ConvocacaoRecord>({
             sort: '-created',
-            expand: 'pro,escala',
+            expand: 'escala',
           }),
           pb.collection('postos').getFullList<PostoRecord>({
             sort: 'nome',
