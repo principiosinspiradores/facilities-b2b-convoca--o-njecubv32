@@ -679,7 +679,16 @@ onRecordUpdate((e) => {
         let dataEscala = ''
         try {
           const esc = $app.findRecordById('escalas', escalaId)
-          dataEscala = esc.getString('data').slice(0, 10)
+          const dataEscalaRaw = esc.getString('data').slice(0, 10)
+          let formatarDataBR = (s) => s
+          try {
+            if (typeof DataBRExports !== 'undefined' && DataBRExports.formatarDataBR) {
+              formatarDataBR = DataBRExports.formatarDataBR
+            } else if (typeof require !== 'undefined') {
+              formatarDataBR = require(`${__hooks}/lib_data_br.js`).formatarDataBR
+            }
+          } catch (_) {}
+          dataEscala = formatarDataBR(dataEscalaRaw)
           const pos = $app.findRecordById('postos', esc.getString('posto'))
           postoNome = pos.getString('nome')
         } catch (_) {}
@@ -955,7 +964,16 @@ onRecordUpdate((e) => {
             } catch (_) {}
 
             const postoNome = posto.getString('nome')
-            const dataEscala = escala.getString('data').slice(0, 10)
+            const dataEscalaRaw = escala.getString('data').slice(0, 10)
+            let formatarDataBR = (s) => s
+            try {
+              if (typeof DataBRExports !== 'undefined' && DataBRExports.formatarDataBR) {
+                formatarDataBR = DataBRExports.formatarDataBR
+              } else if (typeof require !== 'undefined') {
+                formatarDataBR = require(`${__hooks}/lib_data_br.js`).formatarDataBR
+              }
+            } catch (_) {}
+            const dataEscala = formatarDataBR(dataEscalaRaw)
             const turnoInicio = escala.getString('turno_inicio')
             const turnoFim = escala.getString('turno_fim')
 

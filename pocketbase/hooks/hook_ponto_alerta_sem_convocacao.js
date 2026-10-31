@@ -12,7 +12,15 @@ onRecordAfterCreateSuccess((e) => {
     const proId = record.getString('pro')
     const postoId = record.getString('posto')
     const timestampReal = record.getString('timestamp_real') || new Date().toISOString()
-    const dataFormatada = timestampReal.slice(0, 10)
+    let formatarDataBR = (s) => s
+    try {
+      if (typeof DataBRExports !== 'undefined' && DataBRExports.formatarDataBR) {
+        formatarDataBR = DataBRExports.formatarDataBR
+      } else if (typeof require !== 'undefined') {
+        formatarDataBR = require(`${__hooks}/lib_data_br.js`).formatarDataBR
+      }
+    } catch (_) {}
+    const dataFormatada = formatarDataBR(timestampReal.slice(0, 10))
 
     let proNome = 'Profissional'
     try {

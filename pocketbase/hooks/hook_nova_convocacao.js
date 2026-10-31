@@ -626,11 +626,16 @@ onRecordAfterCreateSuccess((e) => {
 
     try {
       const escala = $app.findRecordById('escalas', escalaId)
-      dataEscala = escala.getString('data').slice(0, 10)
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dataEscala)) {
-        const partesData = dataEscala.split('-')
-        dataEscala = `${partesData[2]}/${partesData[1]}/${partesData[0]}`
-      }
+      const dataEscalaRaw = escala.getString('data').slice(0, 10)
+      let formatarDataBR = (s) => s
+      try {
+        if (typeof DataBRExports !== 'undefined' && DataBRExports.formatarDataBR) {
+          formatarDataBR = DataBRExports.formatarDataBR
+        } else if (typeof require !== 'undefined') {
+          formatarDataBR = require(`${__hooks}/lib_data_br.js`).formatarDataBR
+        }
+      } catch (_) {}
+      dataEscala = formatarDataBR(dataEscalaRaw)
       turnoInicio = escala.getString('turno_inicio')
       turnoFim = escala.getString('turno_fim')
 

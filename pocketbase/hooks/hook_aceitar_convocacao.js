@@ -799,7 +799,16 @@ onRecordUpdate((e) => {
         const postoNome = posto ? posto.getString('nome') : 'Posto Designado'
         const turnoInicio = escala ? escala.getString('turno_inicio') : ''
         const turnoFim = escala ? escala.getString('turno_fim') : ''
-        const dataEscala = escala ? escala.getString('data').slice(0, 10) : ''
+        const dataEscalaRaw = escala ? escala.getString('data').slice(0, 10) : ''
+        let formatarDataBR = (s) => s
+        try {
+          if (typeof DataBRExports !== 'undefined' && DataBRExports.formatarDataBR) {
+            formatarDataBR = DataBRExports.formatarDataBR
+          } else if (typeof require !== 'undefined') {
+            formatarDataBR = require(`${__hooks}/lib_data_br.js`).formatarDataBR
+          }
+        } catch (_) {}
+        const dataEscala = formatarDataBR(dataEscalaRaw)
 
         const html = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
@@ -851,7 +860,16 @@ onRecordUpdate((e) => {
         return
       }
       const postoNome = posto ? posto.getString('nome') : 'Posto Designado'
-      const dataEscala = escala ? escala.getString('data').slice(0, 10) : ''
+      const dataEscalaRaw = escala ? escala.getString('data').slice(0, 10) : ''
+      let formatarDataBR = (s) => s
+      try {
+        if (typeof DataBRExports !== 'undefined' && DataBRExports.formatarDataBR) {
+          formatarDataBR = DataBRExports.formatarDataBR
+        } else if (typeof require !== 'undefined') {
+          formatarDataBR = require(`${__hooks}/lib_data_br.js`).formatarDataBR
+        }
+      } catch (_) {}
+      const dataEscala = formatarDataBR(dataEscalaRaw)
       let proNome = 'Profissional'
       try {
         const proUser = $app.findRecordById('users', proId)

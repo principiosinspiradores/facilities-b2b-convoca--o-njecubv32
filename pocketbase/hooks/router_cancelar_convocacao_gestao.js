@@ -148,13 +148,15 @@ routerAdd('POST', '/backend/v1/facilities/cancelar-convocacao-gestao', (e) => {
 
   // Obter dados legíveis para a notificação
   const postoNome = postoRecord ? postoRecord.getString('nome') : 'Posto'
-  let dataFormatada = dataEscalaStr
-  if (dataEscalaStr && dataEscalaStr.indexOf('-') > 0) {
-    const parts = dataEscalaStr.split('-')
-    if (parts.length === 3) {
-      dataFormatada = `${parts[2]}/${parts[1]}/${parts[0]}`
+  let formatarDataBR = (s) => s
+  try {
+    if (typeof DataBRExports !== 'undefined' && DataBRExports.formatarDataBR) {
+      formatarDataBR = DataBRExports.formatarDataBR
+    } else if (typeof require !== 'undefined') {
+      formatarDataBR = require(`${__hooks}/lib_data_br.js`).formatarDataBR
     }
-  }
+  } catch (_) {}
+  const dataFormatada = formatarDataBR(dataEscalaStr)
 
   const turnoInicio = escalaRecord ? escalaRecord.getString('turno_inicio') : ''
   const turnoFim = escalaRecord ? escalaRecord.getString('turno_fim') : ''

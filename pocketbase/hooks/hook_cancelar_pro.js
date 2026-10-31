@@ -696,7 +696,16 @@ onRecordUpdate((e) => {
         console.log('[PUSH] VAPID não configurado — envio abortado')
       } else {
         const postoNome = posto ? posto.getString('nome') : 'Posto'
-        const dataEscala = escala ? escala.getString('data').slice(0, 10) : ''
+        const dataEscalaRaw = escala ? escala.getString('data').slice(0, 10) : ''
+        let formatarDataBR = (s) => s
+        try {
+          if (typeof DataBRExports !== 'undefined' && DataBRExports.formatarDataBR) {
+            formatarDataBR = DataBRExports.formatarDataBR
+          } else if (typeof require !== 'undefined') {
+            formatarDataBR = require(`${__hooks}/lib_data_br.js`).formatarDataBR
+          }
+        } catch (_) {}
+        const dataEscala = formatarDataBR(dataEscalaRaw)
         let proNome = 'Profissional'
         try {
           const proUser = $app.findRecordById('users', proId)
@@ -967,7 +976,16 @@ onRecordUpdate((e) => {
               } catch (_) {}
 
               const postoNome = posto ? posto.getString('nome') : 'Posto'
-              const dataEscala = escala ? escala.getString('data').slice(0, 10) : ''
+              const dataEscalaRaw = escala ? escala.getString('data').slice(0, 10) : ''
+              let formatarDataBR = (s) => s
+              try {
+                if (typeof DataBRExports !== 'undefined' && DataBRExports.formatarDataBR) {
+                  formatarDataBR = DataBRExports.formatarDataBR
+                } else if (typeof require !== 'undefined') {
+                  formatarDataBR = require(`${__hooks}/lib_data_br.js`).formatarDataBR
+                }
+              } catch (_) {}
+              const dataEscala = formatarDataBR(dataEscalaRaw)
               const turnoInicio = escala ? escala.getString('turno_inicio') : ''
               const turnoFim = escala ? escala.getString('turno_fim') : ''
 
