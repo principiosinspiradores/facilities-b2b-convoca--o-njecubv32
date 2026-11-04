@@ -19,14 +19,6 @@
  *    "Sua convocação em [posto] em [data] ([turno]) foi cancelada pela gestão."
  */
 
-// Motor de elegibilidade carregado direto no topo (base); os fallbacks existentes continuam abaixo
-let elegibilidadeLib = null
-try {
-  elegibilidadeLib = require(`${__hooks}/lib_elegibilidade_reoferta.js`)
-} catch (errLib) {
-  console.log('[CANCELAR_GESTAO] Falha ao carregar lib_elegibilidade_reoferta.js no topo:', errLib)
-}
-
 routerAdd('POST', '/backend/v1/facilities/cancelar-convocacao-gestao', (e) => {
   const authRecord = e.auth
   if (!authRecord) {
@@ -315,7 +307,13 @@ routerAdd('POST', '/backend/v1/facilities/cancelar-convocacao-gestao', (e) => {
           `[CANCELAR_GESTAO] Reoferta abortada: escala ${escalaId} já possui convocação pendente ativa.`,
         )
       } else {
-        // Carregar motor de elegibilidade
+        // Carregar motor de elegibilidade (require inline dentro do callback)
+        let elegibilidadeLib = null
+        try {
+          elegibilidadeLib = require(`${__hooks}/lib_elegibilidade_reoferta.js`)
+        } catch (errLib) {
+          console.log('[CANCELAR_GESTAO] Falha ao carregar lib_elegibilidade_reoferta.js:', errLib)
+        }
         let elegibilidadeMotor = null
         if (elegibilidadeLib && elegibilidadeLib.buscarProsElegiveisReoferta) {
           elegibilidadeMotor = elegibilidadeLib

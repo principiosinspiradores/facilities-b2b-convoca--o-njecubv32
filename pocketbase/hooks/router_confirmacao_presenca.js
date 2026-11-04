@@ -15,87 +15,10 @@
  *    - Cria convocações status='pendente' com regra_aplicada prefixada 'EMERGENCIAL NÃO VOU HOJE — ' + regra do motor
  *    - Push e e-mail disparados automaticamente pelo hook_nova_convocacao
  *    - A própria profissional NÃO recebe nova convocação
+ *
+ * Escopo do PocketBase (JSVM): cada callback roda isolado, então o motor e os helpers
+ * são carregados/definidos DENTRO do callback — nada no top-level além do routerAdd.
  */
-
-// Motor de elegibilidade carregado direto no topo do arquivo (boot garantido).
-// Falha aqui não derruba o arquivo: a rota trata a ausência do motor explicitamente.
-let elegibilidadeLib = null
-try {
-  elegibilidadeLib = require(`${__hooks}/lib_elegibilidade_reoferta.js`)
-} catch (errLib) {
-  console.log(
-    '[EMERGENCIAL_NAO_VOU_HOJE] Falha ao carregar lib_elegibilidade_reoferta.js no topo:',
-    errLib,
-  )
-}
-
-// Formatador de data BR (lib_data_br.js), com fallback local dd/mm/aaaa
-let formatarDataBRLib = null
-try {
-  formatarDataBRLib = require(`${__hooks}/lib_data_br.js`).formatarDataBR
-} catch (_) {}
-
-function formatarDataEmergencial(dataIso) {
-  const raw = (dataIso || '').slice(0, 10)
-  if (formatarDataBRLib) {
-    try {
-      return formatarDataBRLib(raw)
-    } catch (_) {}
-  }
-  const partes = raw.split('-')
-  return partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : raw
-}
-
-// Grava push na push_outbox para cada assinatura dos gestores (admin/empresa ativos), mesmo padrão do hook_no_show
-function notificarGestoresEmergencial(title, body, tag) {
-  let gestores = []
-  try {
-    gestores = $app.findRecordsByFilter(
-      'users',
-      "(role = 'empresa' || role = 'admin') && status = 'ativo'",
-      '-created',
-      20,
-      0,
-    )
-  } catch (errGestores) {
-    console.log('[EMERGENCIAL_NAO_VOU_HOJE] Erro ao buscar gestores para push:', errGestores)
-    return 0
-  }
-
-  let gravados = 0
-  for (let g = 0; g < gestores.length; g++) {
-    const gestorId = gestores[g].id
-    let subs = []
-    try {
-      subs = $app.findRecordsByFilter(
-        'push_subscriptions',
-        "user = '" + gestorId + "'",
-        '-created',
-        10,
-        0,
-      )
-    } catch (_) {}
-
-    for (let s = 0; s < subs.length; s++) {
-      try {
-        const outboxCol = $app.findCollectionByNameOrId('push_outbox')
-        const outboxRec = new Record(outboxCol)
-        outboxRec.set('user', gestorId)
-        outboxRec.set('endpoint', subs[s].getString('endpoint'))
-        outboxRec.set('title', title)
-        outboxRec.set('body', body)
-        outboxRec.set('url', '/cobertura')
-        outboxRec.set('tag', tag)
-        outboxRec.set('lido', false)
-        $app.save(outboxRec)
-        gravados++
-      } catch (errOutbox) {
-        console.log('[EMERGENCIAL_NAO_VOU_HOJE] Erro ao gravar push_outbox:', errOutbox)
-      }
-    }
-  }
-  return gravados
-}
 
 routerAdd('POST', '/backend/v1/facilities/confirmar-presenca/{convocacaoId}', (e) => {
   const authRecord = e.auth
@@ -138,6 +61,70 @@ routerAdd('POST', '/backend/v1/facilities/confirmar-presenca/{convocacaoId}', (e
 })
 
 routerAdd('POST', '/backend/v1/facilities/recusar-presenca-hoje/{convocacaoId}', (e) => {
+  // Helper: data BR (lib_data_br.js) com fallback local dd/mm/aaaa — definido dentro do callback
+  const formatarDataEmergencial = (dataIso) => {
+    const raw = (dataIso || '').slice(0, 10)
+    try {
+      const libData = require(`${__hooks}/lib_data_br.js`)
+      if (libData && libData.formatarDataBR) {
+        return libData.formatarDataBR(raw)
+      }
+    } catch (_) {}
+    const partes = raw.split('-')
+    return partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : raw
+  }
+
+  // Helper: grava push na push_outbox para cada assinatura dos gestores (admin/empresa ativos), mesmo padrão do hook_no_show
+  const notificarGestoresEmergencial = (title, body, tag) => {
+    let gestores = []
+    try {
+      gestores = $app.findRecordsByFilter(
+        'users',
+        "(role = 'empresa' || role = 'admin') && status = 'ativo'",
+        '-created',
+        20,
+        0,
+      )
+    } catch (errGestores) {
+      console.log('[EMERGENCIAL_NAO_VOU_HOJE] Erro ao buscar gestores para push:', errGestores)
+      return 0
+    }
+
+    let gravados = 0
+    for (let g = 0; g < gestores.length; g++) {
+      const gestorId = gestores[g].id
+      let subs = []
+      try {
+        subs = $app.findRecordsByFilter(
+          'push_subscriptions',
+          "user = '" + gestorId + "'",
+          '-created',
+          10,
+          0,
+        )
+      } catch (_) {}
+
+      for (let s = 0; s < subs.length; s++) {
+        try {
+          const outboxCol = $app.findCollectionByNameOrId('push_outbox')
+          const outboxRec = new Record(outboxCol)
+          outboxRec.set('user', gestorId)
+          outboxRec.set('endpoint', subs[s].getString('endpoint'))
+          outboxRec.set('title', title)
+          outboxRec.set('body', body)
+          outboxRec.set('url', '/cobertura')
+          outboxRec.set('tag', tag)
+          outboxRec.set('lido', false)
+          $app.save(outboxRec)
+          gravados++
+        } catch (errOutbox) {
+          console.log('[EMERGENCIAL_NAO_VOU_HOJE] Erro ao gravar push_outbox:', errOutbox)
+        }
+      }
+    }
+    return gravados
+  }
+
   const authRecord = e.auth
   if (!authRecord) {
     return e.json(401, { message: 'Não autorizado.' })
@@ -196,7 +183,17 @@ routerAdd('POST', '/backend/v1/facilities/recusar-presenca-hoje/{convocacaoId}',
     } catch (_) {}
   }
 
-  // 3. Motor ElegibilidadeReoferta: require direto do topo do arquivo; globalThis como fallback secundário
+  // 3. Motor ElegibilidadeReoferta: require inline dentro da rota; globalThis como fallback secundário
+  let elegibilidadeLib = null
+  try {
+    elegibilidadeLib = require(`${__hooks}/lib_elegibilidade_reoferta.js`)
+  } catch (errLib) {
+    console.log(
+      '[EMERGENCIAL_NAO_VOU_HOJE] Falha ao carregar lib_elegibilidade_reoferta.js:',
+      errLib,
+    )
+  }
+
   let elegibilidadeMotor = null
   if (elegibilidadeLib && elegibilidadeLib.buscarProsElegiveisReoferta) {
     elegibilidadeMotor = elegibilidadeLib
