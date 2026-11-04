@@ -1,6 +1,14 @@
 // pocketbase/hooks/hook_no_show.js
 // Idempotência e suspensão por Atestado Médico
 
+// Motor de elegibilidade carregado direto no topo (base); a checagem globalThis abaixo continua como fallback
+let elegibilidadeLib = null
+try {
+  elegibilidadeLib = require(`${__hooks}/lib_elegibilidade_reoferta.js`)
+} catch (errLib) {
+  console.log('[NO_SHOW] Falha ao carregar lib_elegibilidade_reoferta.js no topo:', errLib)
+}
+
 onRecordUpdate((e) => {
   // Biblioteca VAPID nativa embutida (RFC 8292 / ES256 / P-256)
   const VAPID_LIB = (() => {
@@ -906,11 +914,13 @@ onRecordUpdate((e) => {
 
       // Obter lista filtrada de profissionais elegíveis via helper compartilhado
       let pros = []
-      if (
+      const motorReoferta =
         typeof ElegibilidadeReoferta !== 'undefined' &&
         ElegibilidadeReoferta.buscarProsElegiveisReoferta
-      ) {
-        pros = ElegibilidadeReoferta.buscarProsElegiveisReoferta({
+          ? ElegibilidadeReoferta
+          : elegibilidadeLib
+      if (motorReoferta && motorReoferta.buscarProsElegiveisReoferta) {
+        pros = motorReoferta.buscarProsElegiveisReoferta({
           escala: escala,
           posto: posto,
           proExcluidoId: proFaltaId,

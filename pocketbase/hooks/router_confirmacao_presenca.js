@@ -17,6 +17,86 @@
  *    - A própria profissional NÃO recebe nova convocação
  */
 
+// Motor de elegibilidade carregado direto no topo do arquivo (boot garantido).
+// Falha aqui não derruba o arquivo: a rota trata a ausência do motor explicitamente.
+let elegibilidadeLib = null
+try {
+  elegibilidadeLib = require(`${__hooks}/lib_elegibilidade_reoferta.js`)
+} catch (errLib) {
+  console.log(
+    '[EMERGENCIAL_NAO_VOU_HOJE] Falha ao carregar lib_elegibilidade_reoferta.js no topo:',
+    errLib,
+  )
+}
+
+// Formatador de data BR (lib_data_br.js), com fallback local dd/mm/aaaa
+let formatarDataBRLib = null
+try {
+  formatarDataBRLib = require(`${__hooks}/lib_data_br.js`).formatarDataBR
+} catch (_) {}
+
+function formatarDataEmergencial(dataIso) {
+  const raw = (dataIso || '').slice(0, 10)
+  if (formatarDataBRLib) {
+    try {
+      return formatarDataBRLib(raw)
+    } catch (_) {}
+  }
+  const partes = raw.split('-')
+  return partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : raw
+}
+
+// Grava push na push_outbox para cada assinatura dos gestores (admin/empresa ativos), mesmo padrão do hook_no_show
+function notificarGestoresEmergencial(title, body, tag) {
+  let gestores = []
+  try {
+    gestores = $app.findRecordsByFilter(
+      'users',
+      "(role = 'empresa' || role = 'admin') && status = 'ativo'",
+      '-created',
+      20,
+      0,
+    )
+  } catch (errGestores) {
+    console.log('[EMERGENCIAL_NAO_VOU_HOJE] Erro ao buscar gestores para push:', errGestores)
+    return 0
+  }
+
+  let gravados = 0
+  for (let g = 0; g < gestores.length; g++) {
+    const gestorId = gestores[g].id
+    let subs = []
+    try {
+      subs = $app.findRecordsByFilter(
+        'push_subscriptions',
+        "user = '" + gestorId + "'",
+        '-created',
+        10,
+        0,
+      )
+    } catch (_) {}
+
+    for (let s = 0; s < subs.length; s++) {
+      try {
+        const outboxCol = $app.findCollectionByNameOrId('push_outbox')
+        const outboxRec = new Record(outboxCol)
+        outboxRec.set('user', gestorId)
+        outboxRec.set('endpoint', subs[s].getString('endpoint'))
+        outboxRec.set('title', title)
+        outboxRec.set('body', body)
+        outboxRec.set('url', '/cobertura')
+        outboxRec.set('tag', tag)
+        outboxRec.set('lido', false)
+        $app.save(outboxRec)
+        gravados++
+      } catch (errOutbox) {
+        console.log('[EMERGENCIAL_NAO_VOU_HOJE] Erro ao gravar push_outbox:', errOutbox)
+      }
+    }
+  }
+  return gravados
+}
+
 routerAdd('POST', '/backend/v1/facilities/confirmar-presenca/{convocacaoId}', (e) => {
   const authRecord = e.auth
   if (!authRecord) {
@@ -116,35 +196,28 @@ routerAdd('POST', '/backend/v1/facilities/recusar-presenca-hoje/{convocacaoId}',
     } catch (_) {}
   }
 
-  // 3. Garantir carregamento explícito da lib ElegibilidadeReoferta (globalThis / require defensivo)
+  // 3. Motor ElegibilidadeReoferta: require direto do topo do arquivo; globalThis como fallback secundário
   let elegibilidadeMotor = null
-  if (
-    typeof ElegibilidadeReoferta !== 'undefined' &&
-    ElegibilidadeReoferta &&
-    ElegibilidadeReoferta.buscarProsElegiveisReoferta
-  ) {
-    elegibilidadeMotor = ElegibilidadeReoferta
+  if (elegibilidadeLib && elegibilidadeLib.buscarProsElegiveisReoferta) {
+    elegibilidadeMotor = elegibilidadeLib
   } else if (
     typeof globalThis !== 'undefined' &&
     globalThis.ElegibilidadeReoferta &&
     globalThis.ElegibilidadeReoferta.buscarProsElegiveisReoferta
   ) {
     elegibilidadeMotor = globalThis.ElegibilidadeReoferta
-  } else if (typeof require !== 'undefined') {
-    try {
-      elegibilidadeMotor = require(`${__hooks}/lib_elegibilidade_reoferta.js`)
-    } catch (_) {
-      try {
-        elegibilidadeMotor = require('./lib_elegibilidade_reoferta.js')
-      } catch (_) {}
-    }
   }
 
-  // ELIMINAR FALLBACK: Se o motor de elegibilidade estiver indisponível:
-  // NÃO criar convocações, NÃO marcar como broadcast feito, retornar 200 com convocadas: 0 e aviso, logar erro claro.
+  // Motor indisponível: NÃO cria convocações, mas NÃO falha em silêncio — avisa a gestão e responde com aviso
   if (!elegibilidadeMotor || !elegibilidadeMotor.buscarProsElegiveisReoferta) {
     console.log(
       `[EMERGENCIAL_NAO_VOU_HOJE] ERRO CRÍTICO: Motor ElegibilidadeReoferta indisponível ao processar convocação ${convocacaoId}. Nenhuma convocação emergencial foi gerada. A convocação de origem segue com nao_vai.`,
+    )
+    const postoFalhaNome = posto ? posto.getString('nome') : 'posto não identificado'
+    notificarGestoresEmergencial(
+      'Falha no emergencial',
+      `Turno de ${postoFalhaNome} em ${formatarDataEmergencial(escala.getString('data'))} ficou sem substituição automática — verificar manualmente`,
+      'emergencial-falha-' + conv.id,
     )
     return e.json(200, {
       success: true,
@@ -158,14 +231,20 @@ routerAdd('POST', '/backend/v1/facilities/recusar-presenca-hoje/{convocacaoId}',
     })
   }
 
-  // Buscar profissionais elegíveis via motor com filtros rigorosos
-  const elegiveis =
+  // Buscar profissionais elegíveis via motor com filtros rigorosos; contadores de exclusão para diagnóstico
+  const resultadoMotor =
     elegibilidadeMotor.buscarProsElegiveisReoferta({
       escala: escala,
       posto: posto,
       proExcluidoId: proId,
       now: now,
-    }) || []
+      retornarContadores: true,
+    }) || {}
+  const elegiveis = Array.isArray(resultadoMotor.pros) ? resultadoMotor.pros : []
+  console.log(
+    `[EMERGENCIAL_NAO_VOU_HOJE] Contadores de exclusão (convocação ${convocacaoId}): ` +
+      JSON.stringify(resultadoMotor.contadores || {}),
+  )
 
   // 4. Criar convocações pendentes com regra_aplicada prefixada 'EMERGENCIAL NÃO VOU HOJE — ' + regra
   const convocacoesCol = $app.findCollectionByNameOrId('convocacoes')
@@ -212,6 +291,16 @@ routerAdd('POST', '/backend/v1/facilities/recusar-presenca-hoje/{convocacaoId}',
     } catch (errCreate) {
       console.log(`[EMERGENCIAL_NAO_VOU_HOJE] Falha ao convocar pro ${cId}:`, errCreate)
     }
+  }
+
+  // Nenhuma elegível: não é falha do motor, é zero candidatos — a gestão precisa saber na hora
+  if (totalCriadas === 0 && elegiveis.length === 0) {
+    const postoSemCobertura = posto ? posto.getString('nome') : 'posto não identificado'
+    notificarGestoresEmergencial(
+      'Turno sem cobertura',
+      `Nenhuma profissional elegível para ${postoSemCobertura}, ${formatarDataEmergencial(escala.getString('data'))} ${escala.getString('turno_inicio')}–${escala.getString('turno_fim')}. Ação manual necessária.`,
+      'emergencial-sem-cobertura-' + conv.id,
+    )
   }
 
   // 5. Registrar no histórico da escala

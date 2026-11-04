@@ -200,9 +200,17 @@ export default function MinhasEscalasPage() {
       const res: any = await pb.send(`/backend/v1/facilities/recusar-presenca-hoje/${convId}`, {
         method: 'POST',
       })
+      const totalConvocadas = res?.total_convocadas ?? 0
+      let descricaoAviso = `Informado que não comparecerá. Convocação emergencial disparada automaticamente (${totalConvocadas} profissionais notificadas).`
+      if (res?.aviso === 'motor_elegibilidade_indisponivel') {
+        descricaoAviso = 'Não foi possível convocar substitutas agora — a gestão foi notificada.'
+      } else if (totalConvocadas === 0) {
+        descricaoAviso =
+          'Aviso registrado. Nenhuma profissional disponível foi convocada — a gestão foi notificada para resolver.'
+      }
       toast({
         title: 'Aviso registrado',
-        description: `Informado que não comparecerá. Convocação emergencial disparada automaticamente (${res?.total_convocadas ?? 0} profissionais notificadas).`,
+        description: descricaoAviso,
         variant: 'destructive',
       })
       setDialogNaoVaiOpen(false)
