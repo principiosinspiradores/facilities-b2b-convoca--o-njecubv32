@@ -120,7 +120,6 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
       { tipo: 'Certidão Antecedentes', status: 'pendente' },
     ],
     periodo_teste_dias: periodoDias,
-    verified: hasSenhaInicial ? true : false,
   }
 
   // Preços apenas se fornecidos (por admin)
@@ -135,20 +134,21 @@ export async function cadastrarPro(dados: CriarProPayload): Promise<CadastrarPro
   // o ClientResponseError é propagado intacto com err.data.data por campo e err.message.
   const created = await pb.collection('users').create<UserRecord>(payload)
 
-  // Se foi criada com senha inicial mas o PocketBase não permitiu setar verified=true no create por regra de campo,
-  // garantimos verified=true no registro
-  let freshCreated = await pb
-    .collection('users')
-    .getOne<UserRecord>(created.id)
-    .catch(() => created)
+  // Se foi criada com senha inicial, marca verified=true via rota admin com privilégio de sistema
+  let freshCreated = created
 
-  if (hasSenhaInicial && !freshCreated.verified) {
+  if (hasSenhaInicial) {
     try {
-      freshCreated = await pb.collection('users').update<UserRecord>(freshCreated.id, {
-        verified: true,
+      await pb.send('/backend/v1/admin/marcar-verificado', {
+        method: 'POST',
+        body: { user_id: created.id },
       })
+      freshCreated = await pb
+        .collection('users')
+        .getOne<UserRecord>(created.id)
+        .catch(() => ({ ...created, verified: true }))
     } catch (_) {
-      // Ignora silenciosamente caso a api rule restrinja verified
+      // Ignora silenciosamente para não quebrar a criação
     }
   }
 

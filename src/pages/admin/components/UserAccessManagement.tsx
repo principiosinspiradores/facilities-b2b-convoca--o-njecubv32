@@ -261,12 +261,14 @@ export function UserAccessManagement() {
           role,
           status,
           cpf: cpfDigits || undefined,
-          verified: true, // Já ativado quando admin define a senha
         })
 
-        // Garante verified=true se a criação direta não tiver gravado
+        // Marca verified=true via backend (admin) preservando conta ativa quando senha inicial é definida
         try {
-          await pb.collection('users').update(createdRecord.id, { verified: true })
+          await pb.send('/backend/v1/admin/marcar-verificado', {
+            method: 'POST',
+            body: { user_id: createdRecord.id },
+          })
         } catch {
           /* intentionally ignored */
         }
