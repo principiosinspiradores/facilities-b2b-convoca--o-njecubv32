@@ -105,7 +105,7 @@ cronAdd('liberar_payouts_escrow', '*/10 * * * *', () => {
                     <p style="margin: 4px 0 0 0;"><strong>Destino:</strong> Conta Pix cadastrada e validada</p>
                     <p style="margin: 4px 0 0 0;"><strong>Status:</strong> Pago / Liberado</p>
                   </div>
-                  <p style="color: #64748b; font-size: 12px;">Consulte o extrato completo na aba "Meus Repasses".</p>
+                  <p style="color: #64748b; font-size: 12px;">Os valores serão repassados normalmente pela gestão.</p>
                 </div>
                 <div style="border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 11px; color: #94a3b8; text-align: center;">
                   Enviado automaticamente por ${senderName}.

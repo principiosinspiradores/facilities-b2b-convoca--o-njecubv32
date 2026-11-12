@@ -864,29 +864,26 @@ onRecordUpdate((e) => {
 
       if (!escala) escala = $app.findRecordById('escalas', escalaId)
       const posto = $app.findRecordById('postos', escala.getString('posto'))
-      const cargaHoraria = posto.getInt('carga_horaria') || 8
-
-      let valorDiariaFreelancer = escala.getFloat('valor_diaria') || 0
-      if (!valorDiariaFreelancer || valorDiariaFreelancer <= 0) {
-        try {
-          const baseRules = $app.findRecordsByFilter(
-            'pricing_rules',
-            "tipo = 'base'",
-            'faixa_horas',
-            50,
-            0,
-          )
-          if (baseRules && baseRules.length > 0) {
-            for (let b = 0; b < baseRules.length; b++) {
-              if (baseRules[b].getInt('faixa_horas') === cargaHoraria) {
-                valorDiariaFreelancer = baseRules[b].getFloat('valor')
-                break
-              }
-            }
-          }
-        } catch (_) {}
-        if (!valorDiariaFreelancer) valorDiariaFreelancer = 180
+      // Valor base da reoferta via lib_valor_reoferta.js: em posto com fixa
+      // (pro_fixo preenchido), escala.valor_diaria carrega o valor da FIXA —
+      // a base passa a ser o valor de freelancer pelo motor de diária.
+      let valorBaseReoferta = null
+      try {
+        const valorLib = require(`${__hooks}/lib_valor_reoferta.js`)
+        valorBaseReoferta = valorLib.calcularValorBaseReoferta({ posto: posto, escala: escala })
+      } catch (errValor) {
+        console.log('[NO_SHOW] Falha ao carregar lib_valor_reoferta.js:', errValor)
       }
+      if (!valorBaseReoferta) {
+        valorBaseReoferta = {
+          valor: escala.getFloat('valor_diaria') || 0,
+          origem: 'fallback escala.valor_diaria',
+        }
+      }
+      console.log(
+        `[NO_SHOW] Valor base reoferta escala ${escalaId}: R$ ${valorBaseReoferta.valor} (origem: ${valorBaseReoferta.origem})`,
+      )
+      const valorDiariaFreelancer = valorBaseReoferta.valor || 180
 
       // Identificar proId da convocação marcada como falta e também pro de qualquer convocação de falta da mesma escala
       const proFaltaId = proId || record.getString('pro')

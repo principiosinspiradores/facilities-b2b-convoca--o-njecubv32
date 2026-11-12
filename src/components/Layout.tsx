@@ -88,7 +88,6 @@ export default function Layout() {
       { to: '/mensagens', label: 'Mensagens', icon: MessageSquare, badge: mensagensNaoLidas },
       { to: '/minhas-escalas', label: 'Meus Postos / Escalas', icon: Calendar },
       { to: '/ponto-pro', label: 'Bater Ponto Digital', icon: Clock },
-      { to: '/meus-repasses', label: 'Meus Repasses (Escrow)', icon: DollarSign },
       { to: '/minha-conta-pix', label: 'Minha Conta Pix', icon: QrCode },
     )
   } else if (role === 'empresa') {

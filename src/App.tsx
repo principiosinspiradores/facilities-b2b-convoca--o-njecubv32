@@ -95,16 +95,9 @@ const App = () => (
                     </RequireAuth>
                   }
                 />
-                <Route
-                  path="/meus-repasses"
-                  element={
-                    <RequireAuth>
-                      <RequireRole allowedRoles={['pro', 'admin']}>
-                        <MeusRepassesPage />
-                      </RequireRole>
-                    </RequireAuth>
-                  }
-                />
+                {/* Aba Meus Repasses oculta (decisão do dono): rota mantida para
+                    redirecionar link/histórico antigo; página preservada para reativação futura */}
+                <Route path="/meus-repasses" element={<Navigate to="/convocacoes" replace />} />
                 <Route
                   path="/minha-conta-pix"
                   element={

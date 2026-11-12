@@ -248,8 +248,27 @@ routerAdd('POST', '/backend/v1/facilities/recusar-presenca-hoje/{convocacaoId}',
   let totalCriadas = 0
   const criadasIds = []
 
-  const valDiariaBase =
-    escala.getFloat('valor_diaria') || (posto ? posto.getFloat('valor_diaria_base') : 0) || 180
+  // Valor base da reoferta via lib_valor_reoferta.js: em posto com fixa
+  // (pro_fixo preenchido), escala.valor_diaria carrega o valor da FIXA —
+  // a base passa a ser o valor de freelancer pelo motor de diária.
+  let valorBaseReoferta = null
+  try {
+    const valorLib = require(`${__hooks}/lib_valor_reoferta.js`)
+    valorBaseReoferta = valorLib.calcularValorBaseReoferta({ posto: posto, escala: escala })
+  } catch (errValor) {
+    console.log('[EMERGENCIAL_NAO_VOU_HOJE] Falha ao carregar lib_valor_reoferta.js:', errValor)
+  }
+  if (!valorBaseReoferta) {
+    valorBaseReoferta = {
+      valor:
+        escala.getFloat('valor_diaria') || (posto ? posto.getFloat('valor_diaria_base') : 0) || 180,
+      origem: 'fallback escala.valor_diaria / posto.valor_diaria_base',
+    }
+  }
+  console.log(
+    `[EMERGENCIAL_NAO_VOU_HOJE] Valor base reoferta escala ${escalaId}: R$ ${valorBaseReoferta.valor} (origem: ${valorBaseReoferta.origem})`,
+  )
+  const valDiariaBase = valorBaseReoferta.valor || 180
 
   for (let i = 0; i < elegiveis.length; i++) {
     const candidata = elegiveis[i]
