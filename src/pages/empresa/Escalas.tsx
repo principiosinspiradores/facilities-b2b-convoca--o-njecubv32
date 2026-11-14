@@ -247,7 +247,11 @@ export default function EscalasPage() {
   useEffect(() => {
     if (selectedPosto) {
       const ch = selectedPosto.carga_horaria || 8
-      if (ch === 12) {
+      // Horário padrão do posto (se configurado) tem precedência sobre o chute pela carga
+      if (selectedPosto.turno_inicio_padrao && selectedPosto.turno_fim_padrao) {
+        setTurnoInicio(selectedPosto.turno_inicio_padrao)
+        setTurnoFim(selectedPosto.turno_fim_padrao)
+      } else if (ch === 12) {
         setTurnoInicio('07:00')
         setTurnoFim('19:00')
       } else if (ch === 6) {
@@ -684,8 +688,24 @@ export default function EscalasPage() {
           // Criar escala para o dia
           const isoDate = new Date(`${dataStr}T12:00:00Z`).toISOString()
           const ch = postoAlvo.carga_horaria || 8
-          const horaIni = ch === 12 ? '07:00' : ch === 4 ? '08:00' : '07:00'
-          const horaFim = ch === 12 ? '19:00' : ch === 4 ? '12:00' : ch === 6 ? '13:00' : '15:00'
+          const horaIni =
+            postoAlvo.turno_inicio_padrao && postoAlvo.turno_fim_padrao
+              ? postoAlvo.turno_inicio_padrao
+              : ch === 12
+                ? '07:00'
+                : ch === 4
+                  ? '08:00'
+                  : '07:00'
+          const horaFim =
+            postoAlvo.turno_inicio_padrao && postoAlvo.turno_fim_padrao
+              ? postoAlvo.turno_fim_padrao
+              : ch === 12
+                ? '19:00'
+                : ch === 4
+                  ? '12:00'
+                  : ch === 6
+                    ? '13:00'
+                    : '15:00'
 
           const novaEsc = await pb.collection('escalas').create<EscalaRecord>({
             posto: postoAlvo.id,
@@ -914,6 +934,13 @@ export default function EscalasPage() {
     const proFixoObj = pros.find((p) => p.id === proFixoId)
     // Vagas por turno: se posto tiver vagas > 1 (especialmente postos freelancers com múltiplas vagas)
     const vagasPorTurno = Math.max(1, postoObj?.vagas || 1)
+    // Horário padrão do posto (se configurado) tem precedência sobre o chute pela carga
+    const horaPadraoIni =
+      postoObj?.turno_inicio_padrao && postoObj?.turno_fim_padrao
+        ? postoObj.turno_inicio_padrao
+        : null
+    const horaPadraoFim =
+      postoObj?.turno_inicio_padrao && postoObj?.turno_fim_padrao ? postoObj.turno_fim_padrao : null
 
     let criadas = 0
     let convsDisparadas = 0
@@ -971,14 +998,16 @@ export default function EscalasPage() {
 
         // Criar registros de escala com vagas=1 até completar o total de vagas do turno
         const isoDate = new Date(`${d}T12:00:00Z`).toISOString()
+        const turnoInicioCriacao = horaPadraoIni || turnoInicio
+        const turnoFimCriacao = horaPadraoFim || turnoFim
 
         for (let vagaIdx = 0; vagaIdx < vagasFaltantes; vagaIdx++) {
           const numeroVagaAtual = totalJaExistentes + vagaIdx
           const novaEscala = await pb.collection('escalas').create<EscalaRecord>({
             posto: selectedPostoId,
             data: isoDate,
-            turno_inicio: turnoInicio,
-            turno_fim: turnoFim,
+            turno_inicio: turnoInicioCriacao,
+            turno_fim: turnoFimCriacao,
             vagas: 1,
             status: proFixoId && numeroVagaAtual === 0 ? 'convocada' : 'aberta',
             multa_aplicada: false,

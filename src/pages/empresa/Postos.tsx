@@ -82,6 +82,8 @@ export default function PostosPage() {
   const [tipoRemuneracaoFixa, setTipoRemuneracaoFixa] = useState<TipoRemuneracaoFixa>('mensal')
   const [valorRemuneracaoFixa, setValorRemuneracaoFixa] = useState<number>(2200)
   const [raioGeocercaM, setRaioGeocercaM] = useState<number>(100)
+  const [turnoInicioPadrao, setTurnoInicioPadrao] = useState('')
+  const [turnoFimPadrao, setTurnoFimPadrao] = useState('')
   const [toleranciaEntradaMinutos, setToleranciaEntradaMinutos] = useState<number>(10)
   const [toleranciaSaidaMinutos, setToleranciaSaidaMinutos] = useState<number>(10)
   const [usarToleranciaSaidaSeparada, setUsarToleranciaSaidaSeparada] = useState(false)
@@ -155,6 +157,8 @@ export default function PostosPage() {
     setTipoRemuneracaoFixa('mensal')
     setValorRemuneracaoFixa(2200)
     setRaioGeocercaM(100)
+    setTurnoInicioPadrao('')
+    setTurnoFimPadrao('')
     setToleranciaEntradaMinutos(10)
     setToleranciaSaidaMinutos(10)
     setUsarToleranciaSaidaSeparada(false)
@@ -219,6 +223,8 @@ export default function PostosPage() {
     setTipoRemuneracaoFixa(forma === 'horista' ? 'por_hora' : 'mensal')
     setValorRemuneracaoFixa(forma === 'horista' ? vH : salM)
     setRaioGeocercaM(posto.raio_geocerca_m || 100)
+    setTurnoInicioPadrao(posto.turno_inicio_padrao || '')
+    setTurnoFimPadrao(posto.turno_fim_padrao || '')
     const entTol =
       posto.tolerancia_entrada_minutos !== undefined ? posto.tolerancia_entrada_minutos : 10
     const saiTol =
@@ -322,6 +328,23 @@ export default function PostosPage() {
       return
     }
 
+    if (turnoInicioPadrao && !turnoFimPadrao) {
+      toast({
+        title: 'Horário padrão incompleto',
+        description: 'Se preencher o horário de início padrão, informe também o de fim.',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (!turnoInicioPadrao && turnoFimPadrao) {
+      toast({
+        title: 'Horário padrão incompleto',
+        description: 'Se preencher o horário de fim padrão, informe também o de início.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsSaving(true)
     try {
       const hasProFixo = proFixoId && proFixoId !== 'nenhum'
@@ -359,6 +382,8 @@ export default function PostosPage() {
           latitude.trim() !== '' && !isNaN(Number(latitude.trim().replace(',', '.')))
             ? Number(latitude.trim().replace(',', '.'))
             : null,
+        turno_inicio_padrao: turnoInicioPadrao || '',
+        turno_fim_padrao: turnoFimPadrao || '',
         longitude:
           longitude.trim() !== '' && !isNaN(Number(longitude.trim().replace(',', '.')))
             ? Number(longitude.trim().replace(',', '.'))
@@ -496,6 +521,17 @@ export default function PostosPage() {
                       </strong>
                     </span>
                   </div>
+                  {p.turno_inicio_padrao && p.turno_fim_padrao && (
+                    <div className="flex items-center gap-2 text-slate-600 text-xs">
+                      <Clock className="w-4 h-4 text-primary shrink-0" />
+                      <span>
+                        Turno padrão:{' '}
+                        <strong>
+                          {p.turno_inicio_padrao}&ndash;{p.turno_fim_padrao}
+                        </strong>
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 text-slate-600 text-xs">
                     <Navigation className="w-4 h-4 text-primary shrink-0" />
                     <span>
@@ -868,6 +904,42 @@ export default function PostosPage() {
                     Postos compactos (portaria única) usam raios menores (ex: 30-50m); condomínios
                     ou galpões grandes usam raios maiores (ex: 200-500m).
                   </p>
+                </div>
+              </div>
+
+              {/* Bloco: Horário padrão do turno */}
+              <div className="bg-primary/5 p-3.5 rounded-lg border border-primary/20 space-y-2">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-primary" />
+                    Horário padrão do turno
+                  </h4>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    Usado como horário inicial das escalas deste posto. Deixe vazio para usar o
+                    padrão pela carga horária.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Início padrão
+                    </label>
+                    <Input
+                      type="time"
+                      value={turnoInicioPadrao}
+                      onChange={(e) => setTurnoInicioPadrao(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Fim padrão
+                    </label>
+                    <Input
+                      type="time"
+                      value={turnoFimPadrao}
+                      onChange={(e) => setTurnoFimPadrao(e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
 

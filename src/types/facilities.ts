@@ -94,6 +94,8 @@ export interface PostoRecord {
   tolerancia_saida_minutos?: number
   latitude?: number
   longitude?: number
+  turno_inicio_padrao?: string
+  turno_fim_padrao?: string
   created: string
   updated: string
   expand?: {
