@@ -69,6 +69,7 @@ interface ItemSemSaida {
   pro: UserRecord | undefined
   horaChegadaFormatada?: string
   pontoChegada?: PontoRecord
+  deDiaAnterior?: boolean
 }
 
 export default function ConferenciaPontoPage() {
@@ -126,6 +127,12 @@ export default function ConferenciaPontoPage() {
     setIsLoading(true)
     try {
       const hojeIso = getDataHojeSP()
+      // Janela de 7 dias (fuso America/Sao_Paulo): turnos de dias anteriores sem saída também aparecem no espelho
+      const d7 = new Date(`${hojeIso}T12:00:00-03:00`)
+      d7.setDate(d7.getDate() - 7)
+      const seteDiasAtrasIso = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+      }).format(d7)
       const [pontosRes, postosRes, prosRes, atestadosRes, escalasRes, convsRes] = await Promise.all(
         [
           pb.collection('pontos').getFullList<PontoRecord>({
@@ -143,14 +150,14 @@ export default function ConferenciaPontoPage() {
           pb
             .collection('escalas')
             .getFullList<EscalaRecord>({
-              filter: `data >= "${hojeIso} 00:00:00" && data <= "${hojeIso} 23:59:59"`,
+              filter: `data >= "${seteDiasAtrasIso} 00:00:00" && data <= "${hojeIso} 23:59:59"`,
               expand: 'posto',
             })
             .catch(() => []),
           pb
             .collection('convocacoes')
             .getFullList<ConvocacaoRecord>({
-              filter: `status = "aceita"`,
+              filter: `status = "aceita" && escala.data >= "${seteDiasAtrasIso} 00:00:00" && escala.data <= "${hojeIso} 23:59:59"`,
               expand: 'pro,escala',
             })
             .catch(() => []),
@@ -528,11 +535,18 @@ export default function ConferenciaPontoPage() {
     return itens
   }, [convocacoesDoDia, escalasDoDia, pontos, postos, pros])
 
-  // Turnos de hoje com convocação aceita e saída pendente (fuso America/Sao_Paulo)
-  // Inclui turnos com chegada registrada e também turnos sem chegada registrada (para saída manual pela gestão)
+  // Turnos com convocação aceita e saída pendente (fuso America/Sao_Paulo)
+  // Inclui turnos de hoje e de até 7 dias anteriores (ex.: chegou e não registrou saída),
+  // com chegada registrada ou sem chegada registrada (para saída manual pela gestão)
   const turnosSemSaidaDoDia = useMemo(() => {
     const hojeStr = getDataHojeSP()
-    const itens: ItemSemSaida[] = []
+    const d7 = new Date(`${hojeStr}T12:00:00-03:00`)
+    d7.setDate(d7.getDate() - 7)
+    const seteDiasAtrasStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+    }).format(d7)
+    const itensHoje: ItemSemSaida[] = []
+    const itensAnteriores: ItemSemSaida[] = []
 
     for (const conv of convocacoesDoDia) {
       if (conv.status !== 'aceita') continue
@@ -541,7 +555,8 @@ export default function ConferenciaPontoPage() {
       if (escala.status === 'falta' || escala.status === 'cancelada') continue
 
       const dataEscalaStr = (escala.data || '').slice(0, 10)
-      if (dataEscalaStr !== hojeStr) continue
+      const isHoje = dataEscalaStr === hojeStr
+      if (!isHoje && (dataEscalaStr < seteDiasAtrasStr || dataEscalaStr > hojeStr)) continue
 
       const proId = conv.pro
       // Verificar se possui ponto de chegada (na escala ou no dia)
@@ -581,7 +596,7 @@ export default function ConferenciaPontoPage() {
           }
         }
 
-        itens.push({
+        const item: ItemSemSaida = {
           convocacaoId: conv.id,
           convocacao: conv,
           escala,
@@ -589,11 +604,19 @@ export default function ConferenciaPontoPage() {
           pro: proObj,
           horaChegadaFormatada: horaChegadaFormatada || undefined,
           pontoChegada: pontoChegada || undefined,
-        })
+          deDiaAnterior: !isHoje,
+        }
+        if (isHoje) {
+          itensHoje.push(item)
+        } else {
+          itensAnteriores.push(item)
+        }
       }
     }
 
-    return itens
+    // Dias anteriores: mais recentes primeiro; os de hoje preservam a ordem atual
+    itensAnteriores.sort((a, b) => (b.escala.data || '').localeCompare(a.escala.data || ''))
+    return [...itensHoje, ...itensAnteriores]
   }, [convocacoesDoDia, escalasDoDia, pontos, postos, pros])
 
   const abrirModalSaidaManual = (item: ItemSemSaida) => {
@@ -1592,14 +1615,14 @@ export default function ConferenciaPontoPage() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-blue-950 flex items-center gap-2">
-                      Turnos de Hoje com Chegada sem Registro de Saída
+                      Turnos com Chegada sem Registro de Saída
                       <Badge className="bg-blue-600 text-white font-bold text-xs">
                         {turnosSemSaidaDoDia.length} turno(s)
                       </Badge>
                     </h3>
                     <p className="text-xs text-blue-800 mt-0.5">
-                      Profissionais que registraram chegada no turno de hoje e ainda não registraram
-                      o ponto de saída.
+                      Profissionais que registraram chegada e ainda não registraram o ponto de saída
+                      — incluindo turnos de até 7 dias anteriores (data destacada).
                     </p>
                   </div>
                 </div>
@@ -1629,10 +1652,16 @@ export default function ConferenciaPontoPage() {
                       <div className="text-slate-600 text-[11px] mt-1">
                         Posto: <strong>{item.posto.nome || 'Posto'}</strong>
                       </div>
-                      <div className="text-slate-500 text-[11px]">
-                        Turno: {formatDateBR(item.escala.data)} ({item.escala.turno_inicio} às{' '}
-                        {item.escala.turno_fim})
-                      </div>
+                      {item.deDiaAnterior ? (
+                        <div className="text-amber-700 text-[11px] font-bold">
+                          Turno de {formatDateBR(item.escala.data)} — sem saída registrada
+                        </div>
+                      ) : (
+                        <div className="text-slate-500 text-[11px]">
+                          Turno: {formatDateBR(item.escala.data)} ({item.escala.turno_inicio} às{' '}
+                          {item.escala.turno_fim})
+                        </div>
+                      )}
                     </div>
 
                     <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
