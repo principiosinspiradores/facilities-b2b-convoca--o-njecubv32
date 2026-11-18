@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import pb from '@/lib/pocketbase/client'
 import {
   PontoRecord,
@@ -10,6 +10,7 @@ import {
 } from '@/types/facilities'
 import { listarAtestados, validarAtestado, getAtestadoArquivoUrl } from '@/services/atestados'
 import { useAuth } from '@/contexts/AuthContext'
+import { useRealtime } from '@/hooks/use-realtime'
 import { useSettings } from '@/contexts/SettingsContext'
 import { formatDateBR, formatCurrencyBRL, getDataHojeSP } from '@/lib/formatters'
 import { getCoordenadasPosto } from '@/services/ponto'
@@ -72,6 +73,43 @@ interface ItemSemSaida {
   deDiaAnterior?: boolean
 }
 
+// Janela do espelho de pontos (fuso America/Sao_Paulo), enviada à rota do servidor
+function calcularJanelaPontos(
+  periodo: 'hoje' | 'semana' | 'mes' | 'custom' | 'todos',
+  dataInicioCustom: string,
+  dataFimCustom: string,
+): { inicio: string; fim: string } {
+  const hojeIso = getDataHojeSP()
+  const inicioDia = (d: string) => `${d}T00:00:00.000Z`
+  const fimDia = (d: string) => `${d}T23:59:59.999Z`
+  const d12m = new Date(`${hojeIso}T12:00:00-03:00`)
+  d12m.setMonth(d12m.getMonth() - 12)
+  const dozeMesesAtrasIso = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+  }).format(d12m)
+  const dSem = new Date(`${hojeIso}T12:00:00-03:00`)
+  const dow = (dSem.getDay() + 6) % 7 // segunda-feira como primeiro dia
+  dSem.setDate(dSem.getDate() - dow)
+  const segundaIso = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+  }).format(dSem)
+  if (periodo === 'hoje') return { inicio: inicioDia(hojeIso), fim: fimDia(hojeIso) }
+  if (periodo === 'semana') return { inicio: inicioDia(segundaIso), fim: fimDia(hojeIso) }
+  if (periodo === 'mes') {
+    const [ano, mes] = hojeIso.split('-').map(Number)
+    const ultimoDia = new Date(ano, mes, 0).getDate()
+    const ultimoDiaMes = `${hojeIso.slice(0, 7)}-${String(ultimoDia).padStart(2, '0')}`
+    return { inicio: inicioDia(`${hojeIso.slice(0, 7)}-01`), fim: fimDia(ultimoDiaMes) }
+  }
+  if (periodo === 'custom') {
+    return {
+      inicio: inicioDia(dataInicioCustom || dozeMesesAtrasIso),
+      fim: fimDia(dataFimCustom || hojeIso),
+    }
+  }
+  return { inicio: inicioDia(dozeMesesAtrasIso), fim: fimDia(hojeIso) }
+}
+
 export default function ConferenciaPontoPage() {
   const { user } = useAuth()
   const { settings } = useSettings()
@@ -126,6 +164,19 @@ export default function ConferenciaPontoPage() {
   const [obsLoteAlertas, setObsLoteAlertas] = useState('')
   const [isExecutingLote, setIsExecutingLote] = useState(false)
 
+  // Espelho de pontos: busca pela rota do servidor, já filtrada pela janela do período
+  const carregarPontos = async (): Promise<PontoRecord[]> => {
+    const { inicio, fim } = calcularJanelaPontos(periodoSel, filtroDataInicio, filtroDataFim)
+    const res = await pb.send<{ pontos: PontoRecord[] }>('/backend/v1/facilities/espelho-pontos', {
+      method: 'GET',
+      query: { inicio, fim },
+    })
+    return res.pontos
+  }
+  const carregarPontosRef = useRef(carregarPontos)
+  carregarPontosRef.current = carregarPontos
+  const refetchPontosTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const loadData = async () => {
     setIsLoading(true)
     try {
@@ -136,52 +187,10 @@ export default function ConferenciaPontoPage() {
       const seteDiasAtrasIso = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'America/Sao_Paulo',
       }).format(d7)
-      // Janela de servidor para o fetch de pontos: o filtro de período selecionado
-      // (fuso America/Sao_Paulo, timestamps armazenados em UTC com sufixo Z).
-      // 'todos' usa limite amplo de 12 meses em vez de toda a história.
-      const inicioDia = (d: string) => `${d} 00:00:00.000Z`
-      const fimDia = (d: string) => `${d} 23:59:59.999Z`
-      const primeiroDiaMes = `${hojeIso.slice(0, 7)}-01`
-      const ultimoDiaMes = new Date(
-        parseInt(hojeIso.slice(0, 4), 10),
-        parseInt(hojeIso.slice(5, 7), 10),
-        0,
-      )
-        .getDate()
-        .toString()
-        .padStart(2, '0')
-      const d12m = new Date(`${hojeIso}T12:00:00-03:00`)
-      d12m.setMonth(d12m.getMonth() - 12)
-      const dozeMesesAtrasIso = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/Sao_Paulo',
-      }).format(d12m)
-      const dSem = new Date(`${hojeIso}T12:00:00-03:00`)
-      const dow = (dSem.getDay() + 6) % 7 // segunda-feira como primeiro dia
-      dSem.setDate(dSem.getDate() - dow)
-      const segundaIso = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/Sao_Paulo',
-      }).format(dSem)
-      let filtroDataPontos = ''
-      if (periodoSel === 'hoje') {
-        filtroDataPontos = `timestamp_real >= "${inicioDia(hojeIso)}" && timestamp_real <= "${fimDia(hojeIso)}"`
-      } else if (periodoSel === 'semana') {
-        filtroDataPontos = `timestamp_real >= "${inicioDia(segundaIso)}" && timestamp_real <= "${fimDia(hojeIso)}"`
-      } else if (periodoSel === 'mes') {
-        filtroDataPontos = `timestamp_real >= "${inicioDia(primeiroDiaMes)}" && timestamp_real <= "${fimDia(ultimoDiaMes)}"`
-      } else if (periodoSel === 'custom') {
-        const iniCustom = filtroDataInicio || dozeMesesAtrasIso
-        const fimCustom = filtroDataFim || hojeIso
-        filtroDataPontos = `timestamp_real >= "${inicioDia(iniCustom)}" && timestamp_real <= "${fimDia(fimCustom)}"`
-      } else {
-        filtroDataPontos = `timestamp_real >= "${inicioDia(dozeMesesAtrasIso)}"`
-      }
+
       const [pontosRes, postosRes, prosRes, atestadosRes, escalasRes, convsRes] = await Promise.all(
         [
-          pb.collection('pontos').getFullList<PontoRecord>({
-            sort: '-timestamp_real',
-            expand: 'escala,escala.posto,posto,pro',
-            filter: filtroDataPontos,
-          }),
+          carregarPontos(),
           pb.collection('postos').getFullList<PostoRecord>({
             sort: 'nome',
           }),
@@ -234,6 +243,28 @@ export default function ConferenciaPontoPage() {
     if (periodoSel !== 'custom') return
     loadData()
   }, [filtroDataInicio, filtroDataFim])
+
+  // Realtime: ponto novo refaz a busca da rota (debounce de 2s)
+  useRealtime<PontoRecord>(
+    'pontos',
+    () => {
+      if (refetchPontosTimer.current) clearTimeout(refetchPontosTimer.current)
+      refetchPontosTimer.current = setTimeout(() => {
+        refetchPontosTimer.current = null
+        carregarPontosRef
+          .current()
+          .then((lista) => setPontos(lista))
+          .catch((err) => console.error(err))
+      }, 2000)
+    },
+    !!user,
+  )
+  useEffect(
+    () => () => {
+      if (refetchPontosTimer.current) clearTimeout(refetchPontosTimer.current)
+    },
+    [],
+  )
 
   // Filtragem dos registros
   const pontosFiltrados = useMemo(() => {
