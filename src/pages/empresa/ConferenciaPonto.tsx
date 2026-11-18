@@ -112,6 +112,9 @@ export default function ConferenciaPontoPage() {
   const [filtroOrigem, setFiltroOrigem] = useState<string>('todos') // todos | offline | sincronizado_atraso | suspeito | fora_cerca | fora_janela
   const [filtroDataInicio, setFiltroDataInicio] = useState<string>('')
   const [filtroDataFim, setFiltroDataFim] = useState<string>('')
+  const [periodoSel, setPeriodoSel] = useState<'hoje' | 'semana' | 'mes' | 'custom' | 'todos'>(
+    'mes',
+  )
 
   // Modal de Detalhes / Validação e Contestação
   const [modalPonto, setModalPonto] = useState<PontoRecord | null>(null)
@@ -133,11 +136,51 @@ export default function ConferenciaPontoPage() {
       const seteDiasAtrasIso = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'America/Sao_Paulo',
       }).format(d7)
+      // Janela de servidor para o fetch de pontos: o filtro de período selecionado
+      // (fuso America/Sao_Paulo, timestamps armazenados em UTC com sufixo Z).
+      // 'todos' usa limite amplo de 12 meses em vez de toda a história.
+      const inicioDia = (d: string) => `${d} 00:00:00.000Z`
+      const fimDia = (d: string) => `${d} 23:59:59.999Z`
+      const primeiroDiaMes = `${hojeIso.slice(0, 7)}-01`
+      const ultimoDiaMes = new Date(
+        parseInt(hojeIso.slice(0, 4), 10),
+        parseInt(hojeIso.slice(5, 7), 10),
+        0,
+      )
+        .getDate()
+        .toString()
+        .padStart(2, '0')
+      const d12m = new Date(`${hojeIso}T12:00:00-03:00`)
+      d12m.setMonth(d12m.getMonth() - 12)
+      const dozeMesesAtrasIso = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+      }).format(d12m)
+      const dSem = new Date(`${hojeIso}T12:00:00-03:00`)
+      const dow = (dSem.getDay() + 6) % 7 // segunda-feira como primeiro dia
+      dSem.setDate(dSem.getDate() - dow)
+      const segundaIso = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+      }).format(dSem)
+      let filtroDataPontos = ''
+      if (periodoSel === 'hoje') {
+        filtroDataPontos = `timestamp_real >= "${inicioDia(hojeIso)}" && timestamp_real <= "${fimDia(hojeIso)}"`
+      } else if (periodoSel === 'semana') {
+        filtroDataPontos = `timestamp_real >= "${inicioDia(segundaIso)}" && timestamp_real <= "${fimDia(hojeIso)}"`
+      } else if (periodoSel === 'mes') {
+        filtroDataPontos = `timestamp_real >= "${inicioDia(primeiroDiaMes)}" && timestamp_real <= "${fimDia(dataFimMes)}"`
+      } else if (periodoSel === 'custom') {
+        const iniCustom = filtroDataInicio || dozeMesesAtrasIso
+        const fimCustom = filtroDataFim || hojeIso
+        filtroDataPontos = `timestamp_real >= "${inicioDia(iniCustom)}" && timestamp_real <= "${fimDia(fimCustom)}"`
+      } else {
+        filtroDataPontos = `timestamp_real >= "${inicioDia(dozeMesesAtrasIso)}"`
+      }
       const [pontosRes, postosRes, prosRes, atestadosRes, escalasRes, convsRes] = await Promise.all(
         [
           pb.collection('pontos').getFullList<PontoRecord>({
             sort: '-timestamp_real',
             expand: 'escala,escala.posto,posto,pro',
+            filter: filtroDataPontos,
           }),
           pb.collection('postos').getFullList<PostoRecord>({
             sort: 'nome',
@@ -183,7 +226,14 @@ export default function ConferenciaPontoPage() {
 
   useEffect(() => {
     loadData()
-  }, [])
+    // Trocar o período refaz o fetch com a nova janela de servidor
+  }, [periodoSel])
+
+  // Período "Personalizado": refetch quando as datas da janela mudam com o período ativo
+  useEffect(() => {
+    if (periodoSel !== 'custom') return
+    loadData()
+  }, [filtroDataInicio, filtroDataFim])
 
   // Filtragem dos registros
   const pontosFiltrados = useMemo(() => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { EscalaRecord, PostoRecord, UserRecord, ConvocacaoRecord } from '@/types/facilities'
@@ -175,13 +175,43 @@ export default function EscalasPage() {
   )
   const [isConfirmandoPresenca, setIsConfirmandoPresenca] = useState(false)
 
+  // Filtros de período espelhados em ref: o fetch no servidor sempre lê a janela atual,
+  // inclusive em chamadas feitas fora do ciclo de render (realtime com debounce).
+  const filtrosPeriodoRef = useRef({ filtroPeriodo, dataDeCustom, dataAteCustom })
+  filtrosPeriodoRef.current = { filtroPeriodo, dataDeCustom, dataAteCustom }
+
   const loadData = async () => {
     setIsLoading(true)
     try {
+      // Janela de servidor a partir do filtro de período selecionado (fuso local, datas YYYY-MM-DD).
+      // 'todos' busca tudo como hoje — nenhum filtro de data é aplicado.
+      const {
+        filtroPeriodo: fp,
+        dataDeCustom: deCustom,
+        dataAteCustom: ateCustom,
+      } = filtrosPeriodoRef.current
+      let filtroDataEscalas = ''
+      if (fp === 'hoje') {
+        filtroDataEscalas = `data >= "${periodosCalculados.hojeStr} 00:00:00" && data <= "${periodosCalculados.hojeStr} 23:59:59"`
+      } else if (fp === 'semana') {
+        filtroDataEscalas = `data >= "${periodosCalculados.semanaInicioStr} 00:00:00" && data <= "${periodosCalculados.semanaFimStr} 23:59:59"`
+      } else if (fp === 'mes') {
+        filtroDataEscalas = `data >= "${periodosCalculados.mesInicioStr} 00:00:00" && data <= "${periodosCalculados.mesFimStr} 23:59:59"`
+      } else if (fp === 'custom') {
+        if (deCustom && ateCustom) {
+          filtroDataEscalas = `data >= "${deCustom} 00:00:00" && data <= "${ateCustom} 23:59:59"`
+        } else if (deCustom) {
+          filtroDataEscalas = `data >= "${deCustom} 00:00:00"`
+        } else if (ateCustom) {
+          filtroDataEscalas = `data <= "${ateCustom} 23:59:59"`
+        }
+      }
+
       const [escalasRes, postosRes, prosRes, convocacoesRes] = await Promise.all([
         pb.collection('escalas').getFullList<EscalaRecord>({
           sort: 'data,turno_inicio',
           expand: 'posto,posto.pro_fixo',
+          ...(filtroDataEscalas ? { filter: filtroDataEscalas } : {}),
         }),
         pb.collection('postos').getFullList<PostoRecord>({
           filter: 'status = "ativo"',
@@ -238,6 +268,16 @@ export default function EscalasPage() {
       if (unsub) unsub()
     }
   }, [])
+
+  // Trocar o período refaz o fetch com a nova janela de servidor (ignora a montagem inicial, já coberta acima)
+  const montagemInicialEscalasRef = useRef(true)
+  useEffect(() => {
+    if (montagemInicialEscalasRef.current) {
+      montagemInicialEscalasRef.current = false
+      return
+    }
+    loadData()
+  }, [filtroPeriodo, dataDeCustom, dataAteCustom])
 
   const selectedPosto = useMemo(() => {
     return postos.find((p) => p.id === selectedPostoId)
