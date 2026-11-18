@@ -245,7 +245,7 @@ export default function ConferenciaPontoPage() {
   }, [filtroDataInicio, filtroDataFim])
 
   // Realtime: ponto novo refaz a busca da rota (debounce de 2s)
-  useRealtime<PontoRecord>(
+  useRealtime(
     'pontos',
     () => {
       if (refetchPontosTimer.current) clearTimeout(refetchPontosTimer.current)
