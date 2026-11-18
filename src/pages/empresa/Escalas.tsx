@@ -1914,10 +1914,36 @@ export default function EscalasPage() {
     }
   }
 
+  // Escalas em aberto do alvo da convocação (grupo selecionado ou escala única), mesma regra de escalasAbertas
+  const getEscalasSemAceiteAlvo = (): EscalaRecord[] => {
+    const base: EscalaRecord[] = selectedGrupoParaConvocar
+      ? selectedGrupoParaConvocar.escalas
+      : selectedEscala
+        ? [selectedEscala]
+        : []
+    return base.filter((esc: EscalaRecord) => {
+      const convs = convocacoes.filter((c) => c.escala === esc.id)
+      return (
+        !convs.some((c) => c.status === 'aceita' || c.status === 'coberta') &&
+        esc.status !== 'aceita' &&
+        esc.status !== 'coberta'
+      )
+    })
+  }
+
   const handleToggleProSelection = (proId: string) => {
     if (selectedProIds.includes(proId)) {
       setSelectedProIds(selectedProIds.filter((id) => id !== proId))
     } else {
+      const vagasLimite = getEscalasSemAceiteAlvo().length
+      if (selectedProIds.length >= vagasLimite) {
+        toast({
+          title: 'Limite de vagas atingido',
+          description: `Este turno tem apenas ${vagasLimite} vaga(s) em aberto — você pode selecionar até ${vagasLimite} profissionais`,
+          variant: 'destructive',
+        })
+        return
+      }
       setSelectedProIds([...selectedProIds, proId])
     }
   }
@@ -2051,56 +2077,35 @@ export default function EscalasPage() {
     try {
       const now = new Date().toISOString()
 
-      // Se estamos convocando para um grupo multi-vagas, distribuir ou associar às escalas abertas do grupo,
-      // PRIORIZANDO escalas sem NENHUMA convocação ativa (sem status pendente/aceita/coberta) — as vagas limpas primeiro,
-      // entre elas a vaga extra recém-criada; só depois (se não houver vaga limpa) as escalas sem aceite que já têm pendente.
-      let escalasAlvo: EscalaRecord[] = [selectedEscala]
-      if (selectedGrupoParaConvocar) {
-        const semAceite = selectedGrupoParaConvocar.escalas.filter((esc: EscalaRecord) => {
-          const convs = convocacoes.filter((c) => c.escala === esc.id)
-          return (
-            !convs.some((c) => c.status === 'aceita' || c.status === 'coberta') &&
-            esc.status !== 'aceita' &&
-            esc.status !== 'coberta'
-          )
+      // Trava: uma vaga = uma convocação ativa. Só distribuir para escalas do alvo SEM nenhuma
+      // convocação pendente/aceita/coberta (vagas limpas), a vaga extra recém-criada primeiro.
+      const limpasSemAtiva = getEscalasSemAceiteAlvo().filter((esc: EscalaRecord) => {
+        const convs = convocacoes.filter((c) => c.escala === esc.id)
+        return !convs.some(
+          (c) => c.status === 'pendente' || c.status === 'aceita' || c.status === 'coberta',
+        )
+      })
+
+      // Se uma vaga extra foi recém-criada no grupo, garantir que ela seja a primeira entre as limpas
+      const extraId = selectedGrupoParaConvocar?.novaVagaExtraId
+      if (extraId) {
+        limpasSemAtiva.sort((a: EscalaRecord, b: EscalaRecord) => {
+          if (a.id === extraId) return -1
+          if (b.id === extraId) return 1
+          return 0
         })
-
-        const limpasSemAtiva = semAceite.filter((esc: EscalaRecord) => {
-          const convs = convocacoes.filter((c) => c.escala === esc.id)
-          return !convs.some(
-            (c) => c.status === 'pendente' || c.status === 'aceita' || c.status === 'coberta',
-          )
-        })
-
-        const comPendenteApenas = semAceite.filter((esc: EscalaRecord) => {
-          const convs = convocacoes.filter((c) => c.escala === esc.id)
-          return convs.some((c) => c.status === 'pendente')
-        })
-
-        // Se uma vaga extra foi recém-criada no grupo, garantir que ela seja a primeira entre as limpas
-        const extraId = selectedGrupoParaConvocar.novaVagaExtraId
-        if (extraId) {
-          limpasSemAtiva.sort((a: EscalaRecord, b: EscalaRecord) => {
-            if (a.id === extraId) return -1
-            if (b.id === extraId) return 1
-            return 0
-          })
-        }
-
-        escalasAlvo =
-          limpasSemAtiva.length > 0
-            ? [...limpasSemAtiva, ...comPendenteApenas]
-            : comPendenteApenas.length > 0
-              ? comPendenteApenas
-              : semAceite
       }
 
-      const alvos = escalasAlvo.length > 0 ? escalasAlvo : [selectedEscala]
-
+      const alvos: EscalaRecord[] = limpasSemAtiva
       let idxEscala = 0
+      let totalNaoDisparadas = 0
       for (const proId of selectedProIds) {
-        // Atribuir para uma das escalas abertas do grupo de forma distribuída
-        const escalaAtual = alvos[idxEscala % alvos.length]
+        // Sem vaga limpa restante: não dispara este pro
+        if (idxEscala >= alvos.length) {
+          totalNaoDisparadas++
+          continue
+        }
+        const escalaAtual = alvos[idxEscala]
         idxEscala++
 
         // Checar se no estado local já tem convocação
@@ -2169,7 +2174,7 @@ export default function EscalasPage() {
 
       toast({
         title: 'Resumo das convocações',
-        description: `${totalConvocadas} convocadas, ${totalJaConvocadas} já estavam convocadas, ${totalFalhas} falhas.`,
+        description: `${totalConvocadas} convocadas, ${totalJaConvocadas} já estavam convocadas, ${totalFalhas} falhas.${totalNaoDisparadas > 0 ? ` ${totalNaoDisparadas} não disparadas por falta de vaga em aberto.` : ''}`,
       })
       setModalConvocar(false)
     } catch (err) {
@@ -3973,7 +3978,8 @@ export default function EscalasPage() {
 
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
-                Selecione os Profissionais ({selectedProIds.length} selecionados)
+                Selecione os Profissionais ({selectedProIds.length} de{' '}
+                {getEscalasSemAceiteAlvo().length} vagas selecionadas)
               </label>
 
               <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
