@@ -167,7 +167,7 @@ export default function ConferenciaPontoPage() {
       } else if (periodoSel === 'semana') {
         filtroDataPontos = `timestamp_real >= "${inicioDia(segundaIso)}" && timestamp_real <= "${fimDia(hojeIso)}"`
       } else if (periodoSel === 'mes') {
-        filtroDataPontos = `timestamp_real >= "${inicioDia(primeiroDiaMes)}" && timestamp_real <= "${fimDia(dataFimMes)}"`
+        filtroDataPontos = `timestamp_real >= "${inicioDia(primeiroDiaMes)}" && timestamp_real <= "${fimDia(ultimoDiaMes)}"`
       } else if (periodoSel === 'custom') {
         const iniCustom = filtroDataInicio || dozeMesesAtrasIso
         const fimCustom = filtroDataFim || hojeIso
