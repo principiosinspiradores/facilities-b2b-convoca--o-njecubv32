@@ -34,7 +34,16 @@ routerAdd('GET', '/backend/v1/facilities/espelho-pontos', (e) => {
   // Janela: parâmetros ou mês corrente (fuso SP)
   const query = e.request.url.query()
   const agora = new Date()
-  const hojeSp = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(agora)
+  // Fuso America/Sao_Paulo = UTC-3 fixo (sem horário de verão). O JSVM (Goja)
+  // não possui o objeto Intl, então calculamos a data de hoje deslocando o
+  // timestamp 3h para trás e lendo os getters UTC.
+  const agoraSp = new Date(agora.getTime() - 3 * 60 * 60 * 1000)
+  const hojeSp =
+    agoraSp.getUTCFullYear() +
+    '-' +
+    String(agoraSp.getUTCMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(agoraSp.getUTCDate()).padStart(2, '0')
   const primeiroDiaMesIso = hojeSp.slice(0, 7) + '-01T03:00:00.000Z'
 
   let inicio = new Date(query.get('inicio') || primeiroDiaMesIso)
