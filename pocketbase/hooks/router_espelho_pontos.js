@@ -15,6 +15,12 @@
  * - Janela máxima: 12 meses. Sem parâmetros: mês corrente (fuso SP).
  * - Limite: 2000 pontos por resposta.
  *
+ * Performance: cada objeto é montado manualmente com os getters do Record
+ * (getString/getBool/getFloat/getDateTime). Objetos JS puros serializam
+ * rápido no e.json — o antigo JSON.parse(JSON.stringify(rec)) levava
+ * 25–42s na janela de 1 mês (~2000 registros × dezenas de ms no Goja) e
+ * ainda bloqueava o JSVM, atrasando consultas simultâneas.
+ *
  * Escopo do PocketBase (JSVM): cada callback roda isolado — helpers ficam DENTRO do callback.
  */
 
@@ -77,16 +83,26 @@ routerAdd('GET', '/backend/v1/facilities/espelho-pontos', (e) => {
     return mapa
   }
 
-  // Helper: model → JSON puro, sem campos sensíveis de autenticação
-  const paraJson = (rec) => {
-    const obj = JSON.parse(JSON.stringify(rec))
-    delete obj.passwordHash
-    delete obj.tokenKey
-    delete obj.oauth2Accounts
-    delete obj.authAlertSent
-    delete obj.lastResetSentAt
-    delete obj.lastVerificationSentAt
-    return obj
+  // Helper: campo date → string no formato armazenado ("YYYY-MM-DD HH:MM:SS.sssZ"),
+  // mesmo formato que o JSON round-trip antigo devolvia
+  const campoData = (rec, nome) => {
+    try {
+      const dt = rec.getDateTime(nome)
+      return dt ? dt.string() : ''
+    } catch (_) {
+      return ''
+    }
+  }
+
+  // Helper: campo json (armazenado como texto) → objeto/valor parseado
+  const campoJson = (rec, nome) => {
+    const bruto = rec.getString(nome)
+    if (!bruto) return null
+    try {
+      return JSON.parse(bruto)
+    } catch (_) {
+      return bruto
+    }
   }
 
   // 1. Pontos da janela, sem expand
@@ -131,28 +147,87 @@ routerAdd('GET', '/backend/v1/facilities/espelho-pontos', (e) => {
   const postosMapa = buscarPorIds('postos', idsPosto)
   const prosMapa = buscarPorIds('users', idsPro)
 
-  // 5. Monta a resposta no shape do expand
+  // 5. Montadores de objetos JS puros — apenas os campos que a tela usa
+  const objetoPosto = (rec) => ({
+    id: rec.id,
+    nome: rec.getString('nome'),
+    endereco: campoJson(rec, 'endereco'),
+    carga_horaria: rec.getFloat('carga_horaria'),
+    raio_geocerca_m: rec.getFloat('raio_geocerca_m'),
+    tolerancia_entrada_minutos: rec.getFloat('tolerancia_entrada_minutos'),
+    tolerancia_saida_minutos: rec.getFloat('tolerancia_saida_minutos'),
+    funcao: rec.getString('funcao'),
+  })
+
+  const objetoEscala = (rec) => {
+    const obj = {
+      id: rec.id,
+      posto: rec.getString('posto'),
+      data: campoData(rec, 'data'),
+      turno_inicio: rec.getString('turno_inicio'),
+      turno_fim: rec.getString('turno_fim'),
+      status: rec.getString('status'),
+      valor_diaria: rec.getFloat('valor_diaria'),
+    }
+    const postoEscalaRec = postosMapa[rec.getString('posto')]
+    if (postoEscalaRec) {
+      obj.expand = { posto: objetoPosto(postoEscalaRec) }
+    }
+    return obj
+  }
+
+  const objetoPro = (rec) => ({
+    id: rec.id,
+    name: rec.getString('name'),
+    email: rec.getString('email'),
+    funcoes: campoJson(rec, 'funcoes'),
+  })
+
+  const objetoPonto = (rec) => ({
+    id: rec.id,
+    // collectionId/collectionName mantidos: o frontend usa pb.files.getURL(p, p.foto)
+    collectionId: rec.collection().id,
+    collectionName: rec.collection().name,
+    escala: rec.getString('escala'),
+    posto: rec.getString('posto'),
+    pro: rec.getString('pro'),
+    tipo: rec.getString('tipo'),
+    timestamp_real: campoData(rec, 'timestamp_real'),
+    dentro_raio: rec.getBool('dentro_raio'),
+    distancia_metros: rec.getFloat('distancia_metros'),
+    foto: rec.getString('foto'),
+    gps_precisao_m: rec.getFloat('gps_precisao_m'),
+    batido_offline: rec.getBool('batido_offline'),
+    sincronizado_em: campoData(rec, 'sincronizado_em'),
+    atraso_sincronizacao_minutos: rec.getFloat('atraso_sincronizacao_minutos'),
+    fora_janela: rec.getBool('fora_janela'),
+    horario_suspeito: rec.getBool('horario_suspeito'),
+    ocorrencia: rec.getString('ocorrencia'),
+    status_validacao: rec.getString('status_validacao'),
+    observacao_gestao: rec.getString('observacao_gestao'),
+    tolerancia_aplicada_minutos: rec.getFloat('tolerancia_aplicada_minutos'),
+    raio_posto_m: rec.getFloat('raio_posto_m'),
+    client_uuid: rec.getString('client_uuid'),
+    aviso_sem_convocacao: rec.getBool('aviso_sem_convocacao'),
+    created: campoData(rec, 'created'),
+    updated: campoData(rec, 'updated'),
+  })
+
+  // 6. Monta a resposta no shape do expand
   const resultado = []
   for (let i = 0; i < pontosRecs.length; i++) {
     const p = pontosRecs[i]
-    const obj = paraJson(p)
+    const obj = objetoPonto(p)
     const expand = {}
 
     const escalaRec = escalasMapa[p.getString('escala')]
-    if (escalaRec) {
-      const escalaObj = paraJson(escalaRec)
-      const postoEscalaRec = postosMapa[escalaRec.getString('posto')]
-      if (postoEscalaRec) {
-        escalaObj.expand = { posto: paraJson(postoEscalaRec) }
-      }
-      expand.escala = escalaObj
-    }
+    if (escalaRec) expand.escala = objetoEscala(escalaRec)
 
     const postoRec = postosMapa[p.getString('posto')]
-    if (postoRec) expand.posto = paraJson(postoRec)
+    if (postoRec) expand.posto = objetoPosto(postoRec)
 
     const proRec = prosMapa[p.getString('pro')]
-    if (proRec) expand.pro = paraJson(proRec)
+    if (proRec) expand.pro = objetoPro(proRec)
 
     if (Object.keys(expand).length > 0) obj.expand = expand
     resultado.push(obj)

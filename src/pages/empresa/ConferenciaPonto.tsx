@@ -151,7 +151,7 @@ export default function ConferenciaPontoPage() {
   const [filtroDataInicio, setFiltroDataInicio] = useState<string>('')
   const [filtroDataFim, setFiltroDataFim] = useState<string>('')
   const [periodoSel, setPeriodoSel] = useState<'hoje' | 'semana' | 'mes' | 'custom' | 'todos'>(
-    'mes',
+    'hoje',
   )
 
   // Modal de Detalhes / Validação e Contestação
@@ -176,6 +176,7 @@ export default function ConferenciaPontoPage() {
   const carregarPontosRef = useRef(carregarPontos)
   carregarPontosRef.current = carregarPontos
   const refetchPontosTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const refetchConvsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadData = async () => {
     setIsLoading(true)
@@ -267,12 +268,23 @@ export default function ConferenciaPontoPage() {
   )
 
   // Realtime: convocação criada/aceita/recusada refaz o carregamento (badge de convocações de hoje)
+  // Debounce de 2s — mesmo padrão do realtime de pontos, evita loadData() a cada evento
   useRealtime(
     'convocacoes',
     () => {
-      loadData()
+      if (refetchConvsTimer.current) clearTimeout(refetchConvsTimer.current)
+      refetchConvsTimer.current = setTimeout(() => {
+        refetchConvsTimer.current = null
+        loadData()
+      }, 2000)
     },
     !!user,
+  )
+  useEffect(
+    () => () => {
+      if (refetchConvsTimer.current) clearTimeout(refetchConvsTimer.current)
+    },
+    [],
   )
 
   // Filtragem dos registros
