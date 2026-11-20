@@ -73,6 +73,15 @@ interface ItemSemSaida {
   deDiaAnterior?: boolean
 }
 
+// Data (ISO yyyy-mm-dd) de um timestamp no fuso America/Sao_Paulo — única fonte de
+// verdade para comparar datas de pontos com janelas de filtro (evita o .slice(0,10)
+// em UTC, que jogaria pontos de 21h–23h59 SP para o dia seguinte)
+function getDataSPDoTimestamp(timestamp: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+  }).format(new Date(timestamp))
+}
+
 // Janela natural do período selecionado (fuso America/Sao_Paulo), sem piso — usada para
 // o recorte da tabela em memória e como base da janela enviada ao servidor
 function calcularJanelaPeriodo(
@@ -326,9 +335,7 @@ export default function ConferenciaPontoPage() {
       const postoId = escala?.posto
 
       if (janelaPeriodo) {
-        const dataPontoSP = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'America/Sao_Paulo',
-        }).format(new Date(p.timestamp_real))
+        const dataPontoSP = getDataSPDoTimestamp(p.timestamp_real)
         if (dataPontoSP < janelaPeriodo.inicio.slice(0, 10)) return false
         if (dataPontoSP > janelaPeriodo.fim.slice(0, 10)) return false
       }
@@ -365,12 +372,12 @@ export default function ConferenciaPontoPage() {
       }
 
       if (filtroDataInicio) {
-        const dataPonto = p.timestamp_real.slice(0, 10)
+        const dataPonto = getDataSPDoTimestamp(p.timestamp_real)
         if (dataPonto < filtroDataInicio) return false
       }
 
       if (filtroDataFim) {
-        const dataPonto = p.timestamp_real.slice(0, 10)
+        const dataPonto = getDataSPDoTimestamp(p.timestamp_real)
         if (dataPonto > filtroDataFim) return false
       }
 
