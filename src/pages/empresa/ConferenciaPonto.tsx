@@ -1695,6 +1695,46 @@ export default function ConferenciaPontoPage() {
       {/* ABA: ESPELHO DE PONTOS PADRÃO */}
       {tabAtiva === 'pontos' && (
         <>
+          {/* SELETOR DE PERÍODO (Hoje / Semana / Mês / Personalizado / Todos) */}
+          <Card className="border border-slate-200 bg-white">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1.5">Período</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(
+                    [
+                      { valor: 'hoje', rotulo: 'Hoje' },
+                      { valor: 'semana', rotulo: 'Semana' },
+                      { valor: 'mes', rotulo: 'Mês' },
+                      { valor: 'custom', rotulo: 'Personalizado' },
+                      { valor: 'todos', rotulo: 'Todos' },
+                    ] as const
+                  ).map((op) => (
+                    <button
+                      key={op.valor}
+                      type="button"
+                      onClick={() => setPeriodoSel(op.valor)}
+                      className={`px-3 h-8 rounded-md border text-xs font-semibold transition-colors ${
+                        periodoSel === op.valor
+                          ? 'bg-primary text-white border-primary shadow-xs'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-800'
+                      }`}
+                    >
+                      {op.rotulo}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {periodoSel === 'custom' && (
+                <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  Período personalizado ativo — use os campos{' '}
+                  <span className="font-semibold text-slate-700">Data Início</span> e{' '}
+                  <span className="font-semibold text-slate-700">Data Fim</span> nos filtros abaixo.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* BANNER DE TURNOS DO DIA SEM CHEGADA (ACEITOU E NÃO BATEU PONTO > 15 MIN) */}
           {turnosSemChegadaDoDia.length > 0 && (
             <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4 shadow-sm">
@@ -1967,6 +2007,35 @@ export default function ConferenciaPontoPage() {
             </Card>
           </div>
 
+          {/* Seletor de Período */}
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs font-semibold text-slate-600">Período:</label>
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5">
+              {(
+                [
+                  { valor: 'hoje', rotulo: 'Hoje' },
+                  { valor: 'semana', rotulo: 'Semana' },
+                  { valor: 'mes', rotulo: 'Mês' },
+                  { valor: 'custom', rotulo: 'Personalizado' },
+                  { valor: 'todos', rotulo: 'Todos' },
+                ] as const
+              ).map((op) => (
+                <button
+                  key={op.valor}
+                  type="button"
+                  onClick={() => setPeriodoSel(op.valor)}
+                  className={`px-3 h-8 text-xs font-semibold rounded-md transition-colors ${
+                    periodoSel === op.valor
+                      ? 'bg-white text-primary shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {op.rotulo}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Barra de Filtros */}
           <Card className="border border-slate-200 bg-white">
             <CardContent className="p-4">
@@ -2052,27 +2121,47 @@ export default function ConferenciaPontoPage() {
 
                 {/* Data Início */}
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">
+                  <label
+                    className={`text-xs font-semibold block mb-1 ${
+                      periodoSel === 'custom' ? 'text-primary' : 'text-slate-600'
+                    }`}
+                  >
                     Data Início
                   </label>
                   <Input
                     type="date"
                     value={filtroDataInicio}
-                    onChange={(e) => setFiltroDataInicio(e.target.value)}
-                    className="h-9 text-xs"
+                    onChange={(e) => {
+                      setFiltroDataInicio(e.target.value)
+                      // Preencher uma data com o período travado em "hoje" ativa o modo Personalizado
+                      if (periodoSel === 'hoje' && e.target.value) setPeriodoSel('custom')
+                    }}
+                    className={`h-9 text-xs ${
+                      periodoSel === 'custom' ? 'border-primary/50 ring-1 ring-primary/30' : ''
+                    }`}
                   />
                 </div>
 
                 {/* Data Fim */}
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">
+                  <label
+                    className={`text-xs font-semibold block mb-1 ${
+                      periodoSel === 'custom' ? 'text-primary' : 'text-slate-600'
+                    }`}
+                  >
                     Data Fim
                   </label>
                   <Input
                     type="date"
                     value={filtroDataFim}
-                    onChange={(e) => setFiltroDataFim(e.target.value)}
-                    className="h-9 text-xs"
+                    onChange={(e) => {
+                      setFiltroDataFim(e.target.value)
+                      // Preencher uma data com o período travado em "hoje" ativa o modo Personalizado
+                      if (periodoSel === 'hoje' && e.target.value) setPeriodoSel('custom')
+                    }}
+                    className={`h-9 text-xs ${
+                      periodoSel === 'custom' ? 'border-primary/50 ring-1 ring-primary/30' : ''
+                    }`}
                   />
                 </div>
               </div>
