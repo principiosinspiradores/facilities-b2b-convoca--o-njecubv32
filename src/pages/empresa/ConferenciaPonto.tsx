@@ -73,8 +73,9 @@ interface ItemSemSaida {
   deDiaAnterior?: boolean
 }
 
-// Janela do espelho de pontos (fuso America/Sao_Paulo), enviada à rota do servidor
-function calcularJanelaPontos(
+// Janela natural do período selecionado (fuso America/Sao_Paulo), sem piso — usada para
+// o recorte da tabela em memória e como base da janela enviada ao servidor
+function calcularJanelaPeriodo(
   periodo: 'hoje' | 'semana' | 'mes' | 'custom' | 'todos',
   dataInicioCustom: string,
   dataFimCustom: string,
@@ -108,6 +109,30 @@ function calcularJanelaPontos(
     }
   }
   return { inicio: inicioDia(dozeMesesAtrasIso), fim: fimDia(hojeIso) }
+}
+
+// Janela enviada à rota do servidor: o início nunca pode ser depois de hoje − 7 dias e o
+// fim nunca antes de agora — a busca SEMPRE cobre no mínimo os últimos 7 dias, mesmo com
+// "Hoje" selecionado, para que os banners de 7 dias tenham os pontos dos dias anteriores.
+// Nos períodos maiores (Mês/Todos/Personalizado) a janela natural já cobre o piso.
+function calcularJanelaPontos(
+  periodo: 'hoje' | 'semana' | 'mes' | 'custom' | 'todos',
+  dataInicioCustom: string,
+  dataFimCustom: string,
+): { inicio: string; fim: string } {
+  const janela = calcularJanelaPeriodo(periodo, dataInicioCustom, dataFimCustom)
+  const hojeIso = getDataHojeSP()
+  const d7 = new Date(`${hojeIso}T12:00:00-03:00`)
+  d7.setDate(d7.getDate() - 7)
+  const pisoIso = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+  }).format(d7)
+  const pisoInicio = `${pisoIso}T00:00:00.000Z`
+  const fimMinimo = `${hojeIso}T23:59:59.999Z`
+  return {
+    inicio: janela.inicio < pisoInicio ? janela.inicio : pisoInicio,
+    fim: janela.fim > fimMinimo ? janela.fim : fimMinimo,
+  }
 }
 
 export default function ConferenciaPontoPage() {
@@ -289,9 +314,24 @@ export default function ConferenciaPontoPage() {
 
   // Filtragem dos registros
   const pontosFiltrados = useMemo(() => {
+    // Recorte do período selecionado: a busca no servidor cobre no mínimo os últimos 7 dias,
+    // então aqui a tabela volta a mostrar exatamente o período escolhido.
+    // "custom" mantém o filtro por filtroDataInicio/fim já existente; "todos" não recorta.
+    const janelaPeriodo =
+      periodoSel === 'hoje' || periodoSel === 'semana' || periodoSel === 'mes'
+        ? calcularJanelaPeriodo(periodoSel, filtroDataInicio, filtroDataFim)
+        : null
     return pontos.filter((p) => {
       const escala = p.expand?.escala
       const postoId = escala?.posto
+
+      if (janelaPeriodo) {
+        const dataPontoSP = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/Sao_Paulo',
+        }).format(new Date(p.timestamp_real))
+        if (dataPontoSP < janelaPeriodo.inicio.slice(0, 10)) return false
+        if (dataPontoSP > janelaPeriodo.fim.slice(0, 10)) return false
+      }
 
       if (filtroPosto !== 'todos' && postoId !== filtroPosto) return false
       if (filtroPro !== 'todos' && p.pro !== filtroPro) return false
@@ -336,7 +376,16 @@ export default function ConferenciaPontoPage() {
 
       return true
     })
-  }, [pontos, filtroPosto, filtroPro, filtroStatus, filtroOrigem, filtroDataInicio, filtroDataFim])
+  }, [
+    pontos,
+    periodoSel,
+    filtroPosto,
+    filtroPro,
+    filtroStatus,
+    filtroOrigem,
+    filtroDataInicio,
+    filtroDataFim,
+  ])
 
   // Ações de Validação / Contestação
   const handleAcaoValidacao = async (novoStatus: 'valido' | 'contestado' | 'aprovado_manual') => {
