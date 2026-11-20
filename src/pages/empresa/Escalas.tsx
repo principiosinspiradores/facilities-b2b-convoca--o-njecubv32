@@ -263,9 +263,20 @@ export default function EscalasPage() {
       })
       .catch(() => {})
 
+    let unsubConv: (() => void) | undefined
+    pb.collection('convocacoes')
+      .subscribe('*', () => {
+        scheduleDebouncedLoad()
+      })
+      .then((u) => {
+        unsubConv = u
+      })
+      .catch(() => {})
+
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer)
       if (unsub) unsub()
+      if (unsubConv) unsubConv()
     }
   }, [])
 
@@ -2189,6 +2200,27 @@ export default function EscalasPage() {
     }
   }
 
+  // Comparativo do dia no Resumo Operacional: convocações das escalas de HOJE (fuso SP),
+  // calculado em memória a partir das convocações já carregadas (sem nova busca)
+  const { comparativoConvocacoesHoje } = useMemo(() => {
+    const hoje = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })
+    const dt = new Date(hoje)
+    const hojeStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(
+      dt.getDate(),
+    ).padStart(2, '0')}`
+    const escalaIdsHoje = new Set(
+      escalas.filter((e) => (e.data || '').slice(0, 10) === hojeStr).map((e) => e.id),
+    )
+    const convsHoje = convocacoes.filter((c) => escalaIdsHoje.has(c.escala))
+    return {
+      comparativoConvocacoesHoje: {
+        total: convsHoje.length,
+        aceitas: convsHoje.filter((c) => c.status === 'aceita').length,
+        pendentes: convsHoje.filter((c) => c.status === 'pendente').length,
+      },
+    }
+  }, [escalas, convocacoes])
+
   // Helper: data de HOJE no fuso America/Sao_Paulo (UTC-3 fixo)
   const getDataHojeSP = (): string => {
     const nowSP = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })
@@ -2410,6 +2442,11 @@ export default function EscalasPage() {
               </div>
               <p className="text-xs text-slate-500">
                 Ordenados por proximidade: do dia de hoje para frente (mais próximo primeiro).
+              </p>
+              <p className="text-xs text-slate-600 font-semibold mt-1">
+                {comparativoConvocacoesHoje.total} convocações ·{' '}
+                {comparativoConvocacoesHoje.aceitas} aceitas ·{' '}
+                {comparativoConvocacoesHoje.pendentes} pendentes
               </p>
             </div>
             <Button

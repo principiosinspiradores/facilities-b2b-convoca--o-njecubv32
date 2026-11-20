@@ -209,7 +209,7 @@ export default function ConferenciaPontoPage() {
           pb
             .collection('convocacoes')
             .getFullList<ConvocacaoRecord>({
-              filter: `status = "aceita" && escala.data >= "${seteDiasAtrasIso} 00:00:00" && escala.data <= "${hojeIso} 23:59:59"`,
+              filter: `(status = "aceita" || status = "pendente") && escala.data >= "${seteDiasAtrasIso} 00:00:00" && escala.data <= "${hojeIso} 23:59:59"`,
               expand: 'pro,escala',
             })
             .catch(() => []),
@@ -264,6 +264,15 @@ export default function ConferenciaPontoPage() {
       if (refetchPontosTimer.current) clearTimeout(refetchPontosTimer.current)
     },
     [],
+  )
+
+  // Realtime: convocação criada/aceita/recusada refaz o carregamento (badge de convocações de hoje)
+  useRealtime(
+    'convocacoes',
+    () => {
+      loadData()
+    },
+    !!user,
   )
 
   // Filtragem dos registros
@@ -555,6 +564,18 @@ export default function ConferenciaPontoPage() {
       (p) => p.aviso_sem_convocacao && (!p.status_validacao || p.status_validacao === 'alerta'),
     )
   }, [pontos])
+
+  // Turnos do dia com convocação aceita sem registro de chegada (minutosDesdeInicio > 15)
+  // Badge do banner: convocações de HOJE (fuso SP) pendentes ou aceitas — recusadas/expiradas não contam
+  const convocacoesHojePendAceitas = useMemo(() => {
+    const hojeStr = getDataHojeSP()
+    return convocacoesDoDia.filter((conv) => {
+      if (conv.status !== 'pendente' && conv.status !== 'aceita') return false
+      const escala = conv.expand?.escala || escalasDoDia.find((e) => e.id === conv.escala)
+      if (!escala) return false
+      return (escala.data || '').slice(0, 10) === hojeStr
+    }).length
+  }, [convocacoesDoDia, escalasDoDia])
 
   // Turnos do dia com convocação aceita sem registro de chegada (minutosDesdeInicio > 15)
   const turnosSemChegadaDoDia = useMemo(() => {
@@ -1699,6 +1720,9 @@ export default function ConferenciaPontoPage() {
                       Turnos com Chegada sem Registro de Saída
                       <Badge className="bg-blue-600 text-white font-bold text-xs">
                         {turnosSemSaidaDoDia.length} turno(s)
+                      </Badge>
+                      <Badge className="bg-blue-100 text-blue-900 border border-blue-300 font-bold text-xs">
+                        {convocacoesHojePendAceitas} convocação(ões) hoje
                       </Badge>
                     </h3>
                     <p className="text-xs text-blue-800 mt-0.5">
